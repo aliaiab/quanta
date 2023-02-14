@@ -70,7 +70,7 @@ pub fn createTexture(data: []const u8, width: u32, height: u32) !TextureHandle
     );
     errdefer image.deinit();
 
-    var sampler = try graphics.Sampler.init(.nearest, .nearest, null);
+    var sampler = try graphics.Sampler.init(.nearest, .nearest, .repeat, .repeat, .repeat, null);
     errdefer sampler.deinit();
 
     try self.textures.append(self.allocator, .{ .image = image, .sampler = sampler, });

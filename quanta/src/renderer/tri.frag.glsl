@@ -25,21 +25,25 @@ struct PointLight
     uint diffuse;
 };
 
-layout(push_constant, scalar) uniform Constants
+//Should really be a uniform buffer, not a storage buffer
+layout(binding = 10, scalar) restrict readonly buffer SceneUniforms
 {
     mat4 view_projection;
-    u32 point_light_count;
     vec3 view_position;
+
+    u32 point_light_count;
     AmbientLight ambient_light;
+
     DirectionalLight directional_light;
     bool use_directional_light;
-} constants;
+    mat4 directional_light_view_projection;
+} scene_uniforms;
 
 in Out
 {
     flat uint material_index;
-    flat uint primitive_index;
     vec3 position;
+    vec4 position_light_space;
     vec3 normal;
     vec4 color;
     vec2 uv;
@@ -70,6 +74,7 @@ layout(binding = 7, scalar) restrict readonly buffer PointLights
 };
 
 layout(binding = 8) uniform samplerCube environment_sampler;
+layout(binding = 9) uniform sampler2D shadow_sampler;
 
 float distributionGGX(vec3 N, vec3 H, float roughness)
 {
@@ -220,7 +225,7 @@ void main()
 {
     Material material = materials[in_data.material_index];
 
-    vec3 view_direction = normalize(constants.view_position - in_data.position);
+    vec3 view_direction = normalize(scene_uniforms.view_position - in_data.position);
 
     vec4 albedo = in_data.color * unpackUnorm4x8(material.albedo);
     float roughness = material.roughness;
@@ -237,28 +242,42 @@ void main()
         roughness *= texture(samplers[nonuniformEXT(material.roughness_index)], in_data.uv).g;
     }
 
-    vec4 ambient_light = unpackUnorm4x8(constants.ambient_light.diffuse); 
+    vec4 ambient_light = unpackUnorm4x8(scene_uniforms.ambient_light.diffuse); 
 
     vec4 light_color = vec4(0);
 
     vec3 F0 = vec3(0.04); 
     F0 = mix(F0, vec3(albedo), metallic);
 
-    if (constants.use_directional_light)
+    if (scene_uniforms.use_directional_light)
     {
+        vec3 projection_coordinates = in_data.position_light_space.xyz;
+
+        projection_coordinates = projection_coordinates * 0.5 + 0.5;
+
+        float current_depth = projection_coordinates.z;
+        float closest_depth = texture(shadow_sampler, projection_coordinates.xy).r;
+
+        float shadow = current_depth < closest_depth ? 1 : 0;
+
+        // if (projection_coordinates.z > 1)
+        // {
+        //     shadow = 0;
+        // } 
+
         light_color += directionalLightContribution(
                 albedo,
                 roughness,
                 metallic, 
                 F0, 
-                constants.directional_light, 
+                scene_uniforms.directional_light, 
                 in_data.normal, 
                 in_data.position, 
                 view_direction
-        );
+        ) * (1 - shadow);
     }
 
-    uint point_light_count = constants.point_light_count;
+    uint point_light_count = scene_uniforms.point_light_count;
 
     {
         uint i = 0;

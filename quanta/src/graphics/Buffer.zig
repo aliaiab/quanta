@@ -118,8 +118,8 @@ pub fn init(size: usize, usage: Usage) !Buffer
         switch (usage)
         {
             .staging => .{ .host_visible_bit = true, .host_coherent_bit = true },
-            .vertex, .index, .uniform => .{ .device_local_bit = true }, 
-            .storage => .{ .host_visible_bit = true, .device_local_bit = true },
+            .vertex, .index, => .{ .device_local_bit = true }, 
+            .storage, .uniform => .{ .host_visible_bit = true, .device_local_bit = true },
             .indirect => .{ .host_visible_bit = true, .host_coherent_bit = true, .device_local_bit = true  },
         }
     );

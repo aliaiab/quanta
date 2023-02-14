@@ -275,8 +275,8 @@ pub fn import(allocator: std.mem.Allocator, file_path: []const u8) !Import
             const vertex_start = model_vertices.items.len;
             const index_start = model_indices.items.len;
 
-            var bounding_min: @Vector(3, f32) = .{ 0, 0, 0 };
-            var bounding_max: @Vector(3, f32) = .{ 0, 0, 0 };
+            var bounding_min: @Vector(3, f32) = .{ std.math.f32_max, std.math.f32_max, std.math.f32_max };
+            var bounding_max: @Vector(3, f32) = .{ std.math.f32_min, std.math.f32_min, std.math.f32_min };
 
             var vertex_count: usize = 0;
             var positions: ?[]const f32 = null; 

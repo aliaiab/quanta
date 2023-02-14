@@ -240,7 +240,7 @@ pub fn main() !void
     var camera_enable_changed = false;
 
     var directional_light: Renderer3D.DirectionalLight = .{
-        .direction = .{ -0.5, -1, 0.2 },  
+        .direction = .{ -0.5, 1, -0.3 },  
         .diffuse = packUnorm4x8(.{ 0.45, 0.45, 0.45, 1 }),
         .intensity = 1
     };

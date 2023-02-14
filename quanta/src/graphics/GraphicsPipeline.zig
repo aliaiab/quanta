@@ -599,6 +599,43 @@ pub fn setDescriptorImageSampler(
     );
 }
 
+pub fn setDescriptorImageSamplerWithLayout(
+    self: *GraphicsPipeline,
+    index: u32,
+    array_index: u32,
+    image: Image,
+    image_layout: vk.ImageLayout,
+    sampler: Sampler,
+) void 
+{
+    Context.self.vkd.updateDescriptorSets(
+        Context.self.device, 
+        1, 
+        &[_]vk.WriteDescriptorSet
+        {
+            .{
+                .dst_set = self.descriptor_sets[0],
+                .dst_binding = index,
+                .dst_array_element = array_index,
+                .descriptor_count = 1,
+                .descriptor_type = .combined_image_sampler,
+                .p_image_info = &[_]vk.DescriptorImageInfo 
+                {
+                    .{
+                        .sampler = sampler.handle,
+                        .image_view = image.view,
+                        .image_layout = image_layout,
+                    }
+                },
+                .p_buffer_info = undefined,
+                .p_texel_buffer_view = undefined,
+            },
+        }, 
+        0, 
+        undefined,
+    );
+}
+
 pub fn setDescriptorBuffer(
     self: *GraphicsPipeline,
     index: u32,

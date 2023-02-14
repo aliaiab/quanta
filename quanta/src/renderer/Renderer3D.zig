@@ -25,6 +25,19 @@ const DepthPassPushConstants = extern struct
     view_projection: [4][4]f32,
 };
 
+const ColorPassUniforms = extern struct
+{
+    view_projection: [4][4]f32 align(1),
+    view_position: [3]f32 align(1),
+    
+    point_light_count: u32 align(1),
+    ambient_light: AmbientLight align(1),
+
+    directional_light: DirectionalLight align(1),
+    use_directional_light: u32 align(1),
+    directional_light_view_projection: [4][4]f32 align(1),
+};
+
 const ColorPassPushConstants = extern struct
 {
     view_projection: [4][4]f32 align(1),
@@ -83,6 +96,8 @@ depth_image: graphics.Image,
 depth_pyramid: graphics.Image,
 depth_pyramid_levels: []Image.View,
 depth_pyramid_level_count: u32,
+shadow_image: graphics.Image,
+shadow_sampler: graphics.Sampler,
 command_buffers: []graphics.CommandBuffer, 
 frame_fence: graphics.Fence,
 
@@ -110,6 +125,7 @@ depth_reduce_pipeline: graphics.ComputePipeline,
 cull_pipeline: graphics.ComputePipeline,
 post_depth_cull_pipeline: graphics.ComputePipeline,
 depth_pipeline: graphics.GraphicsPipeline,
+shadow_pipeline: graphics.GraphicsPipeline,
 color_pipeline: graphics.GraphicsPipeline,
 sky_pipeline: graphics.GraphicsPipeline,
 color_resolve_pipeline: graphics.ComputePipeline,
@@ -233,8 +249,20 @@ fn initFrameImages(window_width: u32, window_height: u32) !void
 
     errdefer for (self.depth_pyramid_levels) |*pyramid_level|
     {
-        self.depth_pyramid.destroyView(pyramid_level);
+        self.depth_pyramid.destroyView(pyramid_level.*);
     };
+
+    self.shadow_image = try Image.init(
+        .@"2d",
+        4096, 4096, 1, 1,
+        vk.Format.d32_sfloat, 
+        vk.ImageLayout.attachment_optimal,
+        .{  
+            .depth_stencil_attachment_bit = true,
+            .sampled_bit = true,
+        }
+    );
+    errdefer self.shadow_image.deinit();
 }
 
 fn deinitFrameImages() void
@@ -247,6 +275,7 @@ fn deinitFrameImages() void
     {
         self.depth_pyramid.destroyView(pyramid_level);
     };
+    defer self.shadow_image.deinit();
 }
 
 pub fn init(
@@ -275,7 +304,7 @@ pub fn init(
     );
     errdefer self.depth_reduce_pipeline.deinit(self.allocator);
 
-    self.depth_reduce_sampler = try graphics.Sampler.init(.nearest, .nearest, .min);
+    self.depth_reduce_sampler = try graphics.Sampler.init(.nearest, .nearest, .repeat, .repeat, .repeat, .min);
     errdefer self.depth_reduce_sampler.deinit();
 
     try initFrameImages(window.getWidth(), window.getHeight());
@@ -420,6 +449,28 @@ pub fn init(
     );
     errdefer self.depth_pipeline.deinit(allocator);
 
+    self.shadow_pipeline = try graphics.GraphicsPipeline.init(
+        self.allocator,
+        .{
+            .color_attachment_formats = &.{},
+            .depth_attachment_format = self.shadow_image.format,
+            .vertex_shader_binary = depth_vert_spv,
+            .fragment_shader_binary = depth_frag_spv,
+            .depth_state = .{
+                .write_enabled = true,
+                .test_enabled = true,
+                .compare_op = .greater,
+            },
+            .rasterisation_state = .{
+                .polygon_mode = .fill,
+                .cull_mode = .none,
+            },
+        },
+        null,
+        DepthPassPushConstants,
+    );
+    errdefer self.shadow_pipeline.deinit(allocator);
+
     self.color_resolve_pipeline = try graphics.ComputePipeline.init(
         allocator, 
         @alignCast(4, @embedFile("spirv/color_resolve.comp.spv")), 
@@ -432,11 +483,21 @@ pub fn init(
     self.materials_buffer = try graphics.Buffer.init(1024 * @sizeOf(Material), .storage);
     errdefer self.materials_buffer.deinit();
 
+    self.shadow_sampler = try graphics.Sampler.init(
+        .linear, .linear, 
+        .clamp_to_border, .clamp_to_border, .clamp_to_border, 
+        null
+    );
+    errdefer self.shadow_sampler.deinit();
+
     self.color_pipeline.setDescriptorBuffer(0, 0, self.vertex_position_buffer);
     self.color_pipeline.setDescriptorBuffer(1, 0, self.vertex_buffer);
     self.color_pipeline.setDescriptorBuffer(5, 0, self.materials_buffer);
+    self.color_pipeline.setDescriptorImageSamplerWithLayout(9, 0, self.shadow_image, .general, self.shadow_sampler);
 
     self.depth_pipeline.setDescriptorBuffer(0, 0, self.vertex_position_buffer);
+
+    self.shadow_pipeline.setDescriptorBuffer(0, 0, self.vertex_position_buffer);
 
     self.cull_pipeline.setDescriptorBuffer(1, 0, self.mesh_buffer);
     self.cull_pipeline.setDescriptorBuffer(2, 0, self.mesh_lod_buffer);
@@ -508,6 +569,8 @@ pub fn deinit() void
     defer self.cull_pipeline.deinit(self.allocator);
     defer self.post_depth_cull_pipeline.deinit(self.allocator);
     defer self.depth_pipeline.deinit(self.allocator);
+    defer self.shadow_pipeline.deinit(self.allocator);
+    defer self.shadow_sampler.deinit();
     defer self.color_pipeline.deinit(self.allocator);
     defer self.sky_pipeline.deinit(self.allocator);
     defer self.color_resolve_pipeline.deinit(self.allocator);
@@ -664,6 +727,13 @@ pub fn beginSceneRender(
     }
 }
 
+//Reverse-z ortho (I think)
+fn orthographicProjection(left: f32, right: f32, bottom: f32, top: f32, z_near: f32, z_far: f32) zalgebra.Mat4 
+{
+    return zalgebra.orthographic(left, right, bottom, top, z_far, z_near);
+}
+
+//Reverse-z perspective
 fn perspectiveProjection(fovy_degrees: f32, aspect_ratio: f32, znear: f32) zalgebra.Mat4 
 {
     const f = 1 / std.math.tan(std.math.degreesToRadians(f32, fovy_degrees) / 2);
@@ -738,6 +808,40 @@ fn createPlane(p1: @Vector(3, f32), normal: @Vector(3, f32)) [4]f32
     return .{ normalized_normal[0], normalized_normal[1], normalized_normal[2], distance };
 }
 
+fn getFrustumCorners(view_projection: zalgebra.Mat4) [8][3]f32
+{
+    var points: [8][3]f32 = undefined;
+
+    const inverse = zalgebra.Mat4.inv(view_projection);
+
+    var x: u32 = 0;
+    var i: u32 = 0;
+
+    while (x < 2) : (x += 1)
+    {
+        var y: u32 = 0;
+
+        while (y < 2) : (y += 1)
+        {
+            var z: u32 = 0;
+
+            while (z < 2) : (z += 1)
+            {
+                const point = inverse.mulByVec4(.{ .data = .{ 2 * @intToFloat(f32, x) - 1, 2 * @intToFloat(f32, y) - 1, 2 * @intToFloat(f32, z) - 1, 1 } });
+
+                points[i] = .{ point.data[0], point.data[1], point.data[2] };
+                points[i][0] /= point.data[3];
+                points[i][1] /= point.data[3];
+                points[i][2] /= point.data[3];
+
+                i += 1;
+            }
+        } 
+    }
+
+    return points;
+}
+
 pub fn endSceneRender(scene: SceneHandle) void 
 {
     endRenderInternal(scene) catch unreachable;
@@ -789,18 +893,106 @@ fn endRenderInternal(scene: SceneHandle) !void
 
     const aspect_ratio: f32 = @intToFloat(f32, window.getWidth()) / @intToFloat(f32, window.getHeight());  
     const near_plane: f32 = 0.01;
-    const far_plane: f32 = 1000;
-
-    _ = far_plane;
-
     const fov: f32 = self.camera.fov;
+
     const projection = perspectiveProjection(fov, aspect_ratio, near_plane);
+    const projection_non_inverse = zalgebra.perspective(fov, aspect_ratio, near_plane, 500);
     const view = zalgebra.lookAt(
         .{ .data = self.camera.translation }, 
         .{ .data = self.camera.target }, 
         .{ .data = .{ 0, 1, 0 } },
     );
     const view_projection = projection.mul(view);
+    // const view_frustum_corners = getFrustumCorners(view_projection);
+    const view_frustum_corners = getFrustumCorners(projection_non_inverse.mul(view));
+    
+    var shadow_view_frustrum_center: [3]f32 = .{ 0, 0, 0 };
+
+    for (view_frustum_corners) |corner|
+    {
+        shadow_view_frustrum_center[0] += corner[0];
+        shadow_view_frustrum_center[1] += corner[1];
+        shadow_view_frustrum_center[2] += corner[2];
+    }
+
+    shadow_view_frustrum_center[0] /= @intToFloat(f32, view_frustum_corners.len);
+    shadow_view_frustrum_center[1] /= @intToFloat(f32, view_frustum_corners.len);
+    shadow_view_frustrum_center[2] /= @intToFloat(f32, view_frustum_corners.len);
+
+    const shadow_view_position = [3]f32 
+    { 
+        shadow_view_frustrum_center[0] + scene_data.directional_light.direction[0], 
+        shadow_view_frustrum_center[1] + scene_data.directional_light.direction[1], 
+        shadow_view_frustrum_center[2] + scene_data.directional_light.direction[2] 
+    };
+
+    const shadow_view = zalgebra.lookAt(
+        .{ .data = shadow_view_position }, 
+        .{ .data = shadow_view_frustrum_center }, 
+        .{ .data = .{ 0, 1, 0 } }
+    );
+
+    var shadow_projection: zalgebra.Mat4 = undefined;
+
+    {
+        var min_x: f32 = std.math.f32_max;
+        var min_y: f32 = std.math.f32_max;
+        var min_z: f32 = std.math.f32_max;
+
+        var max_x: f32 = std.math.f32_min;
+        var max_y: f32 = std.math.f32_min;
+        var max_z: f32 = std.math.f32_min;
+
+        for (view_frustum_corners) |corner|
+        {
+            const corner_in_light_space = zalgebra.Mat4.mulByVec4(shadow_view, .{ .data = .{ corner[0], corner[1], corner[2], 1 } });
+
+            min_x = @min(min_x, corner_in_light_space.data[0]);
+            min_y = @min(min_y, corner_in_light_space.data[1]);
+            min_z = @min(min_z, corner_in_light_space.data[2]);
+
+            max_x = @max(max_x, corner_in_light_space.data[0]);
+            max_y = @max(max_y, corner_in_light_space.data[1]);
+            max_z = @max(max_z, corner_in_light_space.data[2]);
+        }
+
+        //compute from scene bounds
+        const z_factor = 1000;
+
+        if (min_z < 0)
+        {
+            min_z *= z_factor;
+        }
+        else 
+        {
+            min_z /= z_factor;
+        }
+
+        if (max_z < 0)
+        {
+            max_z /= z_factor;
+        }
+        else 
+        {
+            max_z *= z_factor;
+        }
+
+        shadow_projection = orthographicProjection(min_x, max_x, min_y, max_y, min_z, max_z);
+    }
+
+    //view_projection for directional light view
+    const shadow_view_projection = shadow_projection.mul(shadow_view);
+
+    scene_data.uniforms.* = ColorPassUniforms 
+    {
+        .view_projection = view_projection.data,
+        .view_position = self.camera.translation,
+        .point_light_count = scene_data.point_light_count,
+        .ambient_light = scene_data.ambient_light,
+        .directional_light = scene_data.directional_light,
+        .use_directional_light = @boolToInt(scene_data.enable_directional_light),
+        .directional_light_view_projection = shadow_view_projection.data,
+    };
 
     //sneaky hack due to our incomplete swapchain abstraction
     var color_image: Image = undefined;
@@ -866,6 +1058,57 @@ fn endRenderInternal(scene: SceneHandle) !void
                 .destination_stage = .{ .draw_indirect = true },
                 .destination_access = .{ .indirect_command_read = true },
             });
+        }
+
+        //Directional Light Shadow pass #1
+        {
+            //This should use a non-culled draw command buffer, but currently culling is not enabled so this 
+            //should work for now
+
+            command_buffer.imageBarrier(
+                self.shadow_image, 
+                .{
+                    .source_stage = .{ .all_commands = true },
+                    .source_access = .{},
+                    .destination_stage = .{ .color_attachment_output = true },
+                    .destination_access = .{ .color_attachment_write = true },
+                    .destination_layout = .attachment_optimal,
+                }
+            );
+
+            command_buffer.beginRenderPass(
+                0, 
+                0, 
+                self.shadow_image.width, 
+                self.shadow_image.height, 
+                &.{},
+                .{
+                    .image = &self.shadow_image,
+                    .clear = .{ .depth = 0 },
+                }
+            );
+            defer command_buffer.endRenderPass();
+
+            command_buffer.setViewport(
+                0, @intToFloat(f32, self.shadow_image.width), 
+                @intToFloat(f32, self.shadow_image.width), -@intToFloat(f32, self.shadow_image.height), 
+                0, 1
+            );
+            command_buffer.setScissor(0, 0, self.shadow_image.width, self.shadow_image.height);
+            command_buffer.setGraphicsPipeline(self.shadow_pipeline);
+            command_buffer.setIndexBuffer(self.index_buffer, .u32);
+            command_buffer.setPushData(DepthPassPushConstants, .{
+                .view_projection = shadow_view_projection.data,
+            });
+
+            command_buffer.drawIndexedIndirectCount(
+                scene_data.draw_indirect_buffer, 
+                0, 
+                @sizeOf(DrawCommand),
+                scene_data.draw_indirect_count_buffer,
+                0,
+                scene_data.static_draw_count + scene_data.dynamic_draw_count
+            );
         }
 
         //Depth pass #1
@@ -1031,6 +1274,18 @@ fn endRenderInternal(scene: SceneHandle) !void
                 .destination_access = .{ .color_attachment_write = true },
                 .destination_layout = .attachment_optimal,
             });
+
+            command_buffer.imageBarrier(
+                self.shadow_image, 
+                .{
+                    .source_stage = .{ .late_fragment_tests = true },
+                    .source_access = .{ .depth_attachment_write = true },
+                    .source_layout = vk.ImageLayout.depth_attachment_optimal,
+                    .destination_stage = .{ .fragment_shader = true },
+                    .destination_access = .{ .shader_read = true },
+                    .destination_layout = vk.ImageLayout.general,
+                }
+            );
 
             command_buffer.beginRenderPass(
                 0, 
@@ -1249,6 +1504,13 @@ const Scene = struct
     input_draws: []InputDraw,
     input_draw_buffer: graphics.Buffer,
 
+    //The conservative volume containing all meshes
+    mesh_draw_volume_min: [3]f32, 
+    mesh_draw_volume_max: [3]f32,
+
+    uniforms_buffer: graphics.Buffer,
+    uniforms: *ColorPassUniforms,
+
     draw_indirect_buffer: graphics.Buffer,
     draw_indirect_count_buffer: graphics.Buffer,
     post_depth_cull_dispatch_buffer: graphics.Buffer,
@@ -1314,6 +1576,11 @@ pub fn createScene(
 
     scene.post_depth_draw_command_offset = command_count / 2;
 
+    scene.uniforms_buffer = try graphics.Buffer.init(@sizeOf(ColorPassUniforms), .storage);
+    errdefer scene.uniforms_buffer.deinit();
+
+    scene.uniforms = &(try scene.uniforms_buffer.map(ColorPassUniforms))[0];
+
     scene.input_draw_buffer = try graphics.Buffer.init(command_count * @sizeOf(InputDraw), .storage);
     errdefer scene.input_draw_buffer.deinit();
 
@@ -1328,6 +1595,9 @@ pub fn createScene(
     errdefer scene.material_indices_buffer.deinit();
 
     scene.material_indices = try scene.material_indices_buffer.map(u32);
+
+    scene.mesh_draw_volume_min = .{ std.math.f32_max, std.math.f32_max, std.math.f32_max };
+    scene.mesh_draw_volume_max = .{ std.math.f32_min, std.math.f32_min, std.math.f32_min };
 
     scene.environment_enabled = environment_data != null and environment_width != null and environment_width != null;
     scene.environment_image = if (scene.environment_enabled) try graphics.Image.initData(
@@ -1346,7 +1616,7 @@ pub fn createScene(
     ) else undefined;
     errdefer if (scene.environment_enabled) scene.environment_image.deinit();
 
-    scene.environment_sampler = if (scene.environment_enabled) try graphics.Sampler.init(.linear, .linear, null) else undefined;
+    scene.environment_sampler = if (scene.environment_enabled) try graphics.Sampler.init(.linear, .linear, .repeat, .repeat, .repeat, null) else undefined;
     errdefer if (scene.environment_enabled) scene.environment_sampler.deinit();
 
     if (scene.environment_enabled)
@@ -1367,9 +1637,13 @@ pub fn createScene(
     self.color_pipeline.setDescriptorBuffer(4, 0, scene.draw_indirect_buffer);
     self.color_pipeline.setDescriptorBuffer(7, 0, scene.point_light_buffer);
     self.color_pipeline.setDescriptorImageSampler(8, 0, scene.environment_image, scene.environment_sampler);
+    self.color_pipeline.setDescriptorBuffer(10, 0, scene.uniforms_buffer);
 
     self.depth_pipeline.setDescriptorBuffer(1, 0, scene.transforms_buffer);
     self.depth_pipeline.setDescriptorBuffer(2, 0, scene.draw_indirect_buffer);
+
+    self.shadow_pipeline.setDescriptorBuffer(1, 0, scene.transforms_buffer);
+    self.shadow_pipeline.setDescriptorBuffer(2, 0, scene.draw_indirect_buffer);
 
     self.cull_pipeline.setDescriptorBuffer(0, 0, scene.transforms_buffer);
     self.cull_pipeline.setDescriptorBuffer(3, 0, scene.draw_indirect_buffer);
@@ -1396,6 +1670,7 @@ pub fn destroyScene(scene: SceneHandle) void
 { 
     var scene_data = &self.scenes.items[@enumToInt(scene)];
 
+    defer scene_data.uniforms_buffer.deinit();
     defer scene_data.draw_indirect_buffer.deinit();
     defer scene_data.draw_indirect_count_buffer.deinit();
     defer scene_data.post_depth_cull_dispatch_buffer.deinit();
@@ -1435,8 +1710,35 @@ pub fn sceneAddMesh(
 
     scene_data.material_indices[draw_offset] = @enumToInt(material);
 
+    const mesh_data: Mesh = self.meshes.items[@enumToInt(mesh)];
+
+    const bounding_min = [3]f32 
+    { 
+        mesh_data.bounding_box_center[0] - mesh_data.bounding_box_extents[0], 
+        mesh_data.bounding_box_center[1] - mesh_data.bounding_box_extents[1], 
+        mesh_data.bounding_box_center[2] - mesh_data.bounding_box_extents[2], 
+    };
+
+    const bounding_max = [3]f32 
+    {
+        mesh_data.bounding_box_center[0] + mesh_data.bounding_box_extents[0], 
+        mesh_data.bounding_box_center[1] + mesh_data.bounding_box_extents[1], 
+        mesh_data.bounding_box_center[2] + mesh_data.bounding_box_extents[2],    
+    };
+
     scene_data.static_draw_count += 1;    
-} 
+
+    scene_data.mesh_draw_volume_min[0] = @min(scene_data.mesh_draw_volume_min[0], bounding_min[0]);
+    scene_data.mesh_draw_volume_min[1] = @min(scene_data.mesh_draw_volume_min[1], bounding_min[1]);
+    scene_data.mesh_draw_volume_min[2] = @min(scene_data.mesh_draw_volume_min[2], bounding_min[2]);
+
+    scene_data.mesh_draw_volume_max[0] = @max(scene_data.mesh_draw_volume_max[0], bounding_max[0]);
+    scene_data.mesh_draw_volume_max[1] = @max(scene_data.mesh_draw_volume_max[1], bounding_max[1]);
+    scene_data.mesh_draw_volume_max[2] = @max(scene_data.mesh_draw_volume_max[2], bounding_max[2]);
+
+    std.log.info("scene mesh bounding volume_min = {d}, {d}, {d}", .{ scene_data.mesh_draw_volume_min[0], scene_data.mesh_draw_volume_min[1], scene_data.mesh_draw_volume_min[2] });
+    std.log.info("scene mesh bounding volume_max = {d}, {d}, {d}", .{ scene_data.mesh_draw_volume_max[0], scene_data.mesh_draw_volume_max[1], scene_data.mesh_draw_volume_max[2], });
+}
 
 ///Push a dynamic mesh into the scene
 pub fn scenePushMesh(
@@ -1634,7 +1936,7 @@ pub fn createTexture(
     try self.image_transfer_events.append(self.allocator, transfer_event);
     try self.image_staging_buffers.append(self.allocator, staging_buffer);
 
-    var sampler = try Sampler.init(.nearest, .nearest, null);
+    var sampler = try Sampler.init(.nearest, .nearest, .repeat, .repeat, .repeat, null);
     errdefer sampler.deinit();
     
     try self.texture_samplers.append(self.allocator, sampler);

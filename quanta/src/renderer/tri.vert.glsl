@@ -11,6 +11,32 @@ layout(push_constant, scalar) uniform Constants
     vec3 view_position;
 } constants;
 
+struct AmbientLight 
+{
+    uint diffuse;
+};
+
+struct DirectionalLight 
+{
+    vec3 direction;
+    float intensity;
+    uint diffuse;
+};
+
+//Should really be a uniform buffer, not a storage buffer
+layout(binding = 10, scalar) restrict readonly buffer SceneUniforms
+{
+    mat4 view_projection;
+    vec3 view_position;
+
+    u32 point_light_count;
+    AmbientLight ambient_light;
+
+    DirectionalLight directional_light;
+    bool use_directional_light;
+    mat4 directional_light_view_projection;
+} scene_uniforms;
+
 struct Vertex 
 {
     vec3 normal;
@@ -56,8 +82,8 @@ layout(set = 0, binding = 4, scalar) restrict readonly buffer DrawCommands
 out Out
 {
     flat uint material_index;
-    flat uint primitive_index;
     vec3 position;
+    vec4 position_light_space;
     vec3 normal;
     vec4 color;
     vec2 uv;
@@ -73,11 +99,11 @@ void main()
     vec4 translation = transform * vec4(vertex_positions[gl_VertexIndex], 1.0);
 
     out_data.position = vec3(translation);
+    out_data.position_light_space = scene_uniforms.directional_light_view_projection * vec4(out_data.position, 1);
     out_data.color = unpackUnorm4x8(vertex.color);
     out_data.normal = normalize(mat3(transpose(inverse(transform))) * vertex.normal);
     out_data.uv = vertex.uv;
-    out_data.material_index = material_indices[instance_index]; 
-    out_data.primitive_index = gl_VertexIndex / 3; 
+    out_data.material_index = material_indices[instance_index];
 
-    gl_Position = constants.view_projection * transform * vec4(vertex_positions[gl_VertexIndex], 1.0);
+    gl_Position = scene_uniforms.view_projection * transform * vec4(vertex_positions[gl_VertexIndex], 1.0);
 }

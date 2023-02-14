@@ -162,7 +162,7 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
         word_index += instruction_word_count;
     }
 
-    for (ids) |id|
+    id_loop: for (ids) |id|
     {
         if (id.opcode == spirv.SpvOpVariable and 
             (
@@ -176,6 +176,16 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
             const type_kind = ids[ids[id.type_id].type_id].opcode;
             const array_length = ids[ids[id.type_id].type_id].array_length;
             const resource_type = getDescriptorType(type_kind);
+
+            {
+                for (result.resources) |resource|
+                {
+                    if (resource.binding == id.binding and resource.descriptor_type == resource_type)
+                    {
+                        continue :id_loop;
+                    }
+                }
+            }
 
             result.resources[result.resource_count] = .{
                 .descriptor_type = resource_type,

@@ -30,6 +30,9 @@ handle: vk.Sampler,
 pub fn init(
     min_filter: FilterMode,
     mag_filter: FilterMode,
+    address_mode_u: AddressMode, 
+    address_mode_v: AddressMode, 
+    address_mode_w: AddressMode, 
     reduction_mode: ?ReductionMode
 ) !Sampler 
 {
@@ -62,9 +65,30 @@ pub fn init(
                 .nearest => vk.Filter.nearest,    
             },
             .mipmap_mode = .nearest,
-            .address_mode_u = .repeat,
-            .address_mode_v = .repeat,
-            .address_mode_w = .repeat,
+            .address_mode_u = switch (address_mode_u)
+            {
+                .repeat => vk.SamplerAddressMode.repeat,
+                .mirrored_repeat => vk.SamplerAddressMode.mirrored_repeat,
+                .clamp_to_edge => vk.SamplerAddressMode.clamp_to_edge,
+                .clamp_to_border => vk.SamplerAddressMode.clamp_to_border,
+                .mirror_clamp_to_edge => vk.SamplerAddressMode.mirror_clamp_to_edge,
+            },
+            .address_mode_v = switch (address_mode_v)
+            {
+                .repeat => vk.SamplerAddressMode.repeat,
+                .mirrored_repeat => vk.SamplerAddressMode.mirrored_repeat,
+                .clamp_to_edge => vk.SamplerAddressMode.clamp_to_edge,
+                .clamp_to_border => vk.SamplerAddressMode.clamp_to_border,
+                .mirror_clamp_to_edge => vk.SamplerAddressMode.mirror_clamp_to_edge,
+            },
+            .address_mode_w = switch (address_mode_w)
+            {
+                .repeat => vk.SamplerAddressMode.repeat,
+                .mirrored_repeat => vk.SamplerAddressMode.mirrored_repeat,
+                .clamp_to_edge => vk.SamplerAddressMode.clamp_to_edge,
+                .clamp_to_border => vk.SamplerAddressMode.clamp_to_border,
+                .mirror_clamp_to_edge => vk.SamplerAddressMode.mirror_clamp_to_edge,
+            },
             .mip_lod_bias = 0,
             .anisotropy_enable = vk.FALSE,
             .max_anisotropy = 0,
@@ -72,7 +96,7 @@ pub fn init(
             .compare_op = .always,
             .min_lod = 0,
             .max_lod = 0,
-            .border_color = .float_opaque_black,
+            .border_color = vk.BorderColor.float_opaque_black,
             .unnormalized_coordinates = vk.FALSE,
         }, 
         &Context.self.allocation_callbacks,
