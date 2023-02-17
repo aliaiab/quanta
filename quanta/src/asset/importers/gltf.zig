@@ -466,13 +466,13 @@ pub fn import(allocator: std.mem.Allocator, file_path: []const u8) !Import
     std.log.info("unique vertex count: {}", .{ model_vertices.items.len });
     std.log.info("rendered vertex count: {}", .{ model_indices.items.len });
 
-    import_data.vertex_positions = model_vertex_positions.toOwnedSlice();
-    import_data.vertices = model_vertices.toOwnedSlice();
-    import_data.indices = model_indices.toOwnedSlice();
-    import_data.sub_meshes = sub_meshes.toOwnedSlice();
-    import_data.materials = materials.toOwnedSlice();
-    import_data.textures = textures.toOwnedSlice();
-    import_data.point_lights = point_lights.toOwnedSlice(allocator);
+    import_data.vertex_positions = try model_vertex_positions.toOwnedSlice();
+    import_data.vertices = try model_vertices.toOwnedSlice();
+    import_data.indices = try model_indices.toOwnedSlice();
+    import_data.sub_meshes = try sub_meshes.toOwnedSlice();
+    import_data.materials = try materials.toOwnedSlice();
+    import_data.textures = try textures.toOwnedSlice();
+    import_data.point_lights = try point_lights.toOwnedSlice(allocator);
 
     return import_data;
 }

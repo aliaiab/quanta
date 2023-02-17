@@ -1,0 +1,4 @@
+.{
+    .name = "quanta",
+    .version = "0.1.0"
+}

@@ -10,15 +10,15 @@ height: u32,
 
 pub fn init(width: u32, height: u32, title: [:0]const u8) !void 
 {
-    try glfw.init(.{});
+    if (!glfw.init(.{})) return error.glfwFailure;
 
     self.width = width;
     self.height = height;
 
-    window = try glfw.Window.create(width, height, title.ptr, null, null, .{ 
+    window = glfw.Window.create(width, height, title.ptr, null, null, .{ 
         .client_api = .no_api,
         .resizable = false,
-    });
+    }) orelse return error.glfwFailure;
 }
 
 pub fn deinit() void 
@@ -29,7 +29,7 @@ pub fn deinit() void
 
 pub fn shouldClose() bool 
 {
-    glfw.pollEvents() catch unreachable;
+    glfw.pollEvents();
 
     return window.shouldClose();
 }

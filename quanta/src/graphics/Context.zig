@@ -178,10 +178,10 @@ fn vulkanAllocate(
 {
     _ = user_data;
 
-    const memory = self.allocator.rawAlloc(size + @sizeOf(usize), @intCast(u29, alignment), 0, @returnAddress()) catch
+    const memory = (self.allocator.rawAlloc(size + @sizeOf(usize), @intCast(u8, alignment), @returnAddress()) orelse
     {
         @panic("Allocation failed!");
-    };
+    })[0..size + @sizeOf(usize)];
 
     @ptrCast(*usize, @alignCast(@alignOf(usize), memory.ptr)).* = size;
 
@@ -196,18 +196,37 @@ fn vulkanReallocate(
     _: vk.SystemAllocationScope
 ) callconv(vk.vulkan_call_conv) ?*anyopaque
 {
-    _ = user_data;
-
     const original_pointer = @ptrCast([*]u8, original.?) - @sizeOf(usize);
     const old_size = @ptrCast(*usize, @alignCast(@alignOf(usize), original_pointer)).*;
 
-    const memory = self.allocator.reallocBytes(
-        original_pointer[0..old_size + @sizeOf(usize)], 
-        @intCast(u29, alignment), size + @sizeOf(usize), @intCast(u29, alignment), 0, @returnAddress()
-    ) catch
+    const memory = original_pointer[0..old_size + @sizeOf(usize)];
+
+    if (size > old_size)
     {
-        @panic("Allocation failed!");
-    };
+        const memory_ptr = self.allocator.rawAlloc(size + @sizeOf(usize), @intCast(u8, alignment), @returnAddress()) orelse {
+            @panic("Allocation failed!");
+        };
+
+        @ptrCast(*usize, @alignCast(@alignOf(usize), memory_ptr)).* = size;
+
+        const allocation_ptr = memory_ptr + @sizeOf(usize);
+
+        @memcpy(allocation_ptr, original_pointer + @sizeOf(usize), old_size);
+
+        vulkanFree(user_data, original);
+
+        return allocation_ptr;
+    }
+    else 
+    {
+        if (!self.allocator.rawResize(
+            memory, 
+            @intCast(u8, alignment), size, @returnAddress()
+        ))
+        {
+            @panic("Allocation failed!");
+        }
+    }
 
     @ptrCast(*usize, @alignCast(@alignOf(usize), memory.ptr)).* = size;
     
@@ -447,7 +466,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
         &self.allocation_callbacks
     );
 
-    _ = try glfw.createWindowSurface(self.instance, window.window, @ptrCast(?*vk.AllocationCallbacks, &self.allocation_callbacks), &self.surface);
+    _ = glfw.createWindowSurface(self.instance, window.window, @ptrCast(?*vk.AllocationCallbacks, &self.allocation_callbacks), &self.surface);
     errdefer self.vki.destroySurfaceKHR(self.instance, self.surface, &self.allocation_callbacks);
 
     var device_extensions_buffer: [std.meta.fields(RequiredExtensions).len + std.meta.fields(OptionalExtensions).len][*:0]const u8 = undefined;

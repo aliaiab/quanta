@@ -10,10 +10,10 @@ const vk = graphics.vulkan;
 const zalgebra = @import("zalgebra");
 const options = @import("options");
 
-const depth_reduce_comp_spv = @alignCast(4, @embedFile("spirv/depth_reduce.comp.spv"));
+const depth_reduce_comp_spv = @alignCast(4, @embedFile("renderer_depth_reduce_comp.spv"));
 
-const depth_vert_spv = @alignCast(4, @embedFile("spirv/depth.vert.spv"));
-const depth_frag_spv = @alignCast(4, @embedFile("spirv/depth.frag.spv"));
+const depth_vert_spv = @alignCast(4, @embedFile("renderer_depth_vert.spv"));
+const depth_frag_spv = @alignCast(4, @embedFile("renderer_depth_frag.spv"));
 
 const SkyPipelinePushConstants = extern struct 
 {
@@ -356,7 +356,7 @@ pub fn init(
 
     self.cull_pipeline = try graphics.ComputePipeline.init(
         self.allocator, 
-        @alignCast(4, @embedFile("spirv/pre_depth_cull.comp.spv")), 
+        @alignCast(4, @embedFile("renderer_pre_depth_cull_comp.spv")), 
         .@"1d",
         null,
         DrawCullPushConstants
@@ -365,7 +365,7 @@ pub fn init(
 
     self.post_depth_cull_pipeline = try graphics.ComputePipeline.init(
         self.allocator, 
-        @alignCast(4, @embedFile("spirv/post_depth_cull.comp.spv")), 
+        @alignCast(4, @embedFile("renderer_post_depth_cull_comp.spv")), 
         .@"1d",
         null,
         PostDepthCullPushConstants
@@ -385,8 +385,8 @@ pub fn init(
                 self.radiance_color_image.format
             },
             .depth_attachment_format = self.depth_image.format,
-            .vertex_shader_binary = @alignCast(4, @import("renderer_shaders").tri_vert_spv),
-            .fragment_shader_binary = @alignCast(4, @embedFile(options.renderer_tri_frag_spv_path)),
+            .vertex_shader_binary = @alignCast(4, @embedFile("renderer_tri_vert.spv")),
+            .fragment_shader_binary = @alignCast(4, @embedFile("renderer_tri_frag.spv")),
             .depth_state = .{
                 .write_enabled = false,
                 .test_enabled = true,
@@ -410,8 +410,8 @@ pub fn init(
                 self.radiance_color_image.format,
             },
             .depth_attachment_format = self.depth_image.format,
-            .vertex_shader_binary = @alignCast(4, @embedFile("spirv/sky.vert.spv")),
-            .fragment_shader_binary = @alignCast(4, @embedFile("spirv/sky.frag.spv")),
+            .vertex_shader_binary = @alignCast(4, @embedFile("renderer_sky_vert.spv")),
+            .fragment_shader_binary = @alignCast(4, @embedFile("renderer_sky_frag.spv")),
             .depth_state = .{
                 .write_enabled = false,
                 .test_enabled = true,
@@ -473,7 +473,7 @@ pub fn init(
 
     self.color_resolve_pipeline = try graphics.ComputePipeline.init(
         allocator, 
-        @alignCast(4, @embedFile("spirv/color_resolve.comp.spv")), 
+        @alignCast(4, @embedFile("renderer_color_resolve_comp.spv")), 
         .@"2d", 
         null, 
         ColorResolvePushData

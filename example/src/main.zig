@@ -258,11 +258,11 @@ pub fn main() !void
 
             if (camera_enable)
             {
-                try window.window.setInputMode(.cursor, .disabled);
+                window.window.setInputMode(.cursor, .disabled);
             }
             else 
             {
-                try window.window.setInputMode(.cursor, .normal);
+                window.window.setInputMode(.cursor, .normal);
             }
 
             camera_enable_changed = true;
@@ -275,8 +275,8 @@ pub fn main() !void
 
         //update
         {
-            const x_position = @floatCast(f32, (try window.window.getCursorPos()).xpos);
-            const y_position = @floatCast(f32, (try window.window.getCursorPos()).ypos);
+            const x_position = @floatCast(f32, window.window.getCursorPos().xpos);
+            const y_position = @floatCast(f32, window.window.getCursorPos().ypos);
 
             const x_offset = x_position - last_mouse_x;
             const y_offset = last_mouse_y - y_position;
@@ -469,35 +469,38 @@ pub fn main() !void
     try GraphicsContext.self.vkd.deviceWaitIdle(GraphicsContext.self.device);
 }
 
-pub fn log(
-    comptime message_level: std.log.Level,
-    comptime scope: @Type(.EnumLiteral),
-    comptime format: []const u8,
-    args: anytype,
-) void 
+pub const std_options = struct 
 {
-    const terminal_red = "\x1B[31m";
-    const terminal_yellow = "\x1B[33m";
-    const terminal_blue = "\x1B[34m";
-    const terminal_green = "\x1B[32m";
-
-    const color_begin = switch (message_level)
+    pub fn logFn(
+        comptime message_level: std.log.Level,
+        comptime scope: @Type(.EnumLiteral),
+        comptime format: []const u8,
+        args: anytype,
+    ) void 
     {
-        .err => terminal_red,
-        .warn => terminal_yellow,
-        .info => terminal_blue,
-        .debug => terminal_green,
-    };
+        const terminal_red = "\x1B[31m";
+        const terminal_yellow = "\x1B[33m";
+        const terminal_blue = "\x1B[34m";
+        const terminal_green = "\x1B[32m";
 
-    const color_end = "\x1B[0;39m";
+        const color_begin = switch (message_level)
+        {
+            .err => terminal_red,
+            .warn => terminal_yellow,
+            .info => terminal_blue,
+            .debug => terminal_green,
+        };
 
-    const level_txt = "[" ++ color_begin ++ comptime message_level.asText() ++ color_end ++ "]";
-    const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
-    const stderr = std.io.getStdErr().writer();
-    std.debug.getStderrMutex().lock();
-    defer std.debug.getStderrMutex().unlock();
-    nosuspend stderr.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
-}
+        const color_end = "\x1B[0;39m";
+
+        const level_txt = "[" ++ color_begin ++ comptime message_level.asText() ++ color_end ++ "]";
+        const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
+        const stderr = std.io.getStdErr().writer();
+        std.debug.getStderrMutex().lock();
+        defer std.debug.getStderrMutex().unlock();
+        nosuspend stderr.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
+    }
+};
 
 fn packUnorm4x8(v: [4]f32) u32
 {

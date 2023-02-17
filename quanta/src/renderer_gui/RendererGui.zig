@@ -107,8 +107,8 @@ pub fn init(allocator: std.mem.Allocator, swapchain: graphics.Swapchain) !void
         allocator, 
         .{
             .color_attachment_formats = &.{ swapchain.surface_format.format },
-            .vertex_shader_binary = @alignCast(4, @embedFile("spirv/mesh.vert.spv")),
-            .fragment_shader_binary = @alignCast(4, @embedFile("spirv/mesh.frag.spv")),
+            .vertex_shader_binary = @alignCast(4, @embedFile("renderer_gui_mesh_vert.spv")),
+            .fragment_shader_binary = @alignCast(4, @embedFile("renderer_gui_mesh_frag.spv")),
             .depth_state = .{
                 .write_enabled = false,
                 .test_enabled = false,

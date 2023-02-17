@@ -51,7 +51,9 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
 
     image_size += source_content_size;
 
-    const image = try allocator.allocAdvanced(u8, @alignOf(Header), image_size, .at_least);
+    // const image = try allocator.allocAdvanced(u8, @alignOf(Header), image_size, .at_least);
+
+    const image = try allocator.alignedAlloc(u8, @alignOf(Header), image_size);
     errdefer allocator.free(image);
 
     var image_offset: usize = 0;
@@ -117,5 +119,5 @@ pub fn getAssetData(self: Archive, asset: AssetDescriptor) []u8
 {
     const header = self.assets[@enumToInt(asset)];
 
-    return self.image[header.source_data_offset..header.source_data_offset + header.source_data_size];
+    return self.image[header.source_data_offset..header.source_data_offset + header.source_data_size - @sizeOf(u32)];
 }
