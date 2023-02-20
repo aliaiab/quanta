@@ -199,7 +199,7 @@ pub fn main() !void
 
     const scene = try Renderer3D.createScene(
         1, 
-        50_000, 
+        50_000,
         4096,
         environment_map_data, 
         1024, 1024,
@@ -247,6 +247,55 @@ pub fn main() !void
     var enable_directional_light: bool = true;
 
     const time_at_start = std.time.milliTimestamp();
+
+    var ecs_scene_arena = std.heap.ArenaAllocator.init(allocator);
+    defer ecs_scene_arena.deinit();
+
+    var ecs_scene = try quanta.ecs.ComponentStore.init(ecs_scene_arena.allocator());
+    defer ecs_scene.deinit();
+
+    {
+        const test_entity = try ecs_scene.entityCreate(.{});
+
+        const PosComponent = struct 
+        {
+            x: f32,
+            y: f32,
+            z: f32,
+        };
+
+        const SusComponent = struct 
+        {
+
+        };
+
+        _ = SusComponent;
+
+        try ecs_scene.entityAddComponents(test_entity, .{
+            PosComponent { .x = 0, .y = 10, .z = 0 },
+        });
+
+        const sus_entity = try ecs_scene.entityCreate(.{});
+
+        ecs_scene.entityDestroy(sus_entity);
+
+        const new_entity = try ecs_scene.entityCreate(.{});
+
+        std.debug.assert(ecs_scene.entityIsEmpty(new_entity));
+        std.debug.assert(ecs_scene.entityGetComponent(new_entity, PosComponent) == null);
+
+        const pos_comp_fetched = ecs_scene.entityGetComponent(test_entity, PosComponent);
+
+        std.log.info("test_entity = {}", .{ test_entity });
+        std.log.info("test_entity = {?}", .{ pos_comp_fetched });
+        std.log.info("new_entity = {}", .{ new_entity });
+
+        std.debug.assert(ecs_scene.entityHasComponent(test_entity, PosComponent));
+
+        ecs_scene.query(.{ PosComponent });
+
+        if (true) return;
+    }
 
     while (!window.shouldClose())
     {

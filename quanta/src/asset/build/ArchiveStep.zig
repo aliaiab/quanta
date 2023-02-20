@@ -49,6 +49,7 @@ pub fn make(step: *Step) !void
 
     for (self.assets.items) |asset, i|
     {
+        if (true) continue;
         const path: []const u8 = asset.source.generated_file.path orelse continue;
 
         const asset_file = try std.fs.cwd().openFile(path, .{});

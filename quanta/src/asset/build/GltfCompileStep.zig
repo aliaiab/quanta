@@ -35,7 +35,7 @@ pub fn init(
         gltf_import_cmd = self.builder.addExecutable(.{
             .name = "gltf_import_cmd",
             .root_source_file = std.build.FileSource.relative("quanta/src/asset/build/gltf_import_cmd.zig"),
-            .optimize = .ReleaseSafe,
+            .optimize = .Debug,
         });
 
         gltf_import_cmd.?.addModule("quanta", context.module);
@@ -72,10 +72,12 @@ pub fn make(step: *Step) !void
 
     if (cache_hit)
     {
-        return;
+        // return;
     }
 
-    // const gltf_import_run = gltf_import_cmd.?.run();
+    const gltf_import_run = gltf_import_cmd.?.run();
+
+    try gltf_import_run.step.make();
 
     // try std.fs.cwd().writeFile(cache_path, import_encoded);
 
@@ -84,6 +86,8 @@ pub fn make(step: *Step) !void
 
 pub fn addToArchiveStep(self: GltfCompileStep, step: *ArchiveStep) !void 
 {
+    if (true) return;
+
     try step.addAsset(self.source_path, .{
         .source = .{ .generated_file = &self.generated_file },
         .alignment = @alignOf(gltf.ImportBinHeader),
