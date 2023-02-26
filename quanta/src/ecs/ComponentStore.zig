@@ -3,19 +3,32 @@ const std = @import("std");
 const ComponentStore = @This(); 
 
 ///Associated flags as part of the entity
-pub const EntityFlags = packed struct(u16)
+const EntityFlags = packed struct(u16)
 {
     enabled: bool = false,
     padding: u15 = 0,
 };
 
 ///Unique identifier which describes an entity
-pub const Entity = packed struct(u64) 
+const EntityData = packed struct(u64) 
 {
     index: u32,
     generation: u16,
     flags: EntityFlags,
+
+    pub fn toHandle(self: EntityData) Entity
+    {
+        return @intToEnum(Entity, @bitCast(u64, self));
+    }
+
+    pub fn fromHandle(entity: Entity) EntityData
+    {
+        return @bitCast(EntityData, @enumToInt(entity));
+    }
 };
+
+///Unique identifier which describes an entity
+pub const Entity = enum(u64) { _ };
 
 ///Unique identifier for a component type
 pub const ComponentId = enum(u64) { _ };
@@ -163,14 +176,14 @@ pub fn deinit(self: *ComponentStore) void
 ///The returned entity handle is guaranteed to be new and unique
 pub fn entityCreate(self: *ComponentStore, components: anytype) !Entity
 {
-    var entity = Entity 
+    var entity = EntityData 
     { 
         .index = self.next_entity_index, 
         .generation = self.next_entity_generation,
         .flags = .{},
     };
 
-    try self.entity_index.put(self.allocator, entity, .{
+    try self.entity_index.put(self.allocator, entity.toHandle(), .{
         .archetype_index = 0,
         .row_index = 0,
     });
@@ -179,10 +192,10 @@ pub fn entityCreate(self: *ComponentStore, components: anytype) !Entity
 
     if (std.meta.fields(@TypeOf(components)).len > 0)
     {
-        try self.entityAddComponents(entity, components);
+        try self.entityAddComponents(entity.toHandle(), components);
     }
 
-    return entity;
+    return entity.toHandle();
 }
 
 ///Removes all components on an entity and invalidates the entity handle 
@@ -1079,6 +1092,8 @@ test "Basic component store"
     ecs_scene.entityDestroy(entity);
 
     try std.testing.expect(!ecs_scene.entityExists(entity));
+
+    try std.testing.expect(try ecs_scene.entityCreate(.{}) != entity);
 }
 
 test "Queries"
