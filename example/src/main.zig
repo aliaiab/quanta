@@ -390,8 +390,7 @@ pub fn main() !void
 
             for (test_scene_import.point_lights) |point_light|
             {
-                _ = point_light;
-                // Renderer3D.scenePushPointLight(scene, point_light);
+                Renderer3D.scenePushPointLight(scene, .{ .position = point_light.position, .intensity = point_light.intensity, .diffuse = std.math.maxInt(u32) });
             }
         }
 

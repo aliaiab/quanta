@@ -1,3 +1,4 @@
+pub const app = @import("app/app.zig");
 pub const graphics = @import("graphics.zig");
 pub const windowing = @import("windowing.zig");
 pub const asset = @import("asset.zig");
@@ -11,6 +12,7 @@ pub const log = @import("log.zig").log;
 
 test
 {
+    _ = app;
     _ = graphics;
     _ = windowing;
     _ = asset;

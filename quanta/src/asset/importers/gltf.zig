@@ -97,22 +97,25 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
     const texture_count = gltf.data.textures.items.len;
 
     var model_vertices = std.ArrayList(Renderer3D.Vertex).init(allocator);
-    defer model_vertices.deinit();
+    errdefer model_vertices.deinit();
 
     var model_vertex_positions = std.ArrayList([3]f32).init(allocator);
-    defer model_vertex_positions.deinit();
+    errdefer model_vertex_positions.deinit();
 
     var model_indices = std.ArrayList(u32).init(allocator);
-    defer model_indices.deinit();
+    errdefer model_indices.deinit();
 
     var sub_meshes = std.ArrayList(Import.SubMesh).init(allocator);
-    defer sub_meshes.deinit();
+    errdefer sub_meshes.deinit();
 
     var textures = try std.ArrayList(Import.Texture).initCapacity(allocator, texture_count);
-    defer textures.deinit();
+    errdefer textures.deinit();
 
     var materials = std.ArrayList(Import.Material).init(allocator);
-    defer materials.deinit();
+    errdefer materials.deinit();
+
+    var point_lights = std.ArrayList(Renderer3D.PointLight).init(allocator);
+    errdefer point_lights.deinit();
 
     for (gltf.data.images.items) |image|
     {
@@ -137,7 +140,21 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
         });
     }
 
-    //TODO: Process lights here, requires extension support in zgltf
+    for (gltf.data.lights.items) |light|
+    {
+        switch (light.type)
+        {
+            .point => {
+                try point_lights.append(Renderer3D.PointLight
+                {
+                    .position = .{ 0, 10, 0 },
+                    .intensity = light.intensity,
+                    .diffuse = std.math.maxInt(u32),
+                });
+            },
+            else => continue,
+        }
+    }
 
     for (gltf.data.nodes.items) |node|
     {
@@ -337,12 +354,21 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
     std.log.info("unique vertex count: {}", .{ model_vertices.items.len });
     std.log.info("rendered vertex count: {}", .{ model_indices.items.len });
 
-    import_data.vertex_positions = try model_vertex_positions.toOwnedSlice();
-    import_data.vertices = try model_vertices.toOwnedSlice();
-    import_data.indices = try model_indices.toOwnedSlice();
-    import_data.sub_meshes = try sub_meshes.toOwnedSlice();
-    import_data.materials = try materials.toOwnedSlice();
-    import_data.textures = try textures.toOwnedSlice();
+    _ = allocator.resize(model_vertex_positions.allocatedSlice(), model_vertex_positions.items.len);
+    _ = allocator.resize(model_vertices.allocatedSlice(), model_vertices.items.len);
+    _ = allocator.resize(model_indices.allocatedSlice(), model_indices.items.len);
+    _ = allocator.resize(sub_meshes.allocatedSlice(), sub_meshes.items.len);
+    _ = allocator.resize(materials.allocatedSlice(), materials.items.len);
+    _ = allocator.resize(textures.allocatedSlice(), textures.items.len);
+    _ = allocator.resize(point_lights.allocatedSlice(), point_lights.items.len);
+
+    import_data.vertex_positions = model_vertex_positions.items;
+    import_data.vertices = model_vertices.items;
+    import_data.indices = model_indices.items;
+    import_data.sub_meshes = sub_meshes.items;
+    import_data.materials = materials.items;
+    import_data.textures = textures.items;
+    import_data.point_lights = point_lights.items;
 
     return import_data;
 }
@@ -379,7 +405,7 @@ pub const ImportBinTexture = packed struct
 ///Platform specific runtime binary format
 ///Note that the binary format is not necessarily stable or backwards compatible
 ///Use runtime imports for modding purposes
-pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]const u8
+pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8
 {
     var size: usize = 0;
 
@@ -533,7 +559,7 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import
         offset = current_texture_data_offset;
     }
 
-    // offset = std.mem.alignForward(offset, @alignOf(Renderer3D.PointLight));
+    offset = std.mem.alignForward(offset, @alignOf(Renderer3D.PointLight));
 
     const point_light_offset = offset;
 
@@ -544,7 +570,9 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import
     import_data.indices = @ptrCast([*]u32, @alignCast(@alignOf(u32), data.ptr + indices_offset))[0..header.index_count];
     import_data.sub_meshes = @ptrCast([*]Import.SubMesh, @alignCast(@alignOf(Import.SubMesh), data.ptr + sub_meshs_offset))[0..header.sub_mesh_count];
     import_data.materials = @ptrCast([*]Import.Material, @alignCast(@alignOf(Import.Material), data.ptr + materials_offset))[0..header.material_count];
-    import_data.point_lights = @ptrCast([*]Renderer3D.PointLight, @alignCast(@alignOf(Renderer3D.PointLight), data.ptr + point_light_offset - 8))[0..header.point_light_count];
+    import_data.point_lights = @ptrCast([*]Renderer3D.PointLight, @alignCast(@alignOf(Renderer3D.PointLight), data.ptr + point_light_offset))[0..header.point_light_count];
+
+    std.log.info("point_light_offset = {}", .{ point_light_offset });
 
     for (import_data.point_lights) |point_light|
     {

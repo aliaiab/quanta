@@ -639,7 +639,12 @@ fn addToArchetype(
 
     std.debug.assert(source_archetype_index < self.archetypes.items.len);
 
-    const source_archetype: *Archetype = &self.archetypes.items[source_archetype_index];
+    var source_archetype: *Archetype = &self.archetypes.items[source_archetype_index];
+
+    if (source_archetype_index == 0)
+    {
+        std.debug.assert(source_archetype.component_ids.items.len == 0);   
+    }
 
     const potential_source_edge = source_archetype.edges.get(component_id);
 
@@ -656,9 +661,9 @@ fn addToArchetype(
     { 
         for (self.archetypes.items[1..], 1..) |archetype, new_archetype_index|
         {
-            std.log.warn("component_to_add = {}", .{ component_id });
-            std.log.warn("source_archetypes = {any}", .{ source_archetype.component_ids.items });
-            std.log.warn("destination_archetypes = {any}", .{ archetype.component_ids.items });
+            // std.log.warn("component_to_add = {}", .{ component_id });
+            // std.log.warn("source_archetypes = {any}", .{ source_archetype.component_ids.items });
+            // std.log.warn("destination_archetypes = {any}", .{ archetype.component_ids.items });
 
             if (archetype.component_ids.items.len != source_archetype.component_ids.items.len + 1)
             {
@@ -697,8 +702,6 @@ fn addToArchetype(
 
         const existing_archetype: *Archetype = &self.archetypes.items[existing_archetype_index.?];
 
-        std.log.warn("existing archetype components:\n {any}", .{ existing_archetype.component_ids.items });
-
         const destination_edge = try existing_archetype.edges.getOrPutValue(self.allocator, component_id, .{
             .add = null, 
             .remove = null,
@@ -720,10 +723,8 @@ fn addToArchetype(
         .row_count = 0,
     });
 
-    std.log.warn("source_index = {}", .{ source_archetype_index });
-    std.log.warn("archetype_index = {}", .{ archetype_index });
-    std.log.warn("self.archetypes.items = {}", .{ self.archetypes.items.len });
-    
+    source_archetype = &self.archetypes.items[source_archetype_index];
+
     const archetype: *Archetype = &self.archetypes.items[archetype_index];
 
     try archetype.component_ids.ensureTotalCapacity(self.allocator, source_archetype.component_ids.items.len + 1);    
@@ -994,9 +995,9 @@ test "Queries"
 
     const Rotation = struct 
     {
-        x: f32,
-        y: f32,
-        z: f32,
+        x: f32 = 0,
+        y: f32 = 0,
+        z: f32 = 0,
     };
 
     const EnumComponent = enum
@@ -1036,13 +1037,14 @@ test "Queries"
     try std.testing.expect(ecs_scene.entityHasComponent(test_entity_2, EnumComponent));
 
     _ = try ecs_scene.entityCreate(.{ Position { .x = 10, .y = 69, .z = 420 } });
+    _ = try ecs_scene.entityCreate(.{ Tag, Position { .x = 10, .y = 69, .z = 420 } });
     _ = try ecs_scene.entityCreate(.{ Position { .x = 10, .y = 69, .z = 420 * 2 }, Rotation { .x = 200, .y = 200, .z = 9 } });
-    _ = try ecs_scene.entityCreate(.{ Position { .x = 10, .y = 69 / 2, .z = 420 }, Rotation { .x = 0, .y = 10003, .z = 20 } });
-    _ = try ecs_scene.entityCreate(.{ Position { .x = 10, .y = 69 / 2, .z = 420 }, Rotation { .x = 0, .y = 10003, .z = 20 } });
+    _ = try ecs_scene.entityCreate(.{ Tag, Position { .x = 10, .y = 69 / 2, .z = 420 }, Rotation { .x = 0, .y = 10003, .z = 20 } });
+    _ = try ecs_scene.entityCreate(.{ Position { .x = 10, .y = 69 / 2, .z = 420 }, Rotation { .x = 0, .y = 10003, .z = 20 }, Tag });
 
     //Example of a query:
     //Create a query for all entities with PosComponent but must have TagComponent
-    var pos_query = ecs_scene.query(.{ Position, Rotation }, .{ FilterWith(EnumComponent) });
+    var pos_query = ecs_scene.query(.{ Position, Rotation }, .{ FilterWith(Tag) });
 
     while (pos_query.nextBlock()) |block|
     {
