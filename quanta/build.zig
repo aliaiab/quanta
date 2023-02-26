@@ -84,7 +84,6 @@ pub const Context = struct
 ///Links the c depencencies into step
 pub fn link(step: *std.build.CompileStep) !void 
 {
-    step.addCSourceFile("quanta/src/asset/importers/cgltf.c", &[_][]const u8 {});
     step.addIncludePath("quanta/lib/Nuklear/");
     step.addCSourceFile("quanta/src/nuklear/nuklear.c", &[_][]const u8 {});
     step.addIncludePath("lib/cimgui/imgui/");
