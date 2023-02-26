@@ -88,7 +88,7 @@ pub fn init(
     const descriptor_set_layout_bindings = try allocator.alloc(vk.DescriptorSetLayoutBinding, shader_parse_result.resource_count);
     defer allocator.free(descriptor_set_layout_bindings);
 
-    for (descriptor_set_layout_bindings) |*descriptor_binding, i|
+    for (descriptor_set_layout_bindings, 0..) |*descriptor_binding, i|
     {
         descriptor_binding.binding = shader_parse_result.resources[i].binding;
         descriptor_binding.descriptor_count = shader_parse_result.resources[i].descriptor_count;
@@ -108,7 +108,7 @@ pub fn init(
     const descriptor_pool_sizes = try allocator.alloc(vk.DescriptorPoolSize, shader_parse_result.resource_count);
     defer allocator.free(descriptor_pool_sizes);
 
-    for (descriptor_pool_sizes) |*descriptor_pool_size, i|
+    for (descriptor_pool_sizes, 0..) |*descriptor_pool_size, i|
     {
         descriptor_pool_size.* = .{
             .@"type" = shader_parse_result.resources[i].descriptor_type,
@@ -136,7 +136,7 @@ pub fn init(
     self.descriptor_sets = try allocator.alloc(vk.DescriptorSet, self.descriptor_set_layouts.len);
     errdefer allocator.free(self.descriptor_sets);
 
-    for (self.descriptor_set_layouts) |*descriptor_set_layout, i|
+    for (self.descriptor_set_layouts, 0..) |*descriptor_set_layout, i|
     {
         descriptor_set_layout.* = try Context.self.vkd.createDescriptorSetLayout(
             Context.self.device,

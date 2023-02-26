@@ -108,7 +108,7 @@ fn placePendingBarriers(self: CommandBuffer) void
         self.memoryBarrier(memory_barrier);
     }
 
-    for (self.consecutive_image_barrier_images[0..self.consecutive_image_barrier_count]) |image_barrier, i|
+    for (self.consecutive_image_barrier_images[0..self.consecutive_image_barrier_count], 0..) |image_barrier, i|
     {
         self.imageBarrier(self.consecutive_image_barrier_images[i].*, image_barrier);
     }
@@ -374,7 +374,7 @@ pub fn beginRenderPass(
 {
     var color_attachment_infos: [8]vk.RenderingAttachmentInfo = undefined;
 
-    for (color_attachments) |color_attachment, i|
+    for (color_attachments, 0..) |color_attachment, i|
     {
         color_attachment_infos[i] = .{
             .image_view = color_attachment.image.view,

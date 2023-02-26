@@ -47,7 +47,7 @@ pub fn make(step: *Step) !void
 
     const asset_descriptions = try self.builder.allocator.alloc(Archive.AssetDescription, self.assets.items.len);
 
-    for (self.assets.items) |asset, i|
+    for (self.assets.items, 0..) |asset, i|
     {
         if (true) continue;
         const path: []const u8 = asset.source.generated_file.path orelse continue;

@@ -548,7 +548,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
 
         log.info("Available devices:", .{});
 
-        for (physical_devices) |physical_device, i|
+        for (physical_devices, 0..) |physical_device, i|
         {
             var properties: vk.PhysicalDeviceProperties2 = .{
                 .properties = undefined,
@@ -566,7 +566,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
             });
         }
 
-        for (physical_devices) |physical_device, i|
+        for (physical_devices, 0..) |physical_device, i|
         {
             var subgroup_properties: vk.PhysicalDeviceSubgroupProperties = .{
                 .subgroup_size = 0,
@@ -613,7 +613,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
 
             self.vki.getPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families.ptr);
 
-            for (queue_families) |queue_family, queue_family_index|
+            for (queue_families, 0..) |queue_family, queue_family_index|
             {
                 if (queue_family.queue_flags.graphics_bit)
                 {
@@ -894,7 +894,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
     self.initial_memory_budgets = try self.allocator.alloc(usize, self.physical_device_memory_properties.memory_heap_count);
     errdefer self.allocator.free(self.initial_memory_budgets);
 
-    for (self.initial_memory_budgets) |*budget, i|
+    for (self.initial_memory_budgets, 0..) |*budget, i|
     {
         budget.* = getMemoryHeapBudget(@intCast(u32, i));
 
@@ -1157,7 +1157,7 @@ pub fn devicePageAllocate(
     var page_memory_index: ?u32 = null;
     var page_memory_offset: usize = 0;
 
-    for (memories.items) |*memory, i|
+    for (memories.items, 0..) |*memory, i|
     {
         const next_offset = std.mem.alignForward(memory.next_offset, alignment);
 

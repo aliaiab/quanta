@@ -157,7 +157,7 @@ pub fn main() !void
     const test_scene_materials = try allocator.alloc(Renderer3D.MaterialHandle, test_scene_import.materials.len);
     defer allocator.free(test_scene_materials);
 
-    for (test_scene_import.sub_meshes) |sub_mesh, i|
+    for (test_scene_import.sub_meshes, 0..) |sub_mesh, i|
     {
         test_scene_meshes[i] = try Renderer3D.createMesh(
             test_scene_import.vertex_positions[sub_mesh.vertex_offset..sub_mesh.vertex_offset + sub_mesh.vertex_count],
@@ -168,7 +168,7 @@ pub fn main() !void
         );
     }
 
-    for (test_scene_import.textures) |texture, i|
+    for (test_scene_import.textures, 0..) |texture, i|
     {
         test_scene_textures[i] = try Renderer3D.createTexture(
             texture.data,
@@ -179,7 +179,7 @@ pub fn main() !void
 
     if (test_scene_import.materials.len != 0)
     {
-        for (test_scene_import.materials) |material, i|
+        for (test_scene_import.materials, 0..) |material, i|
         {
             std.log.info("material albedo index {}", .{ material.albedo_texture_index });
             std.log.info("material albedo {any}", .{ material.albedo });
@@ -206,7 +206,7 @@ pub fn main() !void
     );
     defer Renderer3D.destroyScene(scene);
 
-    for (test_scene_import.sub_meshes) |sub_mesh, i|
+    for (test_scene_import.sub_meshes, 0..) |sub_mesh, i|
     {
         try Renderer3D.sceneAddMesh(
             scene, 
@@ -253,49 +253,6 @@ pub fn main() !void
 
     var ecs_scene = try quanta.ecs.ComponentStore.init(ecs_scene_arena.allocator());
     defer ecs_scene.deinit();
-
-    {
-        const test_entity = try ecs_scene.entityCreate(.{});
-
-        const PosComponent = struct 
-        {
-            x: f32,
-            y: f32,
-            z: f32,
-        };
-
-        const SusComponent = struct 
-        {
-
-        };
-
-        _ = SusComponent;
-
-        try ecs_scene.entityAddComponents(test_entity, .{
-            PosComponent { .x = 0, .y = 10, .z = 0 },
-        });
-
-        const sus_entity = try ecs_scene.entityCreate(.{});
-
-        ecs_scene.entityDestroy(sus_entity);
-
-        const new_entity = try ecs_scene.entityCreate(.{});
-
-        std.debug.assert(ecs_scene.entityIsEmpty(new_entity));
-        std.debug.assert(ecs_scene.entityGetComponent(new_entity, PosComponent) == null);
-
-        const pos_comp_fetched = ecs_scene.entityGetComponent(test_entity, PosComponent);
-
-        std.log.info("test_entity = {}", .{ test_entity });
-        std.log.info("test_entity = {?}", .{ pos_comp_fetched });
-        std.log.info("new_entity = {}", .{ new_entity });
-
-        std.debug.assert(ecs_scene.entityHasComponent(test_entity, PosComponent));
-
-        ecs_scene.query(.{ PosComponent });
-
-        if (true) return;
-    }
 
     while (!window.shouldClose())
     {

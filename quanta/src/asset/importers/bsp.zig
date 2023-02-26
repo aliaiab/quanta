@@ -233,7 +233,7 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !ImportResult
     result.vertices = try allocator.alloc(Vertex, vertexes.len);
     errdefer allocator.free(result.vertices);
 
-    for (result.vertices) |*vertex, i|
+    for (result.vertices, 0..) |*vertex, i|
     {
         //Correct the coordinate space
         vertex.x = vertexes[i].x;
@@ -295,7 +295,7 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !ImportResult
 
         const face_surfedges: []const i32 = surfedges[@intCast(usize, face.firstedge)..@intCast(usize, face.firstedge) + @intCast(usize, face.numedges)];
 
-        for (face_surfedges) |surf_edge, i|
+        for (face_surfedges, 0..) |surf_edge, i|
         {
             const edge_index = std.math.absCast(surf_edge);
             const edge: Edge = edges[edge_index];
@@ -349,7 +349,7 @@ pub fn convertToGltfImport(allocator: std.mem.Allocator, import_result: ImportRe
     gltf_import_data.indices = try allocator.alloc(u32, import_result.indices.len);
     errdefer allocator.free(gltf_import_data.indices);
 
-    for (import_result.indices) |index, i|
+    for (import_result.indices, 0..) |index, i|
     {
         gltf_import_data.indices[i] = index;
     }

@@ -410,7 +410,7 @@ pub fn import(allocator: std.mem.Allocator, file_path: []const u8) !Import
 
                 if (has_albedo_texture)
                 {
-                    for (gltf_images) |*gltf_image, i|
+                    for (gltf_images, 0..) |*gltf_image, i|
                     {
                         if (gltf_image == pbr.base_color_texture.texture.*.image)
                         {
@@ -425,7 +425,7 @@ pub fn import(allocator: std.mem.Allocator, file_path: []const u8) !Import
 
                 if (has_roughness_texture)
                 {
-                    for (gltf_images) |*gltf_image, i|
+                    for (gltf_images, 0..) |*gltf_image, i|
                     {
                         if (gltf_image == pbr.metallic_roughness_texture.texture.*.image)
                         {
@@ -569,7 +569,7 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]const u8
 
     const textures = try fba.alloc(ImportBinTexture, import_data.textures.len);
 
-    for (textures) |*texture, i|
+    for (textures, 0..) |*texture, i|
     {
         _ = try fba.dupe(u8, import_data.textures[i].data);
 
@@ -649,7 +649,7 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import
     {
         var current_texture_data_offset: usize = texture_data_offset;
 
-        for (bin_textures) |bin_texture, i|
+        for (bin_textures, 0..) |bin_texture, i|
         {
             import_data.textures[i] = .{
                 .data = (data.ptr + current_texture_data_offset)[0..bin_texture.data_size],

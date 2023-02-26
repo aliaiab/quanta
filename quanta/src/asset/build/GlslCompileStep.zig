@@ -18,7 +18,7 @@ input_path: []const u8,
 output_path: []const u8,
 shader_stage: ShaderStage,
 optimize_mode: std.builtin.OptimizeMode, 
-generated_file: std.build.GeneratedFile,
+generated_file: std.Build.GeneratedFile,
 
 pub fn create(
     builder: *std.Build, 
@@ -34,7 +34,7 @@ pub fn create(
     self.* = GlslCompileStep
     {
         .builder = builder,
-        .step = std.build.Step.init(base_id, name, builder.allocator, make),
+        .step = std.Build.Step.init(base_id, name, builder.allocator, make),
         .input_path = input_path,
         .output_path = output_path,
         .shader_stage = shader_stage,
@@ -91,26 +91,20 @@ pub fn make(step: *Step) !void
 
     const found_existing = try cache_manifest.hit();
 
-    const digest = cache_manifest.final();
-
-    const cached_path = try self.builder.cache_root.join(self.builder.allocator, &.{
-        "o/",
-        &digest,
-        self.output_path
-    });  
-
-    std.fs.makeDirAbsolute(std.fs.path.dirname(cached_path).?) catch {};  
-
-    self.generated_file.path = cached_path;
-
     if (found_existing)
     {
+        const digest = cache_manifest.final();
+
+        const cached_path = try self.builder.cache_root.join(self.builder.allocator, &.{
+            "o/",
+            &digest,
+            self.output_path
+        });  
+
+        self.generated_file.path = cached_path;
+
         return;
     }
-
-    args[10] = cached_path;
-
-    std.debug.print("compiling {s}\n", .{ cached_path });
 
     const input_file: *std.Build.Cache.File = &cache_manifest.files.items[input_file_index];
 
@@ -134,29 +128,29 @@ pub fn make(step: *Step) !void
 
         std.debug.print("include path: {s}\n", .{ include_path });
 
-        // try cache_manifest.addFilePost(include_path);
+        try cache_manifest.addFilePost(include_path);
     }
 
-    if (includes.len > 0 and false)
-    {
-        const new_digest = cache_manifest.final();
-        const new_cache_path = try self.builder.cache_root.join(self.builder.allocator, &.{
-            "o/",
-            &new_digest,
-            self.output_path
-        });
+    const digest = cache_manifest.final();
 
-        self.generated_file.path = new_cache_path;
+    const cached_path = try self.builder.cache_root.join(self.builder.allocator, &.{
+        "o/",
+        &digest,
+        self.output_path
+    });  
 
-        args[10] = new_cache_path;
+    std.fs.makeDirAbsolute(std.fs.path.dirname(cached_path).?) catch {};  
 
-        std.fs.makeDirAbsolute(std.fs.path.dirname(new_cache_path).?) catch {};  
-    }
+    self.generated_file.path = cached_path;
 
-    try std.build.RunStep.runCommand(
+    args[10] = cached_path;
+
+    std.debug.print("compiling {s}\n", .{ cached_path });
+
+    try std.Build.RunStep.runCommand(
         &args,
         self.builder,
-        0,
+        null,
         .ignore,
         .inherit,
         .Ignore,

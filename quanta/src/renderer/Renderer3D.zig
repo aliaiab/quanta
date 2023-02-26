@@ -231,7 +231,7 @@ fn initFrameImages(window_width: u32, window_height: u32) !void
     self.depth_pyramid_levels = try self.allocator.alloc(graphics.Image.View, self.depth_pyramid.levels);
     errdefer self.allocator.free(self.depth_pyramid_levels);
 
-    for (self.depth_pyramid_levels) |*pyramid_level, i|
+    for (self.depth_pyramid_levels, 0..) |*pyramid_level, i|
     {
         pyramid_level.* = try self.depth_pyramid.createView(@intCast(u32, i), 1);
 
@@ -675,7 +675,7 @@ pub fn beginSceneRender(
             {
                 try self.materials_buffer.update(Material, 0, self.materials.items);
 
-                for (self.image_staging_buffers.items) |staging_buffer, i|
+                for (self.image_staging_buffers.items, 0..) |staging_buffer, i|
                 {
                     self.transfer_command_buffer.copyBufferToImage(staging_buffer, self.texture_images.items[i]);
 
@@ -1191,7 +1191,7 @@ fn endRenderInternal(scene: SceneHandle) !void
 
             command_buffer.setComputePipeline(self.depth_reduce_pipeline);
 
-            for (self.depth_pyramid_levels) |_, i|
+            for (self.depth_pyramid_levels, 0..) |_, i|
             {
                 const pyramid_level_width: u32 = @max(1, self.depth_pyramid.width >> @intCast(u5, i));
                 const pyramid_level_height: u32 = @max(1, self.depth_pyramid.height >> @intCast(u5, i));

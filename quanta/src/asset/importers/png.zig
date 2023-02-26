@@ -32,7 +32,7 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !Import
 
     if (image.pixelFormat() == .rgb24)
     {
-        for (image.pixels.rgb24) |pixel, i|
+        for (image.pixels.rgb24, 0..) |pixel, i|
         {
             const write_pixel = @ptrCast(*img.color.Rgba32, self.data.ptr + (i * @sizeOf(img.color.Rgba32)));
 
@@ -70,7 +70,7 @@ pub fn importCubeFile(allocator: std.mem.Allocator, paths: [6][]const u8) !Impor
 
     var file_imports: [6]Import = undefined;
 
-    for (paths) |path, i|
+    for (paths, 0..) |path, i|
     {
         file_imports[i] = try importFile(allocator, path);
 
@@ -78,7 +78,7 @@ pub fn importCubeFile(allocator: std.mem.Allocator, paths: [6][]const u8) !Impor
         import_data.height = @max(import_data.height, file_imports[i].height);
     }
 
-    defer for (file_imports) |*file_import|
+    defer for (&file_imports) |*file_import|
     {
         free(file_import, allocator);
     };

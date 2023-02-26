@@ -7,6 +7,15 @@ pub fn build(builder: *std.Build) !void
     _ = builder;
 }
 
+pub fn addTest(builder: *std.Build) !*std.Build.CompileStep
+{
+    return builder.addTest(.{
+        .name = "test",
+        .root_source_file = std.build.FileSource.relative("quanta/src/main.zig"),
+        .optimize = .Debug,
+    });
+}
+
 pub const Context = struct 
 {
     builder: *std.Build,
