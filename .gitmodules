@@ -19,3 +19,6 @@
 [submodule "quanta/lib/vulkan-zig"]
 	path = quanta/lib/vulkan-zig
 	url = https://github.com/Snektron/vulkan-zig.git
+[submodule "quanta/lib/zgltf"]
+	path = quanta/lib/zgltf
+	url = https://github.com/thedoctorquantum/zgltf
