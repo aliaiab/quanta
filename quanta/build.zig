@@ -1,6 +1,7 @@
 const std = @import("std");
 const GlslCompileStep = @import("src/asset/build/GlslCompileStep.zig");
 const glfw = @import("lib/mach-glfw/build.zig");
+const zgltf = @import("lib/zgltf/build.zig");
 
 pub fn build(builder: *std.Build) !void
 {
@@ -50,6 +51,7 @@ pub const Context = struct
                 .dependencies = &.{
                     .{ .name = "options", .module = options.createModule() },
                     .{ .name = "glfw", .module = glfw.module(builder) },
+                    .{ .name = "zgltf", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative("quanta/lib/zgltf/src/main.zig") }) },
                     .{ .name = "zigimg", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative("quanta/lib/zigimg/zigimg.zig") }) },
                     .{ .name = "zalgebra", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative("quanta/lib/zalgebra/src/main.zig") }) },
                     .{ .name = "renderer_tri_vert.spv", .module = renderer_tri_vert_spv_module },

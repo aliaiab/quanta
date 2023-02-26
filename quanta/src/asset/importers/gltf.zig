@@ -3,6 +3,7 @@ const Renderer3D = @import("../../renderer/Renderer3D.zig");
 const cgltf = @import("cgltf.zig");
 const zalgebra = @import("zalgebra");
 const png = @import("png.zig");
+const zgltf = @import("zgltf");
 
 pub const Import = struct 
 {
@@ -44,6 +45,309 @@ pub const Import = struct
     };
 };
 
+pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
+{
+    var import_data: Import = .{
+        .vertex_positions = &.{},
+        .vertices = &.{},
+        .indices = &.{},
+        .sub_meshes = &.{},
+        .materials = &.{},
+        .textures = &.{},
+        .point_lights = &.{},
+    };
+
+    const file_directory_name = std.fs.path.dirname(file_path) orelse unreachable;
+
+    var file_directory = try std.fs.cwd().openDir(file_directory_name, .{});
+    defer file_directory.close();
+
+    const file = try std.fs.cwd().openFile(file_path, .{});
+    defer file.close();
+
+    const file_data = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(file_data);
+
+    var gltf = zgltf.init(allocator); 
+    defer gltf.deinit();
+
+    try gltf.parse(file_data);
+
+    const buffer_file_datas = try allocator.alloc([]const u8, gltf.data.buffers.items.len);
+    defer allocator.free(buffer_file_datas); 
+
+    for (gltf.data.buffers.items, 0..) |buffer, i|
+    {
+        if (buffer.uri == null) continue;
+
+        std.log.info("{s}", .{ buffer.uri.? });
+
+        const bin_file = try file_directory.openFile(buffer.uri.?, .{});
+        defer bin_file.close();
+
+        const bin_file_data = try bin_file.readToEndAlloc(allocator, std.math.maxInt(usize));
+
+        buffer_file_datas[i] = bin_file_data;
+    }
+
+    defer for (buffer_file_datas) |buffer_file_data|
+    {
+        allocator.free(buffer_file_data);
+    };
+
+    const texture_count = gltf.data.textures.items.len;
+
+    var model_vertices = std.ArrayList(Renderer3D.Vertex).init(allocator);
+    defer model_vertices.deinit();
+
+    var model_vertex_positions = std.ArrayList([3]f32).init(allocator);
+    defer model_vertex_positions.deinit();
+
+    var model_indices = std.ArrayList(u32).init(allocator);
+    defer model_indices.deinit();
+
+    var sub_meshes = std.ArrayList(Import.SubMesh).init(allocator);
+    defer sub_meshes.deinit();
+
+    var textures = try std.ArrayList(Import.Texture).initCapacity(allocator, texture_count);
+    defer textures.deinit();
+
+    var materials = std.ArrayList(Import.Material).init(allocator);
+    defer materials.deinit();
+
+    for (gltf.data.images.items) |image|
+    {
+        if (image.uri == null) continue;
+
+        const path = image.uri.?;
+
+        std.log.info("file path: {s}", .{ path });
+
+        const image_file = try file_directory.openFile(path, .{});
+        defer image_file.close();
+
+        const raw_data = try image_file.readToEndAlloc(allocator, std.math.maxInt(u64));
+        defer allocator.free(raw_data);
+
+        const png_import = try png.import(allocator, raw_data);
+
+        try textures.append(.{
+            .data = png_import.data,
+            .width = png_import.width,
+            .height = png_import.height,
+        });
+    }
+
+    for (gltf.data.nodes.items) |node|
+    {
+        if (node.mesh == null) continue;
+
+        const transform_matrix = zgltf.getGlobalTransform(&gltf.data, node);
+
+        const mesh: *zgltf.Mesh = &gltf.data.meshes.items[node.mesh.?];
+
+        std.log.info("mesh.primitive_count = {}", .{ mesh.primitives.items.len });
+
+        for (mesh.primitives.items) |primitive|
+        {
+            const vertex_start = model_vertices.items.len;
+            const index_start = model_indices.items.len;
+
+            var bounding_min: @Vector(3, f32) = .{ std.math.f32_max, std.math.f32_max, std.math.f32_max };
+            var bounding_max: @Vector(3, f32) = .{ std.math.f32_min, std.math.f32_min, std.math.f32_min };
+
+            var vertex_count: usize = 0;
+
+            var positions = std.ArrayList(f32).init(allocator); 
+            defer positions.deinit();
+
+            var normals = std.ArrayList(f32).init(allocator); 
+            defer normals.deinit();
+
+            var texture_coordinates = std.ArrayList(f32).init(allocator); 
+            defer texture_coordinates.deinit();
+
+            for (primitive.attributes.items) |attribute|
+            {
+                switch (attribute)
+                {
+                    .position => |accessor_index| {
+                        const accessor = gltf.data.accessors.items[accessor_index];
+                        const buffer_view = gltf.data.buffer_views.items[accessor.buffer_view.?];
+                        const buffer_data = buffer_file_datas[buffer_view.buffer];
+
+                        vertex_count = @intCast(usize, accessor.count);
+
+                        try positions.ensureTotalCapacity(@intCast(usize, accessor.count));
+
+                        gltf.getDataFromBufferView(f32, &positions, accessor, buffer_data);
+                    },
+                    .normal => |accessor_index| {
+                        const accessor = gltf.data.accessors.items[accessor_index];
+                        const buffer_view = gltf.data.buffer_views.items[accessor.buffer_view.?];
+                        const buffer_data = buffer_file_datas[buffer_view.buffer];
+
+                        try normals.ensureTotalCapacity(@intCast(usize, accessor.count));
+
+                        gltf.getDataFromBufferView(f32, &normals, accessor, buffer_data);
+                    },
+                    .tangent => {},
+                    .texcoord => |accessor_index| {
+                        const accessor = gltf.data.accessors.items[accessor_index];
+                        const buffer_view = gltf.data.buffer_views.items[accessor.buffer_view.?];
+                        const buffer_data = buffer_file_datas[buffer_view.buffer];
+
+                        try texture_coordinates.ensureTotalCapacity(@intCast(usize, accessor.count));
+
+                        gltf.getDataFromBufferView(f32, &texture_coordinates, accessor, buffer_data);
+                    },
+                    .color => {},
+                    .joints => {},
+                    .weights => {},
+                }
+            }
+
+            std.debug.assert(vertex_count != 0);
+
+            try model_vertices.ensureTotalCapacity(model_vertices.items.len + vertex_count);
+
+            //Vertices
+            {
+                var position_index: usize = 0;
+                var normal_index: usize = 0;
+                var uv_index: usize = 0;
+
+                std.log.info("vertex position accessor.count = {}", .{ vertex_count });
+
+                while (position_index < vertex_count * 3) : ({
+                    position_index += 3;
+                    normal_index += 3;
+                    uv_index += 2;
+                })
+                {
+                    const position_vector = @Vector(3, f32) { positions.items[position_index], positions.items[position_index + 1], positions.items[position_index + 2], };
+
+                    try model_vertex_positions.append(position_vector);
+                    try model_vertices.append(.{
+                        .normal = .{ normals.items[normal_index], normals.items[normal_index + 1], normals.items[normal_index + 2] },
+                        .uv = .{ texture_coordinates.items[uv_index], texture_coordinates.items[uv_index + 1] }, 
+                        .color = packUnorm4x8(.{ 1, 1, 1, 1 }),
+                    });
+
+                    bounding_min = @min(bounding_min, position_vector);
+                    bounding_max = @max(bounding_max, position_vector);
+                }
+            }
+
+            std.log.info("bounding_min: {d}", .{ bounding_min });
+            std.log.info("bounding_max: {d}", .{ bounding_max });
+
+            //Indices
+            {
+                const index_accessor = gltf.data.accessors.items[primitive.indices.?];
+                const buffer_view = gltf.data.buffer_views.items[index_accessor.buffer_view.?];
+                const buffer_data = buffer_file_datas[buffer_view.buffer];
+
+                switch (index_accessor.component_type)
+                {
+                    .byte => unreachable,
+                    .unsigned_byte => unreachable,
+                    .short => unreachable,
+                    .unsigned_short => {
+                        var indices_u16 = std.ArrayList(u16).init(allocator);
+                        defer indices_u16.deinit();
+
+                        gltf.getDataFromBufferView(u16, &indices_u16, index_accessor, buffer_data);
+
+                        try model_indices.ensureTotalCapacity(indices_u16.items.len);
+
+                        for (indices_u16.items) |index_u16|
+                        {
+                            try model_indices.append(@as(u32, index_u16));
+                        }
+                    },
+                    .unsigned_integer => {
+                        gltf.getDataFromBufferView(u32, &model_indices, index_accessor, buffer_data);
+                    },
+                    .float => unreachable,
+                }
+            }
+
+            const has_material = primitive.material != null;
+
+            var material_index: u32 = 0;
+
+            //material
+            if (has_material)
+            {
+                const material = gltf.data.materials.items[primitive.material.?];
+
+                const pbr = material.metallic_roughness;
+
+                const has_albedo_texture = pbr.base_color_texture != null;
+
+                const has_roughness_texture = pbr.metallic_roughness_texture != null;
+
+                var albedo_index: ?u32 = null;
+
+                if (has_albedo_texture)
+                {
+                    const albedo_texture = gltf.data.textures.items[pbr.base_color_texture.?.index];
+
+                    albedo_index = @intCast(u32, albedo_texture.source.?) + 1;
+                }
+
+                var roughness_index: ?u32 = null;
+
+                if (has_roughness_texture)
+                {
+                    const roughness_texture = gltf.data.textures.items[pbr.metallic_roughness_texture.?.index];
+
+                    roughness_index = @intCast(u32, roughness_texture.source.?) + 1;
+                }
+
+                material_index = @intCast(u32, materials.items.len);
+
+                std.log.info("Material {any}", .{ pbr });
+
+                try materials.append(.{
+                    .albedo = pbr.base_color_factor,
+                    .albedo_texture_index = albedo_index orelse 0,
+                    .roughness = pbr.roughness_factor,
+                    .roughness_texture_index = roughness_index orelse 0,
+                    .metalness = pbr.metallic_factor,
+                    .metalness_texture_index = 0,
+                });
+            }
+
+            try sub_meshes.append(.{
+                .vertex_offset = @intCast(u32, vertex_start),
+                .vertex_count = @intCast(u32, model_vertices.items.len - vertex_start),
+                .index_offset = @intCast(u32, index_start),
+                .index_count = @intCast(u32, model_indices.items.len - index_start),
+                .material_index = material_index,
+                .transform = transform_matrix,
+                .bounding_min = bounding_min,
+                .bounding_max = bounding_max,
+            });
+        }
+    }
+
+    std.log.info("unique vertex count: {}", .{ model_vertices.items.len });
+    std.log.info("rendered vertex count: {}", .{ model_indices.items.len });
+
+    import_data.vertex_positions = try model_vertex_positions.toOwnedSlice();
+    import_data.vertices = try model_vertices.toOwnedSlice();
+    import_data.indices = try model_indices.toOwnedSlice();
+    import_data.sub_meshes = try sub_meshes.toOwnedSlice();
+    import_data.materials = try materials.toOwnedSlice();
+    import_data.textures = try textures.toOwnedSlice();
+    // import_data.point_lights = try point_lights.toOwnedSlice(allocator);
+
+    return import_data;
+}
+
+///Deprecated
 pub fn import(allocator: std.mem.Allocator, file_path: []const u8) !Import 
 {
     @setRuntimeSafety(false);
