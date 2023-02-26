@@ -144,6 +144,7 @@ pub fn deinit(self: *ComponentStore) void
         }
 
         archetype.columns.deinit(self.allocator);
+        archetype.entities.deinit(self.allocator);
     }
 
     for (self.component_index.values()) |*component_type_desc|
@@ -213,7 +214,7 @@ pub fn entityAddComponent(
     const archetype_index = try self.addToArchetype(source_archetype_index, component_type);
 
     entity_description.archetype_index = archetype_index;
-    entity_description.row_index = @intCast(u32, try self.archetypeMoveRow(source_archetype_index, archetype_index, entity_description.row_index));
+    entity_description.row_index = @intCast(u32, try self.archetypeMoveRow(source_archetype_index, archetype_index, entity_description.row_index, entity));
 
     if (@sizeOf(T) == 0)
     {
@@ -390,6 +391,11 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
     inline for (component_fetches) |component_fetch|
     {
         component_fetches_slice = component_fetches_slice ++ &[_]type { component_fetch };
+
+        if (componentIsTag(component_fetch))
+        {
+            @compileError("Query cannot fetch a tag component!");
+        }
     }
 
     comptime var required_component_slice: []const type = &(component_fetches_slice[0..].*);
@@ -437,9 +443,17 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
         } 
 
         pub const Block = block: {
-            comptime var fields: [required_component_slice.len]std.builtin.Type.StructField = undefined; 
+            comptime var fields: [required_component_slice.len + 1]std.builtin.Type.StructField = undefined; 
 
-            for (required_component_slice, 0..) |component_type, i|
+            fields[0] = .{
+                .name = "entities",
+                .type = []const Entity,
+                .default_value = null,
+                .is_comptime = false,
+                .alignment = @alignOf([]const Entity),
+            };
+
+            for (required_component_slice, 1..) |component_type, i|
             {
                 fields[i] = .{
                     .name = componentName(component_type),
@@ -489,6 +503,8 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             }
 
             var block: Block = undefined;
+
+            block.entities = archetype.entities.items;
 
             inline for (component_fetches) |component_type|
             {
@@ -791,17 +807,18 @@ fn archetypeMoveRow(
     source_archetype_index: ArchetypeIndex,
     destination_archetype_index: ArchetypeIndex,
     source_row_index: usize,
+    entity: Entity,
 ) !usize
 {
     if (source_archetype_index == 0) 
     {
-        return try self.archetypeAddRow(destination_archetype_index);
+        return try self.archetypeAddRow(destination_archetype_index, entity);
     }
 
     const source_archetype: *Archetype = &self.archetypes.items[source_archetype_index];
     const destination_archetype: *Archetype = &self.archetypes.items[destination_archetype_index];
 
-    const destination_row_index = try self.archetypeAddRow(destination_archetype_index);
+    const destination_row_index = try self.archetypeAddRow(destination_archetype_index, entity);
 
     for (
         source_archetype.columns.items, 
@@ -822,6 +839,10 @@ fn archetypeMoveRow(
 
         source_column.data.items.len -= source_column.element_size;
     }
+
+    _ = source_archetype.entities.swapRemove(source_row_index);
+
+    // try destination_archetype.entities.append(self.allocator, entity);
 
     source_archetype.row_count -= 1;
 
@@ -857,6 +878,7 @@ fn archetypeRemoveRow(
 fn archetypeAddRow(
     self: *ComponentStore,
     archetype_index: ArchetypeIndex,
+    entity: ?Entity,
 ) !u32 
 {
     std.debug.assert(archetype_index != 0);
@@ -870,6 +892,11 @@ fn archetypeAddRow(
     for (archetype.columns.items) |*column|
     {
         try column.data.appendNTimes(self.allocator, 0, column.element_size);
+    }
+
+    if (entity != null)
+    {
+        try archetype.entities.append(self.allocator, entity.?);
     }
 
     return row_index;
@@ -930,6 +957,11 @@ fn componentType(comptime T: type) ComponentType
         .size = @sizeOf(T),
         .alignment = @alignOf(T),
     };
+}
+
+fn componentIsTag(comptime T: type) bool
+{
+    return @sizeOf(T) == 0;
 }
 
 ///Returns a unique integer id for the given type
@@ -1040,7 +1072,7 @@ test "Queries"
     _ = try ecs_scene.entityCreate(.{ Tag, Position { .x = 10, .y = 69, .z = 420 } });
     _ = try ecs_scene.entityCreate(.{ Position { .x = 10, .y = 69, .z = 420 * 2 }, Rotation { .x = 200, .y = 200, .z = 9 } });
     _ = try ecs_scene.entityCreate(.{ Tag, Position { .x = 10, .y = 69 / 2, .z = 420 }, Rotation { .x = 0, .y = 10003, .z = 20 } });
-    _ = try ecs_scene.entityCreate(.{ Position { .x = 10, .y = 69 / 2, .z = 420 }, Rotation { .x = 0, .y = 10003, .z = 20 }, Tag });
+    _ = try ecs_scene.entityCreate(.{ Tag, Position { .x = 10, .y = 69 / 2, .z = 420 }, Rotation { .x = 0, .y = 10003, .z = 20 } });
 
     //Example of a query:
     //Create a query for all entities with PosComponent but must have TagComponent
@@ -1050,12 +1082,13 @@ test "Queries"
     {
         std.log.warn("New block", .{});
 
+        const entities: []const Entity = block.entities;
         const pos_components: []const Position = block.Position;
         const rot_components: []const Rotation = block.Rotation;
 
-        for (pos_components, rot_components) |pos, rot|
+        for (entities, pos_components, rot_components) |entity, pos, rot|
         {
-            std.log.warn("entity:", .{});
+            std.log.warn("entity({}):", .{ entity });
             std.log.warn("pos = {any}", .{ pos });
             std.log.warn("rot = {any}", .{ rot });
         }
