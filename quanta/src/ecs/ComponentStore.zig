@@ -159,6 +159,8 @@ pub fn deinit(self: *ComponentStore) void
     self.* = undefined;
 }
 
+///Creates a new entity handle adds components to it.
+///The returned entity handle is guaranteed to be new and unique
 pub fn entityCreate(self: *ComponentStore, components: anytype) !Entity
 {
     var entity = Entity 
@@ -183,13 +185,25 @@ pub fn entityCreate(self: *ComponentStore, components: anytype) !Entity
     return entity;
 }
 
+///Removes all components on an entity and invalidates the entity handle 
 pub fn entityDestroy(self: *ComponentStore, entity: Entity) void
 {
+    self.entityClear(entity);
+
     _ = self.entity_index.swapRemove(entity);
 
     self.next_entity_generation +%= 1;
+}
 
-    // @compileError("Not yet implemented!");
+///Removes all components on an entity, returning it to the empty state
+pub fn entityClear(self: *ComponentStore, entity: Entity) void 
+{
+    const entity_description = self.entity_index.getPtr(entity).?;
+
+    self.archetypeRemoveRow(entity_description.archetype_index, entity_description.row_index);
+
+    entity_description.archetype_index = 0;
+    entity_description.row_index = 0;
 }
 
 pub fn entityAddComponent(
@@ -240,13 +254,26 @@ pub fn entityRemoveComponent(
     self: *ComponentStore,
     entity: Entity,
     comptime Component: type,
-) void 
+) !void 
 {
-    _ = self;
-    _ = entity;
-    _ = Component;
+    const component_type = componentType(Component);
 
-    @compileError("Not yet implemented");
+    const entity_description = self.entity_index.getPtr(entity).?;
+
+    const source_archetype_index = entity_description.archetype_index;
+
+    const archetype_index = try self.removeFromArchetype(source_archetype_index, component_type);
+
+    entity_description.archetype_index = archetype_index;
+
+    if (archetype_index == 0)
+    {
+        entity_description.row_index = 0;
+
+        return;
+    }
+
+    entity_description.row_index = @intCast(u32, try self.archetypeMoveRow(source_archetype_index, archetype_index, entity_description.row_index, entity));
 }
 
 pub fn entitySetComponent(
@@ -279,6 +306,15 @@ pub fn entityGetComponent(
     const column = entity_archetype.columns.items[archetype_record.column];
 
     return column.getComponent(T, entity_description.row_index);
+}
+
+///Returns true if the entity exists in the ComponentStore
+pub fn entityExists(
+    self: *ComponentStore,
+    entity: Entity,
+) bool
+{
+    return self.entity_index.contains(entity);
 }
 
 ///Returns true if the entity has no components
@@ -427,11 +463,6 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
         component_store: *const ComponentStore,
         archetype_index: ArchetypeIndex,
         row_index: u32,
-
-        pub const Entry = struct 
-        {
-            entity: Entity,
-        };
 
         pub fn init(component_store: *const ComponentStore) @This()
         {
@@ -792,12 +823,26 @@ fn addToArchetype(
 fn removeFromArchetype(
     self: *ComponentStore,
     source_archetype_index: ArchetypeIndex,
-    component_id: ComponentId,
+    component_type: ComponentType,
 ) !ArchetypeIndex
 {
-    _ = self;
-    _ = source_archetype_index;
-    _ = component_id;
+    const component_id = component_type.id;
+
+    std.debug.assert(source_archetype_index != 0);
+
+    var source_archetype: *Archetype = &self.archetypes.items[source_archetype_index];
+
+    const potential_source_edge = source_archetype.edges.get(component_id);
+
+    if (
+        potential_source_edge != null and 
+        potential_source_edge.?.remove != null
+    )
+    {
+        return potential_source_edge.?.remove.?;
+    }
+
+    unreachable;
 }
 
 ///Removes the row at row_index from the source archetype and adds a row to dest archetype and moves it there  
@@ -820,9 +865,11 @@ fn archetypeMoveRow(
 
     const destination_row_index = try self.archetypeAddRow(destination_archetype_index, entity);
 
+    const common_length = std.math.min(source_archetype.columns.items.len, destination_archetype.columns.items.len);
+
     for (
-        source_archetype.columns.items, 
-        destination_archetype.columns.items[0..source_archetype.columns.items.len]
+        source_archetype.columns.items[0..common_length], 
+        destination_archetype.columns.items[0..common_length]
     ) |*source_column, *destination_column|
     {
         const dst_start = destination_column.element_size * destination_row_index;
@@ -842,8 +889,6 @@ fn archetypeMoveRow(
 
     _ = source_archetype.entities.swapRemove(source_row_index);
 
-    // try destination_archetype.entities.append(self.allocator, entity);
-
     source_archetype.row_count -= 1;
 
     return destination_row_index;
@@ -857,20 +902,24 @@ fn archetypeRemoveRow(
 {
     const archetype: *Archetype = &self.archetypes.items[archetype_index];
 
-    if (archetype.row_count <= 1) 
+    if (archetype.row_count < 1) 
     {
         return;
     }
 
-    for (&archetype.columns.items) |*column|
+    for (archetype.columns.items) |*column|
     {
-        const dst_start = column.size * row_index;
-        const dst = column.values[dst_start .. dst_start + column.size];
-        const src_start = column.size * (column.data.items.len - 1);
-        const src = column.values[src_start .. src_start + column.size];
+        const dst_start = column.element_size * row_index;
+        const dst = column.data.items[dst_start .. dst_start + column.element_size];
+        const src_start = column.data.items.len - column.element_size;
+        const src = column.data.items[src_start .. src_start + column.element_size];
 
         std.mem.copy(u8, dst, src);
+
+        column.data.items.len -= column.element_size;
     }
+
+    _ = archetype.entities.swapRemove(row_index);
 
     archetype.row_count -= 1;
 }
@@ -987,7 +1036,7 @@ test "Basic component store"
     var ecs_scene = try ComponentStore.init(std.testing.allocator);
     defer ecs_scene.deinit();
 
-    const test_entity = try ecs_scene.entityCreate(.{});
+    const entity = try ecs_scene.entityCreate(.{});
 
     const PosComponent = struct 
     {
@@ -998,17 +1047,38 @@ test "Basic component store"
 
     const TagComponent = struct {};
 
-    try ecs_scene.entityAddComponents(test_entity, .{
+    try ecs_scene.entityAddComponents(entity, .{
         PosComponent { .x = 0, .y = 10, .z = 0 },
         TagComponent,
     });
 
-    try std.testing.expect(ecs_scene.entityHasComponent(test_entity, PosComponent));
-    try std.testing.expect(ecs_scene.entityHasComponent(test_entity, TagComponent));
+    try std.testing.expect(ecs_scene.entityHasComponent(entity, PosComponent));
+    try std.testing.expect(ecs_scene.entityHasComponent(entity, TagComponent));
 
-    const pos_component = ecs_scene.entityGetComponent(test_entity, PosComponent).?.*;
+    const pos_component = ecs_scene.entityGetComponent(entity, PosComponent).?.*;
 
     try std.testing.expect(std.meta.eql(pos_component, PosComponent { .x = 0, .y = 10, .z = 0 }));
+
+    try ecs_scene.entityRemoveComponent(entity, TagComponent);
+
+    try std.testing.expect(!ecs_scene.entityHasComponent(entity, TagComponent));
+
+    try ecs_scene.entityRemoveComponent(entity, PosComponent);
+
+    try std.testing.expect(!ecs_scene.entityHasComponent(entity, TagComponent));
+    try std.testing.expect(!ecs_scene.entityHasComponent(entity, PosComponent));
+
+    try ecs_scene.entityAddComponents(entity, .{
+        PosComponent { .x = 0, .y = 10, .z = 0 },
+        TagComponent,
+    });
+
+    try std.testing.expect(ecs_scene.entityHasComponent(entity, PosComponent));
+    try std.testing.expect(ecs_scene.entityHasComponent(entity, TagComponent));
+
+    ecs_scene.entityDestroy(entity);
+
+    try std.testing.expect(!ecs_scene.entityExists(entity));
 }
 
 test "Queries"
@@ -1093,4 +1163,10 @@ test "Queries"
             std.log.warn("rot = {any}", .{ rot });
         }
     }
+
+    try std.testing.expect(ecs_scene.entityHasComponent(test_entity, Position));
+    try std.testing.expect(ecs_scene.entityHasComponent(test_entity, EnumComponent));
+    try std.testing.expect(ecs_scene.entityHasComponent(test_entity, UnionComponent));
+    try std.testing.expect(ecs_scene.entityHasComponent(test_entity, Tag));
+    try std.testing.expect(ecs_scene.entityHasComponent(test_entity, Rotation));
 }
