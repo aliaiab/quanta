@@ -17,6 +17,11 @@ const nk = quanta.nuklear.nuklear;
 const imgui = quanta.imgui.cimgui;
 const asset = quanta.asset;
 
+const quanta_components = quanta.ecs.components;
+const transform_system = quanta.ecs.transform_system;
+const velocity_system = quanta.ecs.velocity_system;
+const acceleration_system = quanta.ecs.acceleration_system;
+
 const vk = quanta.graphics.vulkan;
 const graphics = quanta.graphics;
 const Renderer3D = quanta.renderer.Renderer3D;
@@ -251,8 +256,43 @@ pub fn main() !void
     var ecs_scene_arena = std.heap.ArenaAllocator.init(allocator);
     defer ecs_scene_arena.deinit();
 
-    var ecs_scene = try quanta.ecs.ComponentStore.init(ecs_scene_arena.allocator());
+    var ecs_scene = try quanta.ecs.ComponentStore.init(allocator);
     defer ecs_scene.deinit();
+
+    _ = try ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 0, .y = 2, .z = 0 },
+            quanta_components.Velocity { .x = 0, .y = 1, .z = 0 },
+            quanta_components.Rotation { .x = 0, .y = 0, .z = 0 },
+            quanta_components.UniformScale { .value = 1 },
+            quanta_components.NonUniformScale { .x = 1, .y = 1, .z = 1 }
+        }
+    );
+
+    _ = try ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 0, .y = 10, .z = 0 },
+            quanta_components.Velocity { .x = 0, .y = -10, .z = 0 },
+        }
+    );
+
+    _ = try ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 0, .y = 4, .z = 0 },
+            quanta_components.Velocity { .x = 0, .y = 0.5, .z = 0 },
+        }
+    );
+
+    _ = try ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 0, .y = -2, .z = 0 },
+            quanta_components.Velocity { .x = 0, .y = 1, .z = 0 },
+            quanta_components.Mass { .value = 10 },
+            quanta_components.Force { .x = 2, .y = 9.81, .z = 0 },
+            quanta_components.TerminalVelocity { .x = 0, .y = 0.01, .z = 0 },
+            quanta_components.RendererMesh { .mesh = test_scene_meshes[0], .material = test_scene_materials[0] }
+        }
+    );    
 
     while (!window.shouldClose())
     {
@@ -333,6 +373,12 @@ pub fn main() !void
             camera.translation = camera_position;
         }
 
+        transform_system.run(&ecs_scene);
+        acceleration_system.run(&ecs_scene, delta_time);
+        quanta.ecs.force_system.run(&ecs_scene, delta_time);
+        quanta.ecs.terminal_velocity_system.run(&ecs_scene);
+        velocity_system.run(&ecs_scene, delta_time);
+
         const image_index = swapchain.image_index;
         const image = swapchain.swap_images[image_index];
 
@@ -353,7 +399,9 @@ pub fn main() !void
             defer Renderer3D.endSceneRender(scene);
 
             //immediate mode drawing
-            // Renderer3D.scenePushMesh(scene, test_scene_meshes[3], test_scene_materials[1], zalgebra.Mat4.identity());      
+            // Renderer3D.scenePushMesh(scene, test_scene_meshes[3], test_scene_materials[1], zalgebra.Mat4.identity());   
+
+            quanta.ecs.renderer3d_system.run(&ecs_scene, scene);   
 
             if (true)
             {

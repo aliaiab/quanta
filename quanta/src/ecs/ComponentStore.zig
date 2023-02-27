@@ -1,4 +1,5 @@
 const std = @import("std");
+const reflect = @import("../reflect/reflect.zig");
 
 const ComponentStore = @This(); 
 
@@ -31,7 +32,7 @@ const EntityData = packed struct(u64)
 pub const Entity = enum(u64) { _ };
 
 ///Unique identifier for a component type
-pub const ComponentId = enum(u64) { _ };
+pub const ComponentId = *const reflect.Type;
 
 pub const ComponentType = struct 
 {
@@ -399,6 +400,19 @@ pub fn entitiesAreIsomers(
     const entity_b_data = self.entity_index.get(entity_b).?;
 
     return entity_a_data.archetype_index == entity_b_data.archetype_index;
+}
+
+///Return a list of Type information for each component on this entity
+pub fn entityGetComponentTypes(
+    self: *ComponentStore,
+    entity: Entity,
+) []const *const reflect.Type 
+{
+    const entity_data = self.entity_index.get(entity).?;
+
+    const archetype: *Archetype = &self.archetypes.items[entity_data.archetype_index];
+
+    return archetype.component_ids.items;
 }
 
 ///A query filter with the type T
@@ -1009,7 +1023,7 @@ fn componentId(comptime T: type) ComponentId
         @compileError("T must be a struct, enum or union");
     }
 
-    return @intToEnum(ComponentId, typeId(T));
+    return reflect.Type.info(T);
 } 
 
 fn componentType(comptime T: type) ComponentType
@@ -1024,19 +1038,6 @@ fn componentType(comptime T: type) ComponentType
 fn componentIsTag(comptime T: type) bool
 {
     return @sizeOf(T) == 0;
-}
-
-///Returns a unique integer id for the given type
-fn typeId(comptime T: type) usize
-{
-    _ = T;
-
-    const Tag = struct 
-    {
-        var name: u8 = 0;
-    };
-
-    return @ptrToInt(&Tag.name);
 }
 
 test 
@@ -1184,4 +1185,41 @@ test "Queries"
     try std.testing.expect(ecs_scene.entityHasComponent(test_entity, UnionComponent));
     try std.testing.expect(ecs_scene.entityHasComponent(test_entity, Tag));
     try std.testing.expect(ecs_scene.entityHasComponent(test_entity, Rotation));
+}
+
+test "Reflection"
+{
+    var ecs_scene = try ComponentStore.init(std.testing.allocator);
+    defer ecs_scene.deinit();
+
+    const Position = struct 
+    {
+        x: f32 = 0,
+        y: f32 = 0,
+        z: f32 = 0,
+    };
+
+    const Rotation = struct 
+    {
+        x: f32 = 0,
+        y: f32 = 0,
+        z: f32 = 0,
+    };
+
+    const entity = try ecs_scene.entityCreate(.{
+        Position {},
+        Rotation {},
+    });       
+
+    for (ecs_scene.entityGetComponentTypes(entity)) |type_info|
+    {
+        if (type_info.is(Rotation))
+        {
+            std.log.warn("We FOUND A ROTATION COMPONENT TYPE!!!", .{});
+        }
+
+        std.log.warn("type_info.fields = {any}", .{ type_info.*.Struct.fields });
+        std.log.warn("type_info.fields[0].name = {s}", .{ type_info.*.Struct.fields[0].name });
+        std.log.warn("type_info.fields[1].name = {s}", .{ type_info.*.Struct.fields[1].name });
+    }
 }

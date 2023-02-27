@@ -9,6 +9,7 @@ pub const nuklear = @import("nuklear.zig");
 pub const imgui = @import("imgui.zig");
 pub const math = @import("math.zig");
 pub const log = @import("log.zig").log;
+pub const reflect = @import("reflect/reflect.zig");
 
 test
 {
@@ -23,4 +24,5 @@ test
     _ = imgui;
     _ = math;
     _ = log;
+    _ = reflect;
 }
