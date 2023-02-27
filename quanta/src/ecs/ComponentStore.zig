@@ -39,6 +39,15 @@ pub const ComponentType = struct
     id: ComponentId,
     size: u32,
     alignment: u32,
+
+    pub fn fromTypeInfo(type_info: *const reflect.Type) ComponentType
+    {
+        return .{
+            .id = type_info,
+            .size = @intCast(u32, type_info.size()),
+            .alignment = @intCast(u32, type_info.alignment()),
+        };
+    }
 };
 
 pub const Column = struct 
@@ -289,6 +298,28 @@ pub fn entityRemoveComponent(
     {
         entity_description.row_index = 0;
 
+        return;
+    }
+
+    entity_description.row_index = @intCast(u32, try self.archetypeMoveRow(source_archetype_index, archetype_index, entity_description.row_index, entity));
+}
+
+pub fn entityRemoveComponentId(
+    self: *ComponentStore,
+    entity: Entity,
+    component_id: ComponentId,
+) !void 
+{
+    const entity_description = self.entity_index.getPtr(entity).?;
+
+    const source_archetype_index = entity_description.archetype_index;
+
+    const archetype_index = try self.removeFromArchetype(source_archetype_index, component_id);
+
+    entity_description.archetype_index = archetype_index;
+
+    if (archetype_index == 0)
+    {
         return;
     }
 
@@ -873,11 +904,9 @@ fn addToArchetype(
 fn removeFromArchetype(
     self: *ComponentStore,
     source_archetype_index: ArchetypeIndex,
-    component_type: ComponentType,
+    component_id: ComponentId,
 ) !ArchetypeIndex
 {
-    const component_id = component_type.id;
-
     std.debug.assert(source_archetype_index != 0);
 
     var source_archetype: *Archetype = &self.archetypes.items[source_archetype_index];
@@ -885,11 +914,44 @@ fn removeFromArchetype(
     const potential_source_edge = source_archetype.edges.get(component_id);
 
     if (
-        potential_source_edge != null and 
+        potential_source_edge != null and
         potential_source_edge.?.remove != null
     )
     {
         return potential_source_edge.?.remove.?;
+    }
+
+    const existing_archetype_index: ?ArchetypeIndex = block:
+    { 
+        for (self.archetypes.items[1..], 1..) |archetype, new_archetype_index|
+        {
+            if (archetype.component_ids.items.len != source_archetype.component_ids.items.len - 1)
+            {
+                continue;
+            }
+
+            const common_length = std.math.min(archetype.component_ids.items.len, source_archetype.component_ids.items.len);
+
+            const share_common_base = std.mem.eql(ComponentId, source_archetype.component_ids.items[0..common_length], archetype.component_ids.items[0..common_length]);
+
+            if (!share_common_base)
+            {
+                continue;
+            }
+
+            break: block @intCast(ArchetypeIndex, new_archetype_index);
+        }   
+
+        break: block null;     
+    };
+
+    if (existing_archetype_index != null)
+    {
+        const new_edge = try source_archetype.edges.getOrPutValue(self.allocator, component_id, .{ .add = null, .remove = null });
+
+        new_edge.value_ptr.*.remove = @intCast(u31, existing_archetype_index.?);
+
+        return existing_archetype_index.?;
     }
 
     unreachable;
@@ -1047,7 +1109,7 @@ fn archetypeHasComponent(
 }
 
 ///Returns a unique ComponentId for the given type 
-fn componentId(comptime T: type) ComponentId
+pub fn componentId(comptime T: type) ComponentId
 {
     if (!(
         @typeInfo(T) == .Struct or

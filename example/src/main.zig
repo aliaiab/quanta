@@ -294,6 +294,9 @@ pub fn main() !void
         }
     );    
 
+    var entity_debugger_commands = quanta.ecs.CommandBuffer.init(allocator);
+    defer entity_debugger_commands.deinit();
+
     while (!window.shouldClose())
     {
         const time_begin = std.time.nanoTimestamp();
@@ -499,6 +502,16 @@ pub fn main() !void
                                 imgui.igPushID_Str(component_type_info.name().ptr);
                                 defer imgui.igPopID();
 
+                                if (widgets.button("Remove Component"))
+                                {
+                                    entity_debugger_commands.addCommand(.{ 
+                                        .remove_component = .{
+                                            .entity = entity,
+                                            .component_id = component_type_info,
+                                        } 
+                                    });
+                                }
+
                                 switch (component_type_info.*) 
                                 {
                                     .Struct => |struct_info| {
@@ -533,6 +546,8 @@ pub fn main() !void
                     }
                 }
                 widgets.end();
+
+                try entity_debugger_commands.execute(&ecs_scene);
             }
             
             imgui.igRender();
