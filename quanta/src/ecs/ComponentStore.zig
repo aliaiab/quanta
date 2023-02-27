@@ -173,6 +173,11 @@ pub fn deinit(self: *ComponentStore) void
     self.* = undefined;
 }
 
+pub fn getEntities(self: ComponentStore) []const Entity
+{
+    return self.entity_index.keys();
+}
+
 ///Creates a new entity handle adds components to it.
 ///The returned entity handle is guaranteed to be new and unique
 pub fn entityCreate(self: *ComponentStore, components: anytype) !Entity
@@ -413,6 +418,24 @@ pub fn entityGetComponentTypes(
     const archetype: *Archetype = &self.archetypes.items[entity_data.archetype_index];
 
     return archetype.component_ids.items;
+}
+
+pub fn entityGetComponentPtr(
+    self: *ComponentStore,
+    entity: Entity,
+    component_id: ComponentId,
+) *anyopaque 
+{
+    const entity_description = self.entity_index.get(entity).?;
+    const entity_archetype: Archetype = self.archetypes.items[entity_description.archetype_index];
+
+    const component_archetypes = self.component_index.get(component_id) orelse unreachable;
+
+    const archetype_record = component_archetypes.archetypes.get(entity_description.archetype_index) orelse unreachable;
+
+    const column = entity_archetype.columns.items[archetype_record.column];
+
+    return @ptrCast(*anyopaque, column.data.items.ptr + entity_description.row_index * column.element_size); 
 }
 
 ///A query filter with the type T
@@ -914,7 +937,13 @@ fn archetypeMoveRow(
         source_column.data.items.len -= source_column.element_size;
     }
 
+    const entity_to_update = source_archetype.entities.items[source_archetype.entities.items.len - 1];
+
     _ = source_archetype.entities.swapRemove(source_row_index);
+
+    const entity_to_update_description = self.entity_index.getPtr(entity_to_update).?;
+
+    entity_to_update_description.row_index = @intCast(u32, source_row_index);
 
     source_archetype.row_count -= 1;
 
@@ -946,7 +975,13 @@ fn archetypeRemoveRow(
         column.data.items.len -= column.element_size;
     }
 
+    const entity_to_update = archetype.entities.items[archetype.entities.items.len - 1];
+
     _ = archetype.entities.swapRemove(row_index);
+
+    const entity_to_update_description = self.entity_index.getPtr(entity_to_update).?;
+
+    entity_to_update_description.row_index = @intCast(u32, row_index);
 
     archetype.row_count -= 1;
 }

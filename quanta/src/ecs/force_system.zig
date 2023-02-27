@@ -35,8 +35,6 @@ pub fn run(
             velocity.*.x += acceleration.x * delta_time;
             velocity.*.y += acceleration.y * delta_time;
             velocity.*.z += acceleration.z * delta_time;
-
-            log.debug("{}", .{ velocity.* });            
         }
     }
 }

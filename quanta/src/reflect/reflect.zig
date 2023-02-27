@@ -16,6 +16,7 @@ pub const Type = union(enum)
 
     pub const Struct = struct 
     {
+        name: []const u8,
         size: u32,
         alignment: u32,
         layout: std.builtin.Type.ContainerLayout,
@@ -27,6 +28,7 @@ pub const Type = union(enum)
     pub const StructField = struct 
     {
         name: []const u8,
+        offset: u32,
         type: *const Type,
         default_value: ?*const anyopaque,
         is_comptime: bool,
@@ -35,6 +37,7 @@ pub const Type = union(enum)
 
     pub const Enum = struct 
     {
+        name: []const u8,
         tag_type: *const Type,
         fields: []const EnumField,
         decls: []const Declaration,
@@ -68,6 +71,7 @@ pub const Type = union(enum)
     };
 
     pub const Union = struct {
+        name: []const u8,
         layout: std.builtin.Type.ContainerLayout,
         tag_type: ?*const Type,
         fields: []const UnionField,
@@ -98,6 +102,7 @@ pub const Type = union(enum)
                 {
                     struct_field.* = .{
                         .name = comptime_struct_field.name,
+                        .offset = @offsetOf(T, comptime_struct_field.name),
                         .alignment = comptime_struct_field.alignment,
                         .default_value = comptime_struct_field.default_value,
                         .is_comptime = comptime_struct_field.is_comptime,
@@ -107,6 +112,7 @@ pub const Type = union(enum)
 
                 type_data = .{ 
                     .Struct = .{
+                        .name = @typeName(T),
                         .size = @sizeOf(T),
                         .alignment = @alignOf(T),
                         .layout = struct_info.layout,
@@ -129,6 +135,7 @@ pub const Type = union(enum)
             .Enum => |enum_info| {
                 type_data = .{
                     .Enum = .{
+                        .name = @typeName(T),
                         .tag_type = info(enum_info.tag_type),
                         .fields = &.{},
                         .decls = &.{},
@@ -158,6 +165,18 @@ pub const Type = union(enum)
         }
 
         return type_data;  
+    }
+
+    ///Returns the full, unambigious name of the type
+    pub fn name(self: Type) []const u8 
+    {
+        return switch (self)
+        {
+            .Struct => |struct_info| struct_info.name,
+            .Enum => |enum_info| enum_info.name,
+            .Union => |union_info| union_info.name,
+            else => unreachable,
+        };
     }
 
     ///Equivalent of @sizeOf(T) builtin

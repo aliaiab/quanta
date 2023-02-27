@@ -26,8 +26,6 @@ pub fn run(
             velocity.z = @min(velocity.z, std.math.sign(velocity.z) * terminal_velocity.z);
 
             std.debug.assert(std.math.sign(velocity.x) * velocity.x <= terminal_velocity.x);
-
-            std.log.debug("{}, term = {}", .{ velocity, terminal_velocity });
         }
     }
 }

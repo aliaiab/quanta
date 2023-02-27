@@ -20,7 +20,8 @@ pub fn run(
     {
         for (block.entities) |entity|
         {
-            std.log.info("{}", .{ entity });
+            // std.log.info("{}", .{ entity });
+            _ = entity;
         }
     }
 }

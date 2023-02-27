@@ -486,8 +486,56 @@ pub fn main() !void
                 }
                 widgets.end();
 
-                imgui.igRender();
+                if (widgets.begin("Entity Debugger"))
+                {
+                    for (ecs_scene.getEntities()) |entity|
+                    {
+                        if (widgets.treeNodePush("{}", .{ entity }))
+                        {
+                            for (ecs_scene.entityGetComponentTypes(entity), 0..) |component_type_info, component_index|
+                            {
+                                widgets.textFormat("[{}]: {s}", .{ component_index, component_type_info.name() });
+
+                                imgui.igPushID_Str(component_type_info.name().ptr);
+                                defer imgui.igPopID();
+
+                                switch (component_type_info.*) 
+                                {
+                                    .Struct => |struct_info| {
+                                        for (struct_info.fields) |field|
+                                        {
+                                            switch (field.type.*)
+                                            {
+                                                .Int => unreachable,
+                                                .Float => {
+                                                    const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
+
+                                                    const ptr_to_field = @ptrCast([*]u8, ptr_to_struct) + field.offset;
+
+                                                    const ptr_to_float: *f32 = @ptrCast(*f32, @alignCast(@alignOf(f32), ptr_to_field));
+
+                                                    // widgets.textFormat("{s} = {d}", .{ field.name, ptr_to_float.* });
+
+                                                    widgets.dragFloat(field.name, ptr_to_float);
+                                                },
+                                                else => {},
+                                            }
+
+                                            // widgets.textFormat("{s} = {*}", .{ field.name, ecs_scene.entityGetComponentPtr(entity, component_type_info) });
+                                        }
+                                    },
+                                    else => {},
+                                }
+                            }
+                            
+                            widgets.treeNodePop();
+                        }
+                    }
+                }
+                widgets.end();
             }
+            
+            imgui.igRender();
 
             {
                 RendererGui.begin(&color_image);
