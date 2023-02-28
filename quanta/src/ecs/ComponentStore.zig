@@ -897,8 +897,6 @@ fn addToArchetype(
         archetype_record.value_ptr.column = @intCast(u32, i);
     }
 
-    archetype.chunk.row_count = source_archetype.chunk.row_count + 1;
-
     archetype.chunk.columns = try self.allocator.alloc(ChunkColumn, source_archetype.chunk.columns.len + 1);
     errdefer self.allocator.free(archetype.chunk.columns);
 
@@ -1026,6 +1024,66 @@ fn removeFromArchetype(
     unreachable;
 }
 
+fn archetypeAddRow(
+    self: *ComponentStore,
+    archetype_index: ArchetypeIndex,
+    entity: Entity,
+) !u32 
+{
+    std.debug.assert(archetype_index != 0);
+
+    const archetype: *Archetype = &self.archetypes.items[archetype_index];
+
+    const row_index = archetype.chunk.row_count;
+
+    archetype.chunk.row_count += 1;
+
+    const entities = archetype.chunk.entities();
+
+    std.debug.assert(entities.len != 0);
+
+    entities[entities.len - 1] = entity;
+
+    return row_index;
+}
+
+///Performs a swap removal (O(1)) in order to keep the arrays parralel and contigious
+fn archetypeRemoveRow(
+    self: *ComponentStore,
+    archetype_index: ArchetypeIndex,
+    row_index: usize,
+) void
+{
+    const archetype: *Archetype = &self.archetypes.items[archetype_index];
+
+    if (archetype.chunk.row_count < 1) 
+    {
+        return;
+    }
+
+    for (archetype.chunk.columns) |*column|
+    {
+        const dst_start = column.offset + row_index * column.element_size;
+        const dst = archetype.chunk.data[dst_start .. dst_start + column.element_size];
+        const src_start = column.offset + (archetype.chunk.row_count * column.element_size) - column.element_size;
+        const src = archetype.chunk.data[src_start .. src_start + column.element_size];
+
+        std.mem.copy(u8, dst, src);
+    }
+
+    const entities = archetype.chunk.entities();
+
+    const entity_to_update = entities[entities.len - 1];
+
+    std.mem.swap(Entity, &entities[row_index], &entities[entities.len - 1]);
+
+    const entity_to_update_description = self.entity_index.getPtr(entity_to_update).?;
+
+    entity_to_update_description.row_index = @intCast(u32, row_index);
+
+    archetype.chunk.row_count -= 1;
+}
+
 ///Removes the row at row_index from the source archetype and adds a row to dest archetype and moves it there  
 ///Returns an index to the new row
 fn archetypeMoveRow(
@@ -1079,65 +1137,6 @@ fn archetypeMoveRow(
     source_archetype.chunk.row_count -= 1;
 
     return destination_row_index;
-}
-
-fn archetypeRemoveRow(
-    self: *ComponentStore,
-    archetype_index: ArchetypeIndex,
-    row_index: usize,
-) void
-{
-    const archetype: *Archetype = &self.archetypes.items[archetype_index];
-
-    if (archetype.chunk.row_count < 1) 
-    {
-        return;
-    }
-
-    for (archetype.chunk.columns) |*column|
-    {
-        const dst_start = column.offset + row_index * column.element_size;
-        const dst = archetype.chunk.data[dst_start .. dst_start + column.element_size];
-        const src_start = column.offset + (archetype.chunk.row_count * column.element_size) - column.element_size;
-        const src = archetype.chunk.data[src_start .. src_start + column.element_size];
-
-        std.mem.copy(u8, dst, src);
-    }
-
-    const entities = archetype.chunk.entities();
-
-    const entity_to_update = entities[entities.len - 1];
-
-    std.mem.swap(Entity, &entities[row_index], &entities[entities.len - 1]);
-
-    const entity_to_update_description = self.entity_index.getPtr(entity_to_update).?;
-
-    entity_to_update_description.row_index = @intCast(u32, row_index);
-
-    archetype.chunk.row_count -= 1;
-}
-
-fn archetypeAddRow(
-    self: *ComponentStore,
-    archetype_index: ArchetypeIndex,
-    entity: ?Entity,
-) !u32 
-{
-    std.debug.assert(archetype_index != 0);
-
-    const archetype: *Archetype = &self.archetypes.items[archetype_index];
-
-    const row_index = archetype.chunk.row_count;
-
-    archetype.chunk.row_count += 1;
-
-    const entities = archetype.chunk.entities();
-
-    std.debug.assert(entities.len != 0);
-
-    entities[entities.len - 1] = entity.?;
-
-    return row_index;
 }
 
 fn archetypeHasComponents(
@@ -1333,6 +1332,8 @@ test "Queries"
         const entities: []const Entity = block.entities;
         const pos_components: []const Position = block.Position;
         const rot_components: []const Rotation = block.Rotation;
+
+        std.log.warn("entities = {any}", .{ entities });
 
         for (entities, pos_components, rot_components) |entity, pos, rot|
         {
