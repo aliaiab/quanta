@@ -379,8 +379,16 @@ pub fn main() !void
         transform_system.run(&ecs_scene);
         acceleration_system.run(&ecs_scene, delta_time);
         quanta.ecs.force_system.run(&ecs_scene, delta_time);
+
+        try quanta.ecs.system_scheduler.run(
+            &ecs_scene, 
+            &entity_debugger_commands, 
+            .{
+                velocity_system
+            }
+        );
+
         quanta.ecs.terminal_velocity_system.run(&ecs_scene);
-        velocity_system.run(&ecs_scene, delta_time);
 
         const image_index = swapchain.image_index;
         const image = swapchain.swap_images[image_index];

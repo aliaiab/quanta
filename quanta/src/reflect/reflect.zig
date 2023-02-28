@@ -125,6 +125,7 @@ pub const Type = union(enum)
             .Union => |union_info| {
                 type_data = .{
                     .Union = .{
+                        .name = @typeName(T),
                         .layout = union_info.layout,
                         .tag_type = if (union_info.tag_type != null) info(union_info.tag_type.?) else null, 
                         .fields = &.{},

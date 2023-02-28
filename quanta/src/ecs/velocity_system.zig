@@ -2,19 +2,17 @@ const std = @import("std");
 const log = std.log.scoped(.velocity_system);
 const components = @import("components.zig");
 const ComponentStore = @import("ComponentStore.zig");
+const CommandBuffer = @import("CommandBuffer.zig");
 
 const Position = components.Position;
 const Velocity = components.Velocity;
 
 pub fn run(
-    component_store: *ComponentStore,
-    delta_time: f32,
+    _: *CommandBuffer,
+    query: *ComponentStore.QueryIterator(.{ Position, Velocity }, .{})
 ) void 
 {
-    var query = component_store.query(
-        .{ Position, Velocity }, 
-        .{}
-    );
+    const delta_time = 1.0 / 1000.0;
 
     while (query.nextBlock()) |block|
     {
