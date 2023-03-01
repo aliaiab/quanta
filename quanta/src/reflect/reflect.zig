@@ -38,6 +38,8 @@ pub const Type = union(enum)
     pub const Enum = struct 
     {
         name: []const u8,
+        size: u32,
+        alignment: u32,
         tag_type: *const Type,
         fields: []const EnumField,
         decls: []const Declaration,
@@ -72,6 +74,8 @@ pub const Type = union(enum)
 
     pub const Union = struct {
         name: []const u8,
+        size: u32,
+        alignment: u32,
         layout: std.builtin.Type.ContainerLayout,
         tag_type: ?*const Type,
         fields: []const UnionField,
@@ -126,6 +130,8 @@ pub const Type = union(enum)
                 type_data = .{
                     .Union = .{
                         .name = @typeName(T),
+                        .size = @sizeOf(T),
+                        .alignment = @alignOf(T),
                         .layout = union_info.layout,
                         .tag_type = if (union_info.tag_type != null) info(union_info.tag_type.?) else null, 
                         .fields = &.{},
@@ -137,6 +143,8 @@ pub const Type = union(enum)
                 type_data = .{
                     .Enum = .{
                         .name = @typeName(T),
+                        .size = @sizeOf(T),
+                        .alignment = @alignOf(T),
                         .tag_type = info(enum_info.tag_type),
                         .fields = &.{},
                         .decls = &.{},
@@ -185,6 +193,8 @@ pub const Type = union(enum)
     {
         switch (self) {
             .Struct => |struct_info| return struct_info.size,
+            .Enum => |enum_info| return enum_info.size,
+            .Union => |union_info| return union_info.size,
             else => unreachable, 
         }
     }
@@ -194,6 +204,8 @@ pub const Type = union(enum)
     {
         switch (self) {
             .Struct => |struct_info| return struct_info.alignment,
+            .Enum => |enum_info| return enum_info.alignment,
+            .Union => |union_info| return union_info.alignment,
             else => unreachable, 
         }
     }

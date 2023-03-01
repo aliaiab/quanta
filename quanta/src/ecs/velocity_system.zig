@@ -12,7 +12,7 @@ pub fn run(
     query: *ComponentStore.QueryIterator(.{ Position, Velocity }, .{})
 ) void 
 {
-    const delta_time = 1.0 / 1000.0;
+    const delta_time = 0.1 / 1000.0;
 
     while (query.nextBlock()) |block|
     {

@@ -278,12 +278,12 @@ pub fn main() !void
 
     _ = try ecs_scene.entityCreate(
         .{
-            quanta_components.Position { .x = 0, .y = 4, .z = 0 },
             quanta_components.Velocity { .x = 0, .y = 0.5, .z = 0 },
+            quanta_components.Position { .x = 0, .y = 4, .z = 0 },
         }
     );
 
-    _ = try ecs_scene.entityCreate(
+    const entity_b = try ecs_scene.entityCreate(
         .{
             quanta_components.Position { .x = 0, .y = -2, .z = 0 },
             quanta_components.Velocity { .x = 0, .y = 1, .z = 0 },
@@ -293,6 +293,19 @@ pub fn main() !void
             quanta_components.RendererMesh { .mesh = test_scene_meshes[0], .material = test_scene_materials[0] }
         }
     );    
+
+    const entity_a = try ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 0, .y = -2, .z = 0 },
+            quanta_components.Velocity { .x = 0, .y = 1, .z = 0 },
+            quanta_components.Force { .x = 2, .y = 9.81, .z = 0 },
+            quanta_components.Mass { .value = 10 },
+            quanta_components.TerminalVelocity { .x = 0, .y = 0.01, .z = 0 },
+            quanta_components.RendererMesh { .mesh = test_scene_meshes[0], .material = test_scene_materials[0] },
+        }
+    );
+
+    std.debug.assert(ecs_scene.entitiesAreIsomers(entity_a, entity_b));   
 
     var entity_debugger_commands = quanta.ecs.CommandBuffer.init(allocator);
     defer entity_debugger_commands.deinit();

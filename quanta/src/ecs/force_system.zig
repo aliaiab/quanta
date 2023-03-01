@@ -25,11 +25,13 @@ pub fn run(
             block.Force,
         ) |*velocity, mass, force|
         {
+            //f = ma
+            //a = f / m
             const acceleration = components.Acceleration
             {
-                .x = mass.value * force.x,
-                .y = mass.value * force.y,
-                .z = mass.value * force.z,
+                .x = force.x / mass.value,
+                .y = force.y / mass.value,
+                .z = force.z / mass.value,
             };
 
             velocity.*.x += acceleration.x * delta_time;
