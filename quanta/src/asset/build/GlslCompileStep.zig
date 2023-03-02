@@ -147,6 +147,10 @@ pub fn make(step: *Step) !void
 
     std.debug.print("compiling {s}\n", .{ cached_path });
 
+    errdefer {
+        self.generated_file.path = null;
+    }
+
     try std.Build.RunStep.runCommand(
         &args,
         self.builder,

@@ -31,9 +31,6 @@ void main()
 
     out_data.uv = vertex.uv;
     out_data.color = unpackUnorm4x8(vertex.color);
-    out_data.color.r = pow(out_data.color.r, 2.2);
-    out_data.color.g = pow(out_data.color.g, 2.2);
-    out_data.color.b = pow(out_data.color.b, 2.2);
 
     gl_Position = push_constants.projection * vec4(vertex.position, 0, 1);
 }

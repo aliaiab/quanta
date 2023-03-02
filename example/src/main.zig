@@ -260,13 +260,28 @@ pub fn main() !void
     var ecs_scene = try quanta.ecs.ComponentStore.init(allocator);
     defer ecs_scene.deinit();
 
+    const TestEnumComponent = enum 
+    {
+        no_state,
+        state_0,
+        state_1,
+        ect_state,
+    };
+
+    const TestUnionComponent = union(enum)
+    {
+        no_state: void,
+        state_0: u32,
+        state_1: void,
+        ect_state: void,
+    };
+
     _ = try ecs_scene.entityCreate(
         .{
             quanta_components.Position { .x = 0, .y = 2, .z = 0 },
             quanta_components.Velocity { .x = 0, .y = 1, .z = 0 },
-            quanta_components.Rotation { .x = 0, .y = 0, .z = 0 },
-            quanta_components.UniformScale { .value = 1 },
-            quanta_components.NonUniformScale { .x = 1, .y = 1, .z = 1 }
+            TestEnumComponent.state_1,
+            TestUnionComponent.state_1,
         }
     );
 
@@ -288,8 +303,8 @@ pub fn main() !void
         .{
             quanta_components.Position { .x = 0, .y = -2, .z = 0 },
             quanta_components.Velocity { .x = 0, .y = 1, .z = 0 },
-            quanta_components.Mass { .value = 10 },
             quanta_components.Force { .x = 2, .y = 9.81, .z = 0 },
+            quanta_components.Mass { .value = 10 },
             quanta_components.TerminalVelocity { .x = 0, .y = 0.01, .z = 0 },
             quanta_components.RendererMesh { .mesh = test_scene_meshes[0], .material = test_scene_materials[0] }
         }
@@ -416,6 +431,8 @@ pub fn main() !void
         color_image.handle = image.image;
         color_image.aspect_mask = .{ .color_bit = true };
 
+        var cloned_entity_last_frame: bool = false;
+
         {
             try Renderer3D.beginSceneRender(
                 scene, 
@@ -517,61 +534,173 @@ pub fn main() !void
 
                 if (widgets.begin("Entity Debugger"))
                 {
+                    //Duplicate
+                    if (
+                        window.getKeyDown(.left_control) and
+                        window.getKeyDown(.d) and 
+                        !cloned_entity_last_frame
+                    )
+                    {
+                        entity_debugger_commands.entityClone(selected_entity.?);
+
+                        cloned_entity_last_frame = true;
+                    }
+                    
+                    if (
+                        !window.getKeyDown(.left_control) and 
+                        !window.getKeyDown(.d)
+                    )
+                    {
+                        cloned_entity_last_frame = false;
+                    }
+
                     for (ecs_scene.getEntities()) |entity|
                     {
                         if (widgets.treeNodePush("{}", .{ entity }))
                         {
-                            for (ecs_scene.entityGetComponentTypes(entity), 0..) |component_type_info, component_index|
+                            defer widgets.treeNodePop();
+
+                            if (widgets.button("Clone"))
                             {
-                                widgets.textFormat("[{}]: {s}", .{ component_index, component_type_info.name() });
+                                entity_debugger_commands.entityClone(entity);
+                            }
 
-                                imgui.igPushID_Str(component_type_info.name().ptr);
-                                defer imgui.igPopID();
+                            imgui.igSameLine(0, 10);
 
-                                if (widgets.button("Remove Component"))
+                            if (widgets.button("Clear"))
+                            {
+                                entity_debugger_commands.entityClear(entity);
+                            }
+
+                            imgui.igSameLine(0, 10);
+
+                            if (widgets.button("Destroy"))
+                            {
+                                entity_debugger_commands.entityDestroy(entity);
+                            }
+
+                            for (ecs_scene.entityGetComponentTypes(entity)) |component_type_info|
+                            {
+                                imgui.igSeparator();
+
+                                if (widgets.collapsingHeader("{s}", .{ component_type_info.name() }))
                                 {
-                                    entity_debugger_commands.addCommand(.{ 
-                                        .remove_component = .{
-                                            .entity = entity,
-                                            .component_id = component_type_info,
-                                        } 
-                                    });
-                                }
+                                    imgui.igPushID_Str(component_type_info.name().ptr);
+                                    defer imgui.igPopID();
 
-                                switch (component_type_info.*) 
-                                {
-                                    .Struct => |struct_info| {
-                                        for (struct_info.fields) |field|
-                                        {
-                                            switch (field.type.*)
+                                    if (widgets.button("Remove Component"))
+                                    {
+                                        entity_debugger_commands.addCommand(.{ 
+                                            .remove_component = .{
+                                                .entity = entity,
+                                                .component_id = component_type_info,
+                                            } 
+                                        });
+                                    }
+
+                                    switch (component_type_info.*) 
+                                    {
+                                        .Struct => |struct_info| {
+                                            for (struct_info.fields) |field|
                                             {
-                                                .Int => unreachable,
-                                                .Float => {
-                                                    const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
+                                                switch (field.type.*)
+                                                {
+                                                    .Int => unreachable,
+                                                    .Float => {
+                                                        const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
 
-                                                    const ptr_to_field = @ptrCast([*]u8, ptr_to_struct) + field.offset;
+                                                        const ptr_to_field = @ptrCast([*]u8, ptr_to_struct) + field.offset;
 
-                                                    const ptr_to_float: *f32 = @ptrCast(*f32, @alignCast(@alignOf(f32), ptr_to_field));
+                                                        const ptr_to_float: *f32 = @ptrCast(*f32, @alignCast(@alignOf(f32), ptr_to_field));
 
-                                                    // widgets.textFormat("{s} = {d}", .{ field.name, ptr_to_float.* });
+                                                        widgets.dragFloat(field.name, ptr_to_float);
+                                                    },
+                                                    else => {
+                                                        widgets.textFormat("{s} = {*}", .{ field.name, ecs_scene.entityGetComponentPtr(entity, component_type_info) });
+                                                    },
+                                                }
+                                            }
+                                        },
+                                        .Enum => |enum_info| {
+                                            const ptr_to_enum = @ptrCast([*]u8, ecs_scene.entityGetComponentPtr(entity, component_type_info));
 
-                                                    widgets.dragFloat(field.name, ptr_to_float);
-                                                },
-                                                else => {},
+                                            var items: [256][*c]const u8 = undefined;
+
+                                            for (enum_info.fields, 0..) |field, i|
+                                            {
+                                                items[i] = field.name.ptr;
                                             }
 
-                                            // widgets.textFormat("{s} = {*}", .{ field.name, ecs_scene.entityGetComponentPtr(entity, component_type_info) });
-                                        }
-                                    },
-                                    else => {},
+                                            var current_item: c_int = @intCast(c_int, ptr_to_enum[0]);
+
+                                            if (imgui.igCombo_Str_arr(
+                                                "value", 
+                                                &current_item, 
+                                                &items, 
+                                                @intCast(c_int, enum_info.fields.len),
+                                                0
+                                            ))
+                                            {
+                                                ptr_to_enum[0] = @intCast(u8, current_item);
+                                            }
+                                        },
+                                        .Union => |union_info| {
+                                            const ptr_to_enum = @ptrCast([*]u8, ecs_scene.entityGetComponentPtr(entity, component_type_info)) + union_info.tag_offset;
+
+                                            var items: [256][*c]const u8 = undefined;
+
+                                            for (union_info.fields, 0..) |field, i|
+                                            {
+                                                items[i] = field.name.ptr;
+
+                                                widgets.textFormat("{s}", .{ field.name });
+                                            }
+
+                                            var current_item: c_int = @intCast(c_int, ptr_to_enum[0]);
+
+                                            if (imgui.igCombo_Str_arr(
+                                                "value", 
+                                                &current_item, 
+                                                &items, 
+                                                @intCast(c_int, union_info.fields.len),
+                                                0
+                                            ))
+                                            {
+                                                ptr_to_enum[0] = @intCast(u8, current_item);
+                                            } 
+
+                                            for (union_info.fields, 0..) |field, i|
+                                            {
+                                                if (i != @intCast(usize, current_item))
+                                                {
+                                                    // continue;
+                                                }
+
+                                                widgets.textFormat("{s}", .{ field.name });
+                                                
+                                                switch (field.type.*)
+                                                {
+                                                    .Int => |int_info| {
+                                                        widgets.textFormat("{}", .{ int_info });
+                                                    },
+                                                    .Void => {},
+                                                    else => {},
+                                                }
+                                            }
+                                        },
+                                        else => {},
+                                    }
                                 }
-                            }
-                            
-                            widgets.treeNodePop();
+                            }                            
                         }
                     }
                 }
                 widgets.end();
+
+                if (selected_entity != null and !ecs_scene.entityExists(selected_entity.?))
+                {
+                    selected_entity = null;
+                }
 
                 if (
                     selected_entity != null and

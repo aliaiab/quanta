@@ -54,10 +54,22 @@ pub const ChunkOffset = u16;
 
 pub const Chunk = struct 
 {
-    ///The maximum size of a chunk
-    pub const max_size: usize = 32 * 1024;
+    ///The alignment of the chunk block in memory
+    ///Always Aligned on cache line boundaries
+    ///Always aligned on a multiple of @alignOf(Entity)
+    pub const alignment: usize = 64;
 
-    data: [*]u8,
+    ///The maximum size of a chunk
+    ///Always a multiple of a cache line
+    pub const max_size: usize = 16 * 1024;
+
+    //Ensures that max_size is a multiple of alignment
+    comptime {
+        std.debug.assert(@rem(max_size, alignment) == 0);
+        std.debug.assert(@rem(alignment, @alignOf(Entity)) == 0);
+    }
+
+    data: [*]u8 align(alignment),
     columns: []ChunkColumn,
     row_count: u32,
 
@@ -244,6 +256,24 @@ pub fn entityDestroy(self: *ComponentStore, entity: Entity) void
     _ = self.entity_index.swapRemove(entity);
 
     self.next_entity_generation +%= 1;
+}
+
+///Creates a new entity with identical components to entity
+pub fn entityClone(self: *ComponentStore, src_entity: Entity) !Entity 
+{
+    const dst_entity = try self.entityCreate(.{});
+
+    const src_entity_desc = self.entity_index.getPtr(src_entity) orelse unreachable;
+    const dest_entity_desc = self.entity_index.getPtr(dst_entity) orelse unreachable;
+
+    const row_index = try self.archetypeAddRow(src_entity_desc.archetype_index, src_entity);
+
+    dest_entity_desc.archetype_index = src_entity_desc.archetype_index;
+    dest_entity_desc.row_index = row_index;
+
+    try self.archetypeCopyRow(src_entity_desc.archetype_index, src_entity_desc.row_index, dest_entity_desc.row_index);
+
+    return dst_entity;
 }
 
 ///Removes all components on an entity, returning it to the empty state
@@ -1040,7 +1070,7 @@ fn createArchetype(
 {
     const archetype_index = @intCast(ArchetypeIndex, self.archetypes.items.len);
 
-    const chunk_data = try self.allocator.alignedAlloc(u8, @alignOf(Entity), Chunk.max_size);
+    const chunk_data = try self.allocator.alignedAlloc(u8, Chunk.alignment, Chunk.max_size);
     errdefer self.allocator.free(chunk_data);
 
     std.sort.sort(ComponentId, component_ids, {}, componentLessThan);
@@ -1130,6 +1160,7 @@ fn createArchetype(
     return archetype_index;
 }
 
+///Adds a row to the archetype, leaving the component data undefined
 fn archetypeAddRow(
     self: *ComponentStore,
     archetype_index: ArchetypeIndex,
@@ -1153,6 +1184,31 @@ fn archetypeAddRow(
     return row_index;
 }
 
+///Copies the data from src_row_index to dst_row_index within the same archetype
+fn archetypeCopyRow(
+    self: *ComponentStore,
+    archetype_index: ArchetypeIndex,
+    src_row_index: u32,
+    dst_row_index: u32,
+) !void
+{
+    std.debug.assert(archetype_index != 0);
+
+    const archetype: *Archetype = &self.archetypes.items[archetype_index];
+
+    for (archetype.chunk.columns) |*column|
+    {
+        if (column.element_size == 0) continue;
+
+        const dst_start = column.offset + dst_row_index * column.element_size;
+        const dst = archetype.chunk.data[dst_start .. dst_start + column.element_size];
+        const src_start = column.offset + src_row_index * column.element_size;
+        const src = archetype.chunk.data[src_start .. src_start + column.element_size];
+
+        std.mem.copy(u8, dst, src);
+    }
+}
+
 ///Performs a swap removal (O(1)) in order to keep the arrays parralel and contigious
 fn archetypeRemoveRow(
     self: *ComponentStore,
@@ -1162,8 +1218,10 @@ fn archetypeRemoveRow(
 {
     const archetype: *Archetype = &self.archetypes.items[archetype_index];
 
-    if (archetype.chunk.row_count < 1) 
+    if (archetype.chunk.row_count == 1 or row_index >= archetype.chunk.row_count - 1)
     {
+        archetype.chunk.row_count -= 1;
+
         return;
     }
 
@@ -1185,11 +1243,11 @@ fn archetypeRemoveRow(
 
     std.mem.swap(Entity, &entities[row_index], &entities[entities.len - 1]);
 
-    const entity_to_update_description = self.entity_index.getPtr(entity_to_update).?;
+    defer archetype.chunk.row_count -= 1;
+
+    const entity_to_update_description = self.entity_index.getPtr(entity_to_update) orelse return;
 
     entity_to_update_description.row_index = @intCast(u32, row_index);
-
-    archetype.chunk.row_count -= 1;
 }
 
 ///Removes the row at row_index from the source archetype and adds a row to dest archetype and moves it there  
@@ -1223,7 +1281,7 @@ fn archetypeMoveRow(
         const src_id = source_archetype.component_ids.items[i];
         const dst_id = destination_archetype.component_ids.items[i];
 
-        // std.debug.assert(src_id == dst_id);
+        std.debug.assert(src_id == dst_id);
 
         if (
             src_id == dst_id and 

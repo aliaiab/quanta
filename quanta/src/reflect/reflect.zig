@@ -13,6 +13,7 @@ pub const Type = union(enum)
     Int: Int,
     Float: Float,
     Bool: void,
+    Void: void,
 
     pub const Struct = struct 
     {
@@ -46,7 +47,8 @@ pub const Type = union(enum)
         is_exhaustive: bool,
     };
 
-    pub const EnumField = struct {
+    pub const EnumField = struct 
+    {
         name: []const u8,
         value: u64,
     };
@@ -80,6 +82,7 @@ pub const Type = union(enum)
         alignment: u32,
         layout: std.builtin.Type.ContainerLayout,
         tag_type: ?*const Type,
+        tag_offset: u32,
         fields: []const UnionField,
         decls: []const Declaration,
     };
@@ -129,6 +132,23 @@ pub const Type = union(enum)
                 };
             },
             .Union => |union_info| {
+                comptime var fields: [union_info.fields.len]UnionField = undefined;
+
+                comptime var data_end: usize = 0;
+
+                inline for (&fields, union_info.fields) |*union_field, comptime_union_field|
+                {
+                    union_field.* = .{
+                        .name = comptime_union_field.name,
+                        .type = info(comptime_union_field.type),
+                        .alignment = @alignOf(comptime_union_field.type),
+                    };
+
+                    data_end = @max(@sizeOf(comptime_union_field.type), data_end);
+                }
+
+                data_end = std.mem.alignForwardLog2(data_end, @alignOf(union_info.tag_type.?));
+
                 type_data = .{
                     .Union = .{
                         .name = @typeName(T),
@@ -136,19 +156,30 @@ pub const Type = union(enum)
                         .alignment = @alignOf(T),
                         .layout = union_info.layout,
                         .tag_type = if (union_info.tag_type != null) info(union_info.tag_type.?) else null, 
-                        .fields = &.{},
+                        .tag_offset = @intCast(u32, data_end),
+                        .fields = &fields,
                         .decls = &.{},
                     }
                 };
             },
             .Enum => |enum_info| {
+                comptime var fields: [enum_info.fields.len]EnumField = undefined;
+
+                inline for (&fields, enum_info.fields) |*enum_field, comptime_enum_field|
+                {
+                    enum_field.* = .{
+                        .name = comptime_enum_field.name,
+                        .value = comptime_enum_field.value,
+                    };
+                }
+
                 type_data = .{
                     .Enum = .{
                         .name = @typeName(T),
                         .size = @sizeOf(T),
                         .alignment = @alignOf(T),
                         .tag_type = info(enum_info.tag_type),
-                        .fields = &.{},
+                        .fields = &fields,
                         .decls = &.{},
                         .is_exhaustive = enum_info.is_exhaustive,
                     }
@@ -171,6 +202,9 @@ pub const Type = union(enum)
             },
             .Bool => {
                 type_data = .Bool;
+            },
+            .Void => {
+                type_data = .Void;
             },
             else => unreachable,
         }

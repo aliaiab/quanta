@@ -44,6 +44,15 @@ pub fn treeNodePop() void
     imgui.igTreePop();
 }
 
+pub fn collapsingHeader(comptime format: []const u8, args: anytype) bool 
+{
+    var format_buf: [4096 * 8]u8 = undefined;
+
+    const label = std.fmt.bufPrintZ(&format_buf, format, args) catch unreachable;
+
+    return imgui.igCollapsingHeader_BoolPtr(label.ptr, null, 0);
+}
+
 pub fn dragFloat(label: []const u8, float: *f32) void 
 {
     _ = imgui.igDragFloat(label.ptr, float, 0.1, std.math.f32_min, std.math.f32_max, null, 0);
