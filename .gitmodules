@@ -19,3 +19,6 @@
 [submodule "quanta/lib/zgltf"]
 	path = quanta/lib/zgltf
 	url = https://github.com/thedoctorquantum/zgltf
+[submodule "quanta/lib/ImGuizmo"]
+	path = quanta/lib/ImGuizmo
+	url = https://github.com/CedricGuillemet/ImGuizmo.git

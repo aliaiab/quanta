@@ -85,8 +85,8 @@ pub const Context = struct
 pub fn link(step: *std.build.CompileStep) !void 
 {
     step.addIncludePath("quanta/lib/Nuklear/");
-    step.addCSourceFile("quanta/src/nuklear/nuklear.c", &[_][]const u8 {});
-    step.addIncludePath("lib/cimgui/imgui/");
+    step.addIncludePath("quanta/lib/cimgui/imgui/");
+    step.addIncludePath("quanta/lib/ImGuizmo/");
     step.addCSourceFiles(&[_][]const u8 {
         "quanta/lib/cimgui/imgui/imgui.cpp",
         "quanta/lib/cimgui/imgui/imgui_draw.cpp",
@@ -94,6 +94,9 @@ pub fn link(step: *std.build.CompileStep) !void
         "quanta/lib/cimgui/imgui/imgui_widgets.cpp",
         "quanta/lib/cimgui/imgui/imgui_demo.cpp",
         "quanta/lib/cimgui/cimgui.cpp",
+        "quanta/lib/ImGuizmo/ImGuizmo.cpp",
+        "quanta/src/nuklear/nuklear.c",
+        "quanta/src/imgui/guizmo.cpp",
     }, &[_][]const u8 {});
     step.linkLibCpp();
 
