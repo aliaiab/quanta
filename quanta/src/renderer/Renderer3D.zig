@@ -598,6 +598,29 @@ pub const Camera = struct
     target: [3]f32,
     fov: f32,
     exposure: f32,
+
+    ///Returns a non-inverse z projection matrix
+    pub fn getProjectionNonInverse(camera: Camera) [4][4]f32 
+    {
+        const aspect_ratio: f32 = @intToFloat(f32, window.getWidth()) / @intToFloat(f32, window.getHeight());  
+        const near_plane: f32 = 0.01;
+        const fov: f32 = camera.fov;
+
+        const projection_non_inverse = zalgebra.perspective(fov, aspect_ratio, near_plane, 500);
+
+        return projection_non_inverse.data;
+    }
+
+    pub fn getView(camera: Camera) [4][4]f32 
+    {
+        const view = zalgebra.lookAt(
+            .{ .data = camera.translation }, 
+            .{ .data = camera.target }, 
+            .{ .data = .{ 0, 1, 0 } },
+        );
+
+        return view.data;
+    }
 };
 
 pub const AmbientLight = extern struct 

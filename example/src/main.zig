@@ -15,6 +15,7 @@ const gltf = quanta.asset.importers.gltf;
 const zalgebra = quanta.math.zalgebra;
 const nk = quanta.nuklear.nuklear;
 const imgui = quanta.imgui.cimgui;
+const imguizmo = quanta.imgui.guizmo;
 const asset = quanta.asset;
 
 const quanta_components = quanta.ecs.components;
@@ -310,6 +311,8 @@ pub fn main() !void
     var entity_debugger_commands = quanta.ecs.CommandBuffer.init(allocator);
     defer entity_debugger_commands.deinit();
 
+    var selected_entity: ?quanta.ecs.ComponentStore.Entity = entity_b;
+
     while (!window.shouldClose())
     {
         const time_begin = std.time.nanoTimestamp();
@@ -476,6 +479,8 @@ pub fn main() !void
                 const widgets = quanta.imgui.widgets;
 
                 imgui.igNewFrame();
+                imguizmo.ImGuizmo_SetOrthographic(false);
+                imguizmo.ImGuizmo_BeginFrame();
 
                 imgui.igShowDemoWindow(null);
 
@@ -567,6 +572,53 @@ pub fn main() !void
                     }
                 }
                 widgets.end();
+
+                if (
+                    selected_entity != null and
+                    ecs_scene.entityHasComponent(selected_entity.?, quanta.ecs.components.Position)
+                )
+                {
+                    const entity_position = ecs_scene.entityGetComponent(selected_entity.?, quanta.ecs.components.Position) orelse unreachable;  
+
+                    imguizmo.ImGuizmo_SetImGuiContext(imgui.igGetCurrentContext());
+                    imguizmo.ImGuizmo_Enable(true);
+                    imguizmo.ImGuizmo_SetDrawlist(imgui.igGetBackgroundDrawList_Nil());
+                    imguizmo.ImGuizmo_AllowAxisFlip(false);
+                    imguizmo.ImGuizmo_SetID(0);
+                    imguizmo.ImGuizmo_SetRect(0, 0, @intToFloat(f32, window.getWidth()), @intToFloat(f32, window.getHeight()));
+
+                    const camera_view = camera.getView();
+                    const camera_projection = camera.getProjectionNonInverse();
+
+                    var manip_matrix: [4][4]f32 = zalgebra.Mat4.fromTranslate(.{ .data = .{ entity_position.x, entity_position.y, entity_position.z } }).data;
+
+                    _ = imguizmo.ImGuizmo_Manipulate(
+                        @ptrCast([*]const f32, &camera_view),
+                        @ptrCast([*]const f32, &camera_projection),
+                        imguizmo.Operation.translate,
+                        .world,
+                        @ptrCast([*]f32, &manip_matrix),
+                        null,
+                        null,
+                        null,
+                        null,
+                    );
+
+                    var position: [3]f32 = undefined;
+                    var rotation: [3]f32 = undefined;
+                    var scale: [3]f32 = undefined;
+
+                    imguizmo.ImGuizmo_DecomposeMatrixToComponents(
+                        @ptrCast([*]f32, &manip_matrix),
+                        &position,
+                        &rotation,
+                        &scale
+                    );
+
+                    entity_position.x = position[0];
+                    entity_position.y = position[1];
+                    entity_position.z = position[2];
+                }
 
                 try entity_debugger_commands.execute(&ecs_scene);
             }
