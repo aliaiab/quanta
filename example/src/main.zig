@@ -278,8 +278,8 @@ pub fn main() !void
 
     _ = try ecs_scene.entityCreate(
         .{
-            quanta_components.Velocity { .x = 0, .y = 0.5, .z = 0 },
             quanta_components.Position { .x = 0, .y = 4, .z = 0 },
+            quanta_components.Velocity { .x = 0, .y = 0.5, .z = 0 },
         }
     );
 

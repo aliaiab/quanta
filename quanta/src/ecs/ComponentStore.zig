@@ -858,18 +858,7 @@ fn addToArchetype(
             std.log.info("cached component: nameof({s})", .{ existing_component_id.name() });
         }
 
-        const source_edge = try source_archetype.edges.getOrPutValue(self.allocator, component_id, .{
-            .add = null,
-            .remove = null,
-        });
-
-        const destination_edge = try existing_archetype.edges.getOrPutValue(self.allocator, component_id, .{
-            .add = null, 
-            .remove = null,
-        });
-
-        source_edge.value_ptr.add = @intCast(u31, existing_archetype_index.?);
-        destination_edge.value_ptr.remove = @intCast(u31, source_archetype_index);
+        try self.archetypeCreateAddEdge(source_archetype_index, existing_archetype_index.?, component_id);
 
         return existing_archetype_index.?;
     }
@@ -895,24 +884,34 @@ fn addToArchetype(
 
     const archetype_index = try self.createArchetype(component_ids);
 
-    source_archetype = &self.archetypes.items[source_archetype_index];
+    try self.archetypeCreateAddEdge(source_archetype_index, archetype_index, component_id);
 
-    const archetype: *Archetype = &self.archetypes.items[archetype_index];
+    return archetype_index;
+}
+
+///Creates a by-directional edge between the two archetypes
+fn archetypeCreateAddEdge(
+    self: *ComponentStore,
+    source_archetype_index: ArchetypeIndex,
+    destination_archetype_index: ArchetypeIndex,
+    component_id: ComponentId,
+) !void 
+{
+    const source_archetype: *Archetype = &self.archetypes.items[source_archetype_index];
+    const destination_archetype: *Archetype = &self.archetypes.items[destination_archetype_index];
 
     const source_edge = try source_archetype.edges.getOrPutValue(self.allocator, component_id, .{
         .add = null,
         .remove = null,
     });
 
-    const destination_edge = try archetype.edges.getOrPutValue(self.allocator, component_id, .{
+    const destination_edge = try destination_archetype.edges.getOrPutValue(self.allocator, component_id, .{
         .add = null, 
         .remove = null,
     });
 
-    source_edge.value_ptr.add = @intCast(u31, archetype_index);
-    destination_edge.value_ptr.remove = @intCast(u31, source_archetype_index);
-
-    return archetype_index;
+    source_edge.value_ptr.add = @intCast(u31, destination_archetype_index);
+    destination_edge.value_ptr.remove = @intCast(u31, source_archetype_index);   
 }
 
 ///Returns an archetype with the components of the source archetype without the component specified by component_id 
@@ -975,9 +974,7 @@ fn removeFromArchetype(
 
     if (existing_archetype_index != null)
     {
-        const new_edge = try source_archetype.edges.getOrPutValue(self.allocator, component_id, .{ .add = null, .remove = null });
-
-        new_edge.value_ptr.*.remove = @intCast(u31, existing_archetype_index.?);
+        try self.archetypeCreateRemoveEdge(source_archetype_index, existing_archetype_index.?, component_id);
 
         return existing_archetype_index.?;
     }
@@ -1001,16 +998,39 @@ fn removeFromArchetype(
 
     const new_archetype_index = try self.createArchetype(component_ids);
 
-    const new_archetype: *Archetype = &self.archetypes.items[new_archetype_index];
+    try self.archetypeCreateRemoveEdge(source_archetype_index, new_archetype_index, component_id);
 
-    const edge = try new_archetype.edges.getOrPutValue(self.allocator, component_id, .{
+    return new_archetype_index;    
+}
+
+///Creates a by-directional edge between the two archetypes
+fn archetypeCreateRemoveEdge(
+    self: *ComponentStore,
+    source_archetype_index: ArchetypeIndex,
+    destination_archetype_index: ArchetypeIndex,
+    component_id: ComponentId,
+) !void 
+{
+    const source_archetype: *Archetype = &self.archetypes.items[source_archetype_index];
+    const destination_archetype: *Archetype = &self.archetypes.items[destination_archetype_index];
+
+    const source_edge = try source_archetype.edges.getOrPutValue(self.allocator, component_id, .{
+        .add = null,
+        .remove = null,
+    });
+
+    const destination_edge = try destination_archetype.edges.getOrPutValue(self.allocator, component_id, .{
         .add = null, 
         .remove = null,
     });
 
-    edge.value_ptr.add = @intCast(u31, source_archetype_index);
+    source_edge.value_ptr.remove = @intCast(u31, destination_archetype_index);
+    destination_edge.value_ptr.add = @intCast(u31, source_archetype_index);   
+}
 
-    return new_archetype_index;    
+fn componentLessThan(_: void, a: ComponentId, b: ComponentId) bool 
+{
+    return @ptrToInt(a) < @ptrToInt(b);
 }
 
 fn createArchetype(
@@ -1022,6 +1042,13 @@ fn createArchetype(
 
     const chunk_data = try self.allocator.alignedAlloc(u8, @alignOf(Entity), Chunk.max_size);
     errdefer self.allocator.free(chunk_data);
+
+    std.sort.sort(ComponentId, component_ids, {}, componentLessThan);
+
+    for (component_ids) |component_id|
+    {
+        std.log.warn("{}", .{ component_id.* });
+    }
 
     try self.archetypes.append(self.allocator, .{
         .component_ids = std.ArrayListUnmanaged(ComponentId).fromOwnedSlice(component_ids),
@@ -1090,8 +1117,6 @@ fn createArchetype(
         }
 
         running_offset = std.mem.alignForwardLog2(running_offset, @intCast(u8, component_type.alignment()));
-
-        std.log.warn("running_offset = {}, size = {}, align = {}", .{running_offset, component_type.size(), component_type.alignment()});
 
         destination_column.* = .{
             .offset = @intCast(ChunkOffset, running_offset),
@@ -1187,30 +1212,36 @@ fn archetypeMoveRow(
 
     const destination_row_index = try self.archetypeAddRow(destination_archetype_index, entity);
 
-    const common_length = std.math.min(source_archetype.chunk.columns.len, destination_archetype.chunk.columns.len);
+    const minimum_length = std.math.min(source_archetype.chunk.columns.len, destination_archetype.chunk.columns.len); 
 
     for (
-        source_archetype.chunk.columns[0..common_length], 
-        destination_archetype.chunk.columns[0..common_length]
-    ) |*source_column, *destination_column|
+        source_archetype.chunk.columns[0..minimum_length],
+        destination_archetype.chunk.columns[0..minimum_length],
+        0..
+    ) |source_column, destination_column, i|
     {
-        if (source_column.element_size == 0 or destination_column.element_size == 0) continue;
+        const src_id = source_archetype.component_ids.items[i];
+        const dst_id = destination_archetype.component_ids.items[i];
 
-        const dst_start = destination_column.offset + destination_column.element_size * destination_row_index;
-        const dst = destination_archetype.chunk.data[dst_start .. dst_start + destination_column.element_size];
+        // std.debug.assert(src_id == dst_id);
 
-        const src_start = source_column.offset + source_column.element_size * source_row_index;
-        const src = source_archetype.chunk.data[src_start .. src_start + source_column.element_size];
-
-        const src_end_start = source_column.offset + (source_archetype.chunk.row_count * source_column.element_size) - source_column.element_size;
-        const src_end = source_archetype.chunk.data[src_end_start .. src_end_start + source_column.element_size];
-
-        if (dst.len >= src.len)
+        if (
+            src_id == dst_id and 
+            (source_column.element_size != 0 and destination_column.element_size == 0)
+        )
         {
-            std.mem.copy(u8, dst, src);
-        }
+            const dst_start = destination_column.offset + destination_column.element_size * destination_row_index;
+            const dst = destination_archetype.chunk.data[dst_start .. dst_start + destination_column.element_size];
 
-        std.mem.copy(u8, src, src_end);
+            const src_start = source_column.offset + source_column.element_size * source_row_index;
+            const src = source_archetype.chunk.data[src_start .. src_start + source_column.element_size];
+
+            const src_end_start = source_column.offset + (source_archetype.chunk.row_count * source_column.element_size) - source_column.element_size;
+            const src_end = source_archetype.chunk.data[src_end_start .. src_end_start + source_column.element_size];
+
+            std.mem.copy(u8, dst, src);
+            std.mem.copy(u8, src, src_end);
+        }
     }
 
     const entities = source_archetype.chunk.entities();

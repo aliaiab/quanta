@@ -54,6 +54,8 @@ pub const Type = union(enum)
     pub const Declaration = struct 
     {
         name: []const u8,
+        type: *const Type,
+        value: *anyopaque,
         is_pub: bool,
     };
 
@@ -184,7 +186,7 @@ pub const Type = union(enum)
             .Struct => |struct_info| struct_info.name,
             .Enum => |enum_info| enum_info.name,
             .Union => |union_info| union_info.name,
-            else => unreachable,
+            else => "",
         };
     }
 
@@ -215,6 +217,18 @@ pub const Type = union(enum)
     {
         return self == info(T);
     } 
+
+    pub fn format(
+        self: Type,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+
+        try writer.print("name: {s}", .{ self.name() });
+    }
 };
 
 test 
