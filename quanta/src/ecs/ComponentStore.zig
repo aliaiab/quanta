@@ -63,33 +63,156 @@ pub const Chunk = struct
     ///Always a multiple of a cache line
     pub const max_size: usize = 16 * 1024;
 
+    ///Valid dynamic logarithmic sizes for chunks
+    pub const Size = enum(u8)
+    {
+        @"64b",
+        @"128b",
+        @"256b",
+        @"512b",
+        @"1kb",
+        @"2kb",
+        @"4kb",
+        @"8kb",
+        @"16kb",
+        @"32kb",
+        @"64kb",
+
+        pub inline fn toSize(self: Size) usize 
+        {
+            return @intCast(usize, @as(usize, 1024) << @intCast(u6, @enumToInt(self)));
+        }
+
+        pub inline fn fromSize(size: usize) Size 
+        {
+            return @intToEnum(Size, (size / 1024) / 4);
+        }
+    };
+
+    ///The maximum possible address space for a chunk is 65kb approx
+    pub const Address = u16;
+
+    pub const RowIndex = u16;
+
     //Ensures that max_size is a multiple of alignment
     comptime {
         std.debug.assert(@rem(max_size, alignment) == 0);
         std.debug.assert(@rem(alignment, @alignOf(Entity)) == 0);
+
+        _ = Size;
     }
 
-    data: [*]u8 align(alignment),
+    data: ?[*]u8 align(alignment),
     columns: []ChunkColumn,
-    row_count: u32,
+    row_count: RowIndex,
 
     ///Entity ids are stored at the beginning of the chunk
     inline fn entities(self: Chunk) []Entity
     {
-        return @ptrCast([*]Entity, @alignCast(@alignOf(Entity), self.data))[0..self.row_count];
+        return @ptrCast([*]Entity, @alignCast(@alignOf(Entity), self.data.?))[0..self.row_count];
     }
 
     inline fn getComponents(self: Chunk, comptime T: type, offset: usize) []T 
     {
-        return @ptrCast([*]T, @alignCast(@alignOf(T), self.data + offset))[0..self.row_count];
+        return @ptrCast([*]T, @alignCast(@alignOf(T), self.data.? + offset))[0..self.row_count];
     }
 };
 
 pub const ChunkColumn = struct 
 {
     offset: ChunkOffset,
-    element_size: u32,
-    element_alignment: u32,
+    element_size: u16,
+    element_alignment: u16,
+};
+
+///Standard allocator for allocating new chunks quickly
+pub const ChunkPool = struct 
+{
+    pub const FreeList = struct
+    {
+        offset: u16 = 0,
+        count: u16 = 0,
+        max_count: u16 = 0,
+    };
+
+    free_lists: [std.enums.values(Chunk.Size).len]FreeList,
+    chunk_ptrs: [][*]u8 align(Chunk.alignment),
+
+    ///Creates a new query pool, limiting the number of stored free chunks in each free list
+    ///To max_free_chunks
+    pub fn init(allocator: std.mem.Allocator, max_free_chunks: usize) !ChunkPool
+    {
+        var pool = ChunkPool 
+        { 
+            .free_lists = .{}, 
+            .chunk_ptrs = &.{} 
+        };
+
+        var chunk_ptr_count: usize = 0;
+
+        for (&pool.free_lists, 0..) |*free_list, i|
+        {
+            const size = @intToEnum(Chunk.Size, i);
+
+            _ = size;
+
+            free_list.offset = @intCast(u16, chunk_ptr_count);
+            free_list.count = 0;
+            free_list.max_count = @intCast(u16, max_free_chunks);
+
+            chunk_ptr_count += max_free_chunks;
+        }
+
+        pool.chunk_ptrs = try allocator.alloc([*]u8, chunk_ptr_count);
+        errdefer allocator.free(pool.chunk_ptrs);
+
+        return pool;
+    }
+
+    pub fn deinit(self: ChunkPool, allocator: std.mem.Allocator) void
+    {
+        allocator.free(self.chunk_ptrs);
+    }
+
+    pub fn alloc(self: *ChunkPool, size: Chunk.Size) ![*]u8
+    {
+        const free_list_index = @enumToInt(size);
+        const free_list = &self.free_lists[free_list_index];
+
+        if (free_list.count == 0)
+        {
+            const chunk_data = try std.heap.page_allocator.alignedAlloc(u8, Chunk.alignment, size.toSize());
+
+            return chunk_data.ptr;
+        }
+
+        const free_chunks = self.chunk_ptrs[free_list.offset..free_list.offset + free_list.count];
+
+        const chunk_data = free_chunks[free_chunks.len - 1];
+
+        free_list.count -= 1;
+
+        return chunk_data;
+    }
+
+    pub fn free(self: *ChunkPool, ptr: [*]u8, size: Chunk.Size) void 
+    {
+        const free_list_index = @enumToInt(size);
+        const free_list = &self.free_lists[free_list_index];
+
+        if (free_list.count == free_list.max_count)
+        {
+            std.heap.page_allocator.free(ptr[0..size.toSize()]);
+
+            return;
+        }
+
+        const free_chunks = self.chunk_ptrs[free_list.offset..free_list.offset + free_list.count + 1];
+
+        free_chunks[free_chunks.len - 1] = ptr;
+
+        free_list.count += 1;
+    }
 };
 
 pub const ArchetypeId = packed struct(u32)
@@ -111,12 +234,14 @@ pub const Archetype = struct
     component_ids: std.ArrayListUnmanaged(ComponentId) = .{},
     edges: std.AutoHashMapUnmanaged(ComponentId, Edge) = .{},
     chunk: Chunk,
+    chunk_max_entity_count: u32,
 };
 
 pub const EntityDescription = struct 
 {
     archetype_index: ArchetypeIndex,
-    row_index: u32,
+    chunk_index: u16 = 0,
+    row_index: u16,
 };
 
 pub const ArchetypeRecord = struct 
@@ -132,12 +257,13 @@ pub const ComponentTypeDescription = struct
 
 allocator: std.mem.Allocator,
 archetypes: std.ArrayListUnmanaged(Archetype),
+chunk_pool: ChunkPool,
 entity_index: std.AutoArrayHashMapUnmanaged(Entity, EntityDescription), 
 component_index: std.AutoArrayHashMapUnmanaged(ComponentId, ComponentTypeDescription),
-next_entity_index: u32,
-next_entity_generation: u16,
 resource_index: std.AutoArrayHashMapUnmanaged(ComponentId, ResourceDescription),
 resource_data: std.ArrayListUnmanaged(u8),
+next_entity_index: u32,
+next_entity_generation: u16,
 
 pub const ResourceDescription = struct 
 {
@@ -153,6 +279,7 @@ pub fn init(allocator: std.mem.Allocator) !ComponentStore
         .archetypes = .{},
         .entity_index = .{},
         .component_index = .{},
+        .chunk_pool = try ChunkPool.init(allocator, 4),
         .next_entity_index = 0,
         .next_entity_generation = 0,
         .resource_index = .{},
@@ -163,6 +290,7 @@ pub fn init(allocator: std.mem.Allocator) !ComponentStore
         .component_ids = .{},
         .chunk = .{ .columns = &.{}, .row_count = 0, .data = undefined },
         .edges = .{},
+        .chunk_max_entity_count = 0,
     });
 
     return self;
@@ -178,7 +306,11 @@ pub fn deinit(self: *ComponentStore) void
 
         archetype.component_ids.deinit(self.allocator);
 
-        self.allocator.free(archetype.chunk.data[0..Chunk.max_size]);
+        if (archetype.chunk.data != null)
+        {
+            self.chunk_pool.free(archetype.chunk.data.?, .@"16kb");
+        }
+
         self.allocator.free(archetype.chunk.columns);
     }
 
@@ -188,6 +320,7 @@ pub fn deinit(self: *ComponentStore) void
     }
 
     self.archetypes.deinit(self.allocator);
+    self.chunk_pool.deinit(self.allocator);
     self.entity_index.deinit(self.allocator);
     self.component_index.deinit(self.allocator);
 
@@ -269,7 +402,7 @@ pub fn entityClone(self: *ComponentStore, src_entity: Entity) !Entity
     const row_index = try self.archetypeAddRow(src_entity_desc.archetype_index, src_entity);
 
     dest_entity_desc.archetype_index = src_entity_desc.archetype_index;
-    dest_entity_desc.row_index = row_index;
+    dest_entity_desc.row_index = @intCast(u16, row_index);
 
     try self.archetypeCopyRow(src_entity_desc.archetype_index, src_entity_desc.row_index, dest_entity_desc.row_index);
 
@@ -312,7 +445,7 @@ pub fn entityAddComponent(
     std.debug.assert(self.archetypeHasComponent(archetype_index, T));
 
     entity_description.archetype_index = archetype_index;
-    entity_description.row_index = @intCast(u32, try self.archetypeMoveRow(source_archetype_index, archetype_index, entity_description.row_index, entity));
+    entity_description.row_index = @intCast(u16, try self.archetypeMoveRow(source_archetype_index, archetype_index, entity_description.row_index, entity));
 
     if (@sizeOf(T) == 0)
     {
@@ -379,7 +512,7 @@ pub fn entityRemoveComponentId(
         return;
     }
 
-    entity_description.row_index = @intCast(u32, try self.archetypeMoveRow(source_archetype_index, archetype_index, entity_description.row_index, entity));
+    entity_description.row_index = @intCast(u16, try self.archetypeMoveRow(source_archetype_index, archetype_index, entity_description.row_index, entity));
 }
 
 pub fn entitySetComponent(
@@ -522,7 +655,7 @@ pub fn entityGetComponentPtr(
 
     const column = entity_archetype.chunk.columns[archetype_record.column];
 
-    return @ptrCast(*anyopaque, entity_archetype.chunk.data + column.offset + entity_description.row_index * column.element_size); 
+    return @ptrCast(*anyopaque, entity_archetype.chunk.data.? + column.offset + entity_description.row_index * column.element_size); 
 }
 
 ///A query filter with the type T
@@ -1070,8 +1203,12 @@ fn createArchetype(
 {
     const archetype_index = @intCast(ArchetypeIndex, self.archetypes.items.len);
 
-    const chunk_data = try self.allocator.alignedAlloc(u8, Chunk.alignment, Chunk.max_size);
-    errdefer self.allocator.free(chunk_data);
+    //Without a chunk pool
+    // const chunk_data = try self.allocator.alignedAlloc(u8, Chunk.alignment, Chunk.max_size);
+    // errdefer self.allocator.free(chunk_data);
+
+    const chunk_data = try self.chunk_pool.alloc(.@"16kb");
+    errdefer self.chunk_pool.free(chunk_data, .@"16kb");
 
     std.sort.sort(ComponentId, component_ids, {}, componentLessThan);
 
@@ -1084,10 +1221,11 @@ fn createArchetype(
         .component_ids = std.ArrayListUnmanaged(ComponentId).fromOwnedSlice(component_ids),
         .edges = .{},
         .chunk = .{
-            .data = chunk_data.ptr,
+            .data = chunk_data,
             .columns = &.{},
             .row_count = 0,
         },
+        .chunk_max_entity_count = 0,
     });
 
     const archetype: *Archetype = &self.archetypes.items[archetype_index];
@@ -1124,6 +1262,8 @@ fn createArchetype(
     //The size of an entity id, the size of the components and their alignment
     const max_entity_count = max_size_without_padding / bytes_per_entity;
 
+    archetype.chunk_max_entity_count = @intCast(u32, max_entity_count);
+
     std.log.warn("max_entity_count for this chunk = {}", .{ max_entity_count });
 
     const entity_end_offset = max_entity_count * @sizeOf(Entity);
@@ -1150,8 +1290,8 @@ fn createArchetype(
 
         destination_column.* = .{
             .offset = @intCast(ChunkOffset, running_offset),
-            .element_size = @intCast(u32, component_type.size()),
-            .element_alignment = @intCast(u32, component_type.alignment()),
+            .element_size = @intCast(u16, component_type.size()),
+            .element_alignment = @intCast(u16, component_type.alignment()),
         };
 
         running_offset += @intCast(ChunkOffset, max_entity_count) * @intCast(ChunkOffset, destination_column.element_size);
@@ -1174,6 +1314,13 @@ fn archetypeAddRow(
     const row_index = archetype.chunk.row_count;
 
     archetype.chunk.row_count += 1;
+
+    std.debug.assert(archetype.chunk.row_count <= archetype.chunk_max_entity_count);
+
+    if (archetype.chunk.data == null)
+    {
+        archetype.chunk.data = try self.chunk_pool.alloc(.@"16kb");
+    }
 
     const entities = archetype.chunk.entities();
 
@@ -1201,9 +1348,9 @@ fn archetypeCopyRow(
         if (column.element_size == 0) continue;
 
         const dst_start = column.offset + dst_row_index * column.element_size;
-        const dst = archetype.chunk.data[dst_start .. dst_start + column.element_size];
+        const dst = archetype.chunk.data.?[dst_start .. dst_start + column.element_size];
         const src_start = column.offset + src_row_index * column.element_size;
-        const src = archetype.chunk.data[src_start .. src_start + column.element_size];
+        const src = archetype.chunk.data.?[src_start .. src_start + column.element_size];
 
         std.mem.copy(u8, dst, src);
     }
@@ -1218,10 +1365,21 @@ fn archetypeRemoveRow(
 {
     const archetype: *Archetype = &self.archetypes.items[archetype_index];
 
-    if (archetype.chunk.row_count == 1 or row_index >= archetype.chunk.row_count - 1)
-    {
+    defer {
         archetype.chunk.row_count -= 1;
 
+        if (archetype.chunk.row_count == 0)
+        {
+            std.log.info("WE HAVE FOUND A DEAD CHUNK", .{});
+
+            self.chunk_pool.free(archetype.chunk.data.?, .@"16kb");
+
+            archetype.chunk.data = null;
+        }
+    }
+
+    if (archetype.chunk.row_count == 1 or row_index >= archetype.chunk.row_count - 1)
+    {
         return;
     }
 
@@ -1230,9 +1388,9 @@ fn archetypeRemoveRow(
         if (column.element_size == 0) continue;
 
         const dst_start = column.offset + row_index * column.element_size;
-        const dst = archetype.chunk.data[dst_start .. dst_start + column.element_size];
+        const dst = archetype.chunk.data.?[dst_start .. dst_start + column.element_size];
         const src_start = column.offset + (archetype.chunk.row_count * column.element_size) - column.element_size;
-        const src = archetype.chunk.data[src_start .. src_start + column.element_size];
+        const src = archetype.chunk.data.?[src_start .. src_start + column.element_size];
 
         std.mem.copy(u8, dst, src);
     }
@@ -1243,11 +1401,9 @@ fn archetypeRemoveRow(
 
     std.mem.swap(Entity, &entities[row_index], &entities[entities.len - 1]);
 
-    defer archetype.chunk.row_count -= 1;
-
     const entity_to_update_description = self.entity_index.getPtr(entity_to_update) orelse return;
 
-    entity_to_update_description.row_index = @intCast(u32, row_index);
+    entity_to_update_description.row_index = @intCast(u16, row_index);
 }
 
 ///Removes the row at row_index from the source archetype and adds a row to dest archetype and moves it there  
@@ -1289,13 +1445,13 @@ fn archetypeMoveRow(
         )
         {
             const dst_start = destination_column.offset + destination_column.element_size * destination_row_index;
-            const dst = destination_archetype.chunk.data[dst_start .. dst_start + destination_column.element_size];
+            const dst = destination_archetype.chunk.data.?[dst_start .. dst_start + destination_column.element_size];
 
             const src_start = source_column.offset + source_column.element_size * source_row_index;
-            const src = source_archetype.chunk.data[src_start .. src_start + source_column.element_size];
+            const src = source_archetype.chunk.data.?[src_start .. src_start + source_column.element_size];
 
             const src_end_start = source_column.offset + (source_archetype.chunk.row_count * source_column.element_size) - source_column.element_size;
-            const src_end = source_archetype.chunk.data[src_end_start .. src_end_start + source_column.element_size];
+            const src_end = source_archetype.chunk.data.?[src_end_start .. src_end_start + source_column.element_size];
 
             std.mem.copy(u8, dst, src);
             std.mem.copy(u8, src, src_end);
@@ -1310,9 +1466,20 @@ fn archetypeMoveRow(
 
     const entity_to_update_description = self.entity_index.getPtr(entity_to_update).?;
 
-    entity_to_update_description.row_index = @intCast(u32, source_row_index);
+    entity_to_update_description.row_index = @intCast(u16, source_row_index);
 
     source_archetype.chunk.row_count -= 1;
+
+    if (source_archetype.chunk.row_count == 0)
+    {
+        std.log.info("WE HAVE FOUND A DEAD CHUNK", .{});
+
+        // self.allocator.free(source_archetype.chunk.data.?[0..Chunk.max_size]);
+
+        self.chunk_pool.free(source_archetype.chunk.data.?, .@"16kb");
+
+        source_archetype.chunk.data = null;
+    }
 
     return destination_row_index;
 }

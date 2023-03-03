@@ -697,6 +697,64 @@ pub fn main() !void
                 }
                 widgets.end();
 
+                if (widgets.begin("Entity Chunks"))
+                {
+                    var total_chunk_entity_count: usize = 0;
+                    var total_used_chunk_entity_count: usize = 0;
+                    
+                    var total_chunk_size: usize = 0;
+
+                    for (ecs_scene.archetypes.items[1..]) |archetype|
+                    {
+                        const chunk: *const quanta.ecs.ComponentStore.Chunk = &archetype.chunk;
+
+                        if (chunk.data == null) continue;
+
+                        total_chunk_entity_count += archetype.chunk_max_entity_count;
+                        total_used_chunk_entity_count += chunk.row_count;
+
+                        total_chunk_size += quanta.ecs.ComponentStore.Chunk.max_size;
+                    }
+
+                    widgets.textFormat("total entity utilization: {d:.1}%", .{ (@intToFloat(f32, total_used_chunk_entity_count) / @intToFloat(f32, total_chunk_entity_count)) * 100.0 });                        
+
+                    const log_2_size = std.math.log2_int(usize, total_chunk_size);
+
+                    switch (log_2_size)
+                    {
+                        10...19 => {
+                            widgets.textFormat("total size: {}kb", .{ total_chunk_size / 1024 });
+                        },
+                        20...29 => {
+                            widgets.textFormat("total size: {}mb", .{ total_chunk_size / (1024 * 1024) });
+                        },
+                        else => {
+                            widgets.textFormat("total size: {}b", .{ total_chunk_size });
+                        },
+                    }
+
+                    for (ecs_scene.archetypes.items[1..], 1..) |archetype, archetype_index|
+                    {
+                        const chunk_index = archetype_index;
+                        const chunk: *const quanta.ecs.ComponentStore.Chunk = &archetype.chunk;
+
+                        if (chunk.data == null) continue;
+
+                        imgui.igSeparator();
+
+                        if (widgets.collapsingHeader("Chunk ({})", .{ chunk_index }))
+                        {
+                            widgets.textFormat("alignment: {}", .{ quanta.ecs.ComponentStore.Chunk.alignment });
+                            widgets.textFormat("size: {}", .{ quanta.ecs.ComponentStore.Chunk.max_size });
+                            widgets.textFormat("address: {x}", .{ @ptrToInt(chunk.data) });
+                            widgets.textFormat("entity_count: {}", .{ chunk.row_count });
+                            widgets.textFormat("max_entity_count: {}", .{ archetype.chunk_max_entity_count });                        
+                            widgets.textFormat("entity utilization: {d:.1}%", .{ (@intToFloat(f32, chunk.row_count) / @intToFloat(f32, archetype.chunk_max_entity_count)) * 100.0 });                        
+                        }
+                    }
+                }
+                widgets.end();
+
                 if (selected_entity != null and !ecs_scene.entityExists(selected_entity.?))
                 {
                     selected_entity = null;
