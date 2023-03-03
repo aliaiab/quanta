@@ -371,7 +371,9 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
 
         for (layer_properties) |layer_property|
         {
-            log.info("  {s}", .{ layer_property.layer_name });
+            const sentinel_index = std.mem.indexOfSentinel(u8, 0, @ptrCast([*:0]const u8, &layer_property.layer_name));
+
+            log.info("  {s}", .{ layer_property.layer_name[0..sentinel_index] });
         }
 
         inline for (requested_layers) |layer|
@@ -558,7 +560,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
 
             log.info("Device [{}] {s}: api_version: {}.{}.{}.{}", .{ 
                 i, 
-                properties.properties.device_name, 
+                properties.properties.device_name[0..std.mem.indexOfScalar(u8, &properties.properties.device_name, 0).?], 
                 vk.apiVersionMajor(properties.properties.api_version), 
                 vk.apiVersionMinor(properties.properties.api_version), 
                 vk.apiVersionPatch(properties.properties.api_version), 

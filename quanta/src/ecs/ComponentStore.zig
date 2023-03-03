@@ -135,6 +135,7 @@ pub const ChunkPool = struct
         max_count: u16 = 0,
     };
 
+    small_chunk_allocations: [6][*]u8,
     free_lists: [std.enums.values(Chunk.Size).len]FreeList,
     chunk_ptrs: [][*]u8 align(Chunk.alignment),
 
@@ -145,7 +146,8 @@ pub const ChunkPool = struct
         var pool = ChunkPool 
         { 
             .free_lists = .{}, 
-            .chunk_ptrs = &.{} 
+            .chunk_ptrs = &.{},
+            .small_chunk_allocations = undefined,
         };
 
         var chunk_ptr_count: usize = 0;
@@ -253,6 +255,58 @@ pub const ArchetypeRecord = struct
 pub const ComponentTypeDescription = struct 
 {
     archetypes: std.AutoArrayHashMapUnmanaged(ArchetypeIndex, ArchetypeRecord) = .{},
+};
+
+///Defines a unique mapping of entiy ids to storage locations
+///Allows random access of stable entity ids
+const EntityMap = struct 
+{
+    entity_descriptions: std.SegmentedList(EntityDescription, 0),
+    next_entity_index: u32,
+    next_entity_generation: u16,
+
+    pub fn addEntity(self: EntityMap, allocator: std.mem.Allocator) !Entity
+    {
+        var entity = EntityData 
+        { 
+            .index = self.next_entity_index, 
+            .generation = self.next_entity_generation,
+            .flags = .{},
+        };
+
+        try self.entity_descriptions.append(allocator, .{
+            .archetype_index = 0,
+            .row_index = 0,
+        });
+
+        self.next_entity_index += 1;
+
+        return entity.toHandle();
+    }
+
+    pub fn removeEntity(self: EntityMap, entity: Entity) void 
+    {
+        //We can't do a swap remove (as of now) as it would invalidate
+        //The swapped entity description
+        // _ = self.entity_index.swapRemove(entity);
+
+        _ = entity;
+
+        self.next_entity_generation +%= 1;   
+    }
+
+    ///Returns null if the entity doesn't exist
+    pub fn get(self: EntityMap, entity: Entity) ?*EntityDescription
+    {
+        var entity_data = EntityData.fromHandle(entity);
+
+        if (entity_data.index >= self.entity_descriptions.len)
+        {
+            return null;
+        }
+
+        return self.entity_descriptions.at(entity_data.index);
+    }
 };
 
 allocator: std.mem.Allocator,
@@ -490,7 +544,7 @@ pub fn entityRemoveComponent(
         return;
     }
 
-    entity_description.row_index = @intCast(u32, try self.archetypeMoveRow(source_archetype_index, archetype_index, entity_description.row_index, entity));
+    entity_description.row_index = @intCast(u16, try self.archetypeMoveRow(source_archetype_index, archetype_index, entity_description.row_index, entity));
 }
 
 pub fn entityRemoveComponentId(
@@ -1202,10 +1256,6 @@ fn createArchetype(
 ) !ArchetypeIndex 
 {
     const archetype_index = @intCast(ArchetypeIndex, self.archetypes.items.len);
-
-    //Without a chunk pool
-    // const chunk_data = try self.allocator.alignedAlloc(u8, Chunk.alignment, Chunk.max_size);
-    // errdefer self.allocator.free(chunk_data);
 
     const chunk_data = try self.chunk_pool.alloc(.@"16kb");
     errdefer self.chunk_pool.free(chunk_data, .@"16kb");

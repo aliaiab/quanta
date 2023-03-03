@@ -18,7 +18,7 @@ pub fn text(string: []const u8) void
 
 pub fn textFormat(comptime format: []const u8, args: anytype) void 
 {
-    var format_buf: [4096 * 8]u8 = undefined;
+    var format_buf: [4096 * 16]u8 = undefined;
 
     text(std.fmt.bufPrint(&format_buf, format, args) catch unreachable);
 }
@@ -26,6 +26,11 @@ pub fn textFormat(comptime format: []const u8, args: anytype) void
 pub fn button(label: [:0]const u8) bool
 {
     return imgui.igButton(label.ptr, .{ .x = 0, .y = 0 });
+}
+
+pub fn checkbox(label: [:0]const u8, value: *bool) bool 
+{
+    return imgui.igCheckbox(label, value);
 }
 
 pub fn treeNodePush(comptime format: []const u8, args: anytype) bool 
