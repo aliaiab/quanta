@@ -51,6 +51,11 @@ pub const UniformScale = struct
     value: f32,
 };
 
+pub const Visibility = struct 
+{
+    is_visible: bool,
+};
+
 pub const NonUniformScale = struct 
 {
     x: f32,
@@ -60,8 +65,35 @@ pub const NonUniformScale = struct
 
 pub const RendererMesh = struct 
 {
-    const Renderer3D = @import("../renderer.zig").Renderer3D;
-
     mesh: Renderer3D.MeshHandle,
     material: Renderer3D.MaterialHandle,
 };
+
+pub const PointLight = struct 
+{
+    intensity: f32,
+    diffuse: [3]f32,
+
+    ///Tells the editor how to serialize this field
+    // pub const editor = .{
+    //     .diffuse = .{
+    //         .edit_type = "color",
+    //     },
+    // };
+
+    pub const editor = EditorInfo
+    {
+        .diffuse = .{
+            .edit_type = "color"
+        }
+    };
+
+    pub const EditorInfo = struct 
+    {
+        diffuse: struct {
+            edit_type: []const u8
+        },
+    };
+};
+
+const Renderer3D = @import("../renderer.zig").Renderer3D;

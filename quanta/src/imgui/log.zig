@@ -20,8 +20,16 @@ var show_warn: bool = true;
 var show_err: bool = true;
 var show_debug: bool = true;
 
+var dirty: bool = false; 
+
+var first_run: bool = true;
+var last_frame_height: f32 = 0;
+
+var viewed_message_count: u32 = 100;
+
 pub fn viewer(name: [:0]const u8) void 
 {
+    defer first_run = false;
     defer widgets.end();
 
     if (!widgets.begin(name)) return;
@@ -33,14 +41,26 @@ pub fn viewer(name: [:0]const u8) void
     _ = widgets.checkbox("err", &show_err);
     imgui.igSameLine(0, 10);
     _ = widgets.checkbox("debug", &show_debug);
+    imgui.igSameLine(0, 10);
+
+    _ = imgui.igDragInt("Message count", @ptrCast(*c_int, &viewed_message_count), 1, 0, @intCast(c_int, messages.items.len), null, 0);
 
     imgui.igSeparator();
+
+    if (dirty)
+    {
+        defer dirty = false;
+
+
+    }
 
     const reserve_height = (imgui.igGetStyle().*.ItemSpacing.y * 2) + imgui.igGetFrameHeightWithSpacing();
 
     if (imgui.igBeginChild_Str("Scroll Area", .{ .x = 0, .y = -reserve_height }, false, imgui.ImGuiWindowFlags_HorizontalScrollbar))
-    {        
-        for (messages.items) |message|
+    {    
+        const message_count = viewed_message_count;
+
+        for (messages.items[messages.items.len - message_count..]) |message|
         {
             if (!show_info and message.level == .info) continue;
             if (!show_warn and message.level == .warn) continue;
@@ -82,15 +102,20 @@ pub fn viewer(name: [:0]const u8) void
 
             if (message.scope != null)
             {
+                imgui.igPushStyleColor_Vec4(imgui.ImGuiCol_Text, .{ .x = 0.5, .y = 0.5, .z = 0.5, .w = 1 });
+
                 widgets.textFormat("[{s}]", .{ message.scope.? });
 
                 imgui.igSameLine(0, 0);
+
+                imgui.igPopStyleColor(1);
             }
 
             widgets.textFormat(": {s}\n", .{ 
                 string_buffer.items[message.text_offset..message.text_offset + message.text_length] 
             });
         }
+    
     }
     imgui.igEndChild();
 }
@@ -118,4 +143,6 @@ pub fn logMessage(
         .text_offset = @intCast(u32, text_offset), 
         .text_length = @intCast(u32, message_string.len),
     });
+
+    dirty = true;
 }

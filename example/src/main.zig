@@ -257,10 +257,14 @@ pub fn main() !void
         }
     );
 
-    _ = try ecs_scene.entityCreate(
+    const test_entity = try ecs_scene.entityCreate(
         .{
-            quanta_components.Position { .x = 0, .y = 10, .z = 0 },
-            quanta_components.Velocity { .x = 0, .y = -10, .z = 0 },
+            quanta_components.Position { .x = 0, .y = 50, .z = 0 },
+            quanta_components.PointLight {
+                .intensity = 1000,
+                .diffuse = .{ 1, 1, 1 },
+            },
+            quanta_components.Visibility { .is_visible = true },
         }
     );
 
@@ -268,6 +272,7 @@ pub fn main() !void
         .{
             quanta_components.Position { .x = 0, .y = 4, .z = 0 },
             quanta_components.Velocity { .x = 0, .y = 0.5, .z = 0 },
+            quanta.ecs.ComponentStore.Entity.nil,
         }
     );
 
@@ -298,7 +303,7 @@ pub fn main() !void
     var entity_debugger_commands = quanta.ecs.CommandBuffer.init(allocator);
     defer entity_debugger_commands.deinit();
 
-    var selected_entity: ?quanta.ecs.ComponentStore.Entity = entity_b;
+    var selected_entity: ?quanta.ecs.ComponentStore.Entity = test_entity;
 
     var cloned_entity_last_frame: bool = false;
 
@@ -415,6 +420,7 @@ pub fn main() !void
             defer Renderer3D.endSceneRender(scene);
 
             quanta.ecs.renderer3d_system.run(&ecs_scene, scene);   
+            quanta.ecs.point_light_system.run(&ecs_scene, scene);
 
             if (true)
             {
@@ -473,6 +479,11 @@ pub fn main() !void
                 if (widgets.begin("Basic properties"))
                 {
                     widgets.textFormat("Frame time {d:.2}", .{ delta_time });
+
+                    if (widgets.button("Button test"))
+                    {
+                        std.log.info("Praise be the {s}", .{ "BIG BUTTON" });
+                    }
 
                     widgets.text("Renderer Statistics:");
 
@@ -619,27 +630,32 @@ pub const std_options = struct
         args: anytype,
     ) void 
     {
-        const terminal_red = "\x1B[31m";
-        const terminal_yellow = "\x1B[33m";
-        const terminal_blue = "\x1B[34m";
-        const terminal_green = "\x1B[32m";
+        const log_to_terminal = true;
 
-        const color_begin = switch (message_level)
+        if (log_to_terminal)
         {
-            .err => terminal_red,
-            .warn => terminal_yellow,
-            .info => terminal_blue,
-            .debug => terminal_green,
-        };
+            const terminal_red = "\x1B[31m";
+            const terminal_yellow = "\x1B[33m";
+            const terminal_blue = "\x1B[34m";
+            const terminal_green = "\x1B[32m";
 
-        const color_end = "\x1B[0;39m";
+            const color_begin = switch (message_level)
+            {
+                .err => terminal_red,
+                .warn => terminal_yellow,
+                .info => terminal_blue,
+                .debug => terminal_green,
+            };
 
-        const level_txt = "[" ++ color_begin ++ comptime message_level.asText() ++ color_end ++ "]";
-        const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
-        const stderr = std.io.getStdErr().writer();
-        std.debug.getStderrMutex().lock();
-        defer std.debug.getStderrMutex().unlock();
-        nosuspend stderr.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
+            const color_end = "\x1B[0;39m";
+
+            const level_txt = "[" ++ color_begin ++ comptime message_level.asText() ++ color_end ++ "]";
+            const prefix2 = if (scope == .default) ": " else "[" ++ @tagName(scope) ++ "]: ";
+            const stderr = std.io.getStdErr().writer();
+            std.debug.getStderrMutex().lock();
+            defer std.debug.getStderrMutex().unlock();
+            nosuspend stderr.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
+        }
 
         quanta.imgui.log.logMessage(message_level, scope, format, args) catch return;
     }

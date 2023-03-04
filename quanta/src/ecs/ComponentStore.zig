@@ -29,7 +29,13 @@ const EntityData = packed struct(u64)
 };
 
 ///Unique identifier which describes an entity
-pub const Entity = enum(u64) { _ };
+pub const Entity = enum(u64) 
+{ 
+    _,
+
+    ///Nil entity is an entity handle which is always invalid
+    pub const nil = @intToEnum(Entity, std.math.maxInt(u64));
+};
 
 ///Unique identifier for a component type
 pub const ComponentId = *const reflect.Type;

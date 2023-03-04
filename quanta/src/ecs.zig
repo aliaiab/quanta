@@ -8,6 +8,7 @@ pub const terminal_velocity_system = @import("ecs/terminal_velocity_system.zig")
 pub const acceleration_system = @import("ecs/acceleration_system.zig");
 pub const force_system = @import("ecs/force_system.zig");
 pub const renderer3d_system = @import("ecs/renderer3d_system.zig");
+pub const point_light_system = @import("ecs/point_light_system.zig");
 
 test
 {

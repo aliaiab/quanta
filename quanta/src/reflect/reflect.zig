@@ -14,6 +14,9 @@ pub const Type = union(enum)
     Float: Float,
     Bool: void,
     Void: void,
+    Array: Array,
+    EnumLiteral: void,
+    Pointer: Pointer,
 
     pub const Struct = struct 
     {
@@ -57,7 +60,7 @@ pub const Type = union(enum)
     {
         name: []const u8,
         type: *const Type,
-        value: *anyopaque,
+        value: *const anyopaque,
         is_pub: bool,
     };
 
@@ -87,6 +90,25 @@ pub const Type = union(enum)
         decls: []const Declaration,
     };
 
+    pub const Array = struct 
+    {
+        len: usize,
+        child: *const Type,
+        sentinel: ?*const anyopaque,
+    };
+
+    pub const Pointer = struct 
+    {
+        size: std.builtin.Type.Pointer.Size,
+        is_const: bool,
+        is_volatile: bool,
+        alignment: u16,
+        address_space: std.builtin.AddressSpace,
+        child: *const Type,
+        is_allowzero: bool,
+        sentinel: ?*const anyopaque,
+    };
+
     ///Returns a pointer to the canonical Type for T
     pub fn info(comptime T: type) *const Type
     {
@@ -106,16 +128,32 @@ pub const Type = union(enum)
         {
             .Struct => |struct_info| {
                 comptime var fields: [struct_info.fields.len]StructField = undefined;
+                comptime var decls: [struct_info.decls.len]Declaration = undefined;
 
                 inline for (&fields, struct_info.fields) |*struct_field, comptime_struct_field|
                 {
                     struct_field.* = .{
                         .name = comptime_struct_field.name,
-                        .offset = @offsetOf(T, comptime_struct_field.name),
+                        .offset = if (!comptime_struct_field.is_comptime) @offsetOf(T, comptime_struct_field.name) else 0,
                         .alignment = comptime_struct_field.alignment,
                         .default_value = comptime_struct_field.default_value,
                         .is_comptime = comptime_struct_field.is_comptime,
                         .type = info(comptime_struct_field.type),
+                    };
+                }
+
+                inline for (&decls, struct_info.decls) |*struct_decl, comptime_struct_decl|
+                {
+                    const S = struct 
+                    {
+                        pub const value = @field(T, comptime_struct_decl.name);
+                    };
+
+                    struct_decl.* = .{
+                        .name = comptime_struct_decl.name,
+                        .type = info(@TypeOf(@field(T, comptime_struct_decl.name))),
+                        .value = &S.value,
+                        .is_pub = comptime_struct_decl.is_pub,
                     };
                 }
 
@@ -126,7 +164,7 @@ pub const Type = union(enum)
                         .alignment = @alignOf(T),
                         .layout = struct_info.layout,
                         .fields = &fields,
-                        .decls = &.{},
+                        .decls = &decls,
                         .is_tuple = struct_info.is_tuple,
                     } 
                 };
@@ -134,6 +172,7 @@ pub const Type = union(enum)
             .Union => |union_info| {
                 comptime var fields: [union_info.fields.len]UnionField = undefined;
 
+                //TODO: This is NOT a stable way to find the offset of the tag, and is not reliable in the long term
                 comptime var data_end: usize = 0;
 
                 inline for (&fields, union_info.fields) |*union_field, comptime_union_field|
@@ -206,6 +245,35 @@ pub const Type = union(enum)
             .Void => {
                 type_data = .Void;
             },
+            .Array => |array_info| {
+                type_data = .{ 
+                    .Array = .{
+                        .len = array_info.len,
+                        .child = info(array_info.child),
+                        .sentinel = array_info.sentinel,
+                    },
+                };
+            },
+            .EnumLiteral => {
+                type_data = .EnumLiteral;
+            },
+            .Pointer => |pointer_info| {
+                type_data = .{
+                    .Pointer = .{
+                        .size = pointer_info.size,
+                        .is_const = pointer_info.is_const,
+                        .is_volatile = pointer_info.is_volatile,
+                        .alignment = pointer_info.alignment,
+                        .address_space = pointer_info.address_space,
+                        .child = info(pointer_info.child),
+                        .is_allowzero = pointer_info.is_allowzero,
+                        .sentinel = pointer_info.sentinel,
+                    },
+                };
+            },
+            .Type => {
+
+            },
             else => unreachable,
         }
 
@@ -250,6 +318,51 @@ pub const Type = union(enum)
     pub fn is(self: *const Type, comptime T: type) bool 
     {
         return self == info(T);
+    } 
+
+    pub fn getDecl(self: *const Type, decl_name: []const u8) ?Declaration
+    {
+        switch (self.*)
+        {
+            .Struct => |struct_info| {
+                for (struct_info.decls) |decl|
+                {
+                    if (std.mem.eql(u8, decl.name, decl_name))
+                    {
+                        return decl;
+                    }
+                }
+            },
+            else => unreachable,
+        }
+
+        return null;
+    }
+
+    pub fn getStructField(self: *const Type, field_name: []const u8) ?StructField
+    {
+        switch (self.*)
+        {
+            .Struct => |struct_info| {
+                for (struct_info.fields) |field|
+                {
+                    if (std.mem.eql(u8, field.name, field_name))
+                    {
+                        return field;
+                    }
+                }
+            },
+            else => unreachable,
+        }
+
+        return null;
+    }
+
+    pub fn getStructFieldValue(comptime T: type, value: *const anyopaque, field: StructField) *const T 
+    {
+        const value_pointer = @ptrCast([*]const u8, value) + field.offset;
+
+        return @ptrCast(*const T, @alignCast(@alignOf(T), value_pointer));
     } 
 
     pub fn format(
