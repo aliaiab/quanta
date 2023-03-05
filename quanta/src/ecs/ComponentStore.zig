@@ -842,8 +842,8 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
 
             while (
                 !(
-                    self.component_store.archetypeHasComponents(self.archetype_index, required_component_slice) and
-                    !self.component_store.archetypeHasComponents(self.archetype_index, excluded_component_slice) and 
+                    self.component_store.archetypeHasAllComponents(self.archetype_index, required_component_slice) and
+                    !self.component_store.archetypeHasAnyComponents(self.archetype_index, excluded_component_slice) and 
                     self.component_store.archetypes.items[self.archetype_index].chunk.row_count > 0
                 )
             )
@@ -885,7 +885,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
 
             while (
                 !(
-                    self.component_store.archetypeHasComponents(self.archetype_index, required_components) and
+                    self.component_store.archetypeHasAllComponents(self.archetype_index, required_components) and
                     self.row_index < archetype.row_count
                 )
             )
@@ -1558,7 +1558,7 @@ fn archetypeMoveRow(
     return destination_row_index;
 }
 
-fn archetypeHasComponents(
+fn archetypeHasAllComponents(
     self: *const ComponentStore,
     archetype_index: ArchetypeIndex,
     comptime components: anytype,
@@ -1578,6 +1578,28 @@ fn archetypeHasComponents(
     }
 
     return true;
+}
+
+fn archetypeHasAnyComponents(
+    self: *const ComponentStore,
+    archetype_index: ArchetypeIndex,
+    comptime components: anytype,
+) bool
+{
+    if (components.len == 0)
+    {
+        return false;
+    }
+
+    inline for (components) |Component|
+    {
+        if (self.archetypeHasComponent(archetype_index, Component))
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 fn archetypeHasComponent(

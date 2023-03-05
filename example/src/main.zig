@@ -175,6 +175,9 @@ pub fn main() !void
 
     const environment_map_data = asset_archive.getAssetData(@intToEnum(asset.Archive.AssetDescriptor, 2));
 
+    var ecs_scene = try quanta.ecs.ComponentStore.init(allocator);
+    defer ecs_scene.deinit();
+
     const scene = try Renderer3D.createScene(
         1, 
         50_000,
@@ -186,12 +189,24 @@ pub fn main() !void
 
     for (test_scene_import.sub_meshes, 0..) |sub_mesh, i|
     {
-        try Renderer3D.sceneAddMesh(
-            scene, 
-            test_scene_meshes[i], 
-            test_scene_materials[sub_mesh.material_index], 
-            quanta.math.zalgebra.Mat4 { .data = sub_mesh.transform }
-        );
+        // try Renderer3D.sceneAddMesh(
+        //     scene, 
+        //     test_scene_meshes[i], 
+        //     test_scene_materials[sub_mesh.material_index], 
+        //     quanta.math.zalgebra.Mat4 { .data = sub_mesh.transform }
+        // );
+
+        const decomposed = zalgebra.Mat4.decompose(.{ .data = sub_mesh.transform });
+        const translation = decomposed.t;
+        const rotation = decomposed.r.extractEulerAngles();
+        const scale = decomposed.s;
+
+        _ = try ecs_scene.entityCreate(.{
+            quanta.ecs.components.Position { .x = translation.x(), .y = translation.y(), .z = translation.z() },
+            quanta.ecs.components.Rotation { .x = rotation.x(), .y = rotation.y(), .z = rotation.z() },
+            quanta.ecs.components.NonUniformScale { .x = scale.x(), .y = scale.y(), .z = scale.z() },
+            quanta.ecs.components.RendererMesh { .mesh = test_scene_meshes[i], .material = test_scene_materials[sub_mesh.material_index] },
+        });
     }
 
     const target_frame_time: f32 = 16; 
@@ -225,12 +240,6 @@ pub fn main() !void
     var enable_directional_light: bool = true;
 
     const time_at_start = std.time.milliTimestamp();
-
-    var ecs_scene_arena = std.heap.ArenaAllocator.init(allocator);
-    defer ecs_scene_arena.deinit();
-
-    var ecs_scene = try quanta.ecs.ComponentStore.init(allocator);
-    defer ecs_scene.deinit();
 
     const TestEnumComponent = enum 
     {

@@ -60,5 +60,5 @@ pub fn collapsingHeader(comptime format: []const u8, args: anytype) bool
 
 pub fn dragFloat(label: []const u8, float: *f32) void 
 {
-    _ = imgui.igDragFloat(label.ptr, float, 0.1, std.math.f32_min, std.math.f32_max, null, 0);
+    _ = imgui.igDragFloat(label.ptr, float, 0.1, 0, 0, null, 0);
 }

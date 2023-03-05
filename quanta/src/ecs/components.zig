@@ -51,16 +51,16 @@ pub const UniformScale = struct
     value: f32,
 };
 
-pub const Visibility = struct 
-{
-    is_visible: bool,
-};
-
 pub const NonUniformScale = struct 
 {
     x: f32,
     y: f32,
     z: f32,
+};
+
+pub const Visibility = struct 
+{
+    is_visible: bool,
 };
 
 pub const RendererMesh = struct 
