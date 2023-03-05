@@ -562,9 +562,9 @@ pub fn main() !void
                     });
 
                     const ray_origin = @Vector(3, f32) {
-                        world_space_pos.data[0], 
-                        world_space_pos.data[1],
-                        world_space_pos.data[2],
+                        world_space_pos.data[0] / 1000.0, 
+                        world_space_pos.data[1] / 1000.0,
+                        world_space_pos.data[2] / 1000.0,
                     };
 
                     const ray_length = 1000;
@@ -577,7 +577,13 @@ pub fn main() !void
 
                     const intersection = quanta.physics.intersection;
 
-                    var query = ecs_scene.query(.{ quanta.ecs.components.Position, quanta.ecs.components.RendererMesh }, .{});
+                    var query = ecs_scene.query(
+                        .{ 
+                            quanta.ecs.components.Position, 
+                            quanta.ecs.components.NonUniformScale, 
+                            quanta.ecs.components.RendererMesh, 
+                        }, .{}
+                    );
 
                     var found_entity: ?quanta.ecs.ComponentStore.Entity = null;
                     var closest_t_max: f32 = std.math.inf_f32;
@@ -586,16 +592,17 @@ pub fn main() !void
                     {
                         for (
                             block.Position,
+                            block.NonUniformScale,
                             block.RendererMesh,
                             0..
-                        ) |position, mesh, i|
+                        ) |position, scale, mesh, i|
                         {
                             const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
 
                             const position_vector = @Vector(3, f32) { position.x, position.y, position.z };
 
-                            const bounding_min = position_vector + mesh_box.min;
-                            const bounding_max = position_vector + mesh_box.max;
+                            const bounding_min = position_vector + (mesh_box.min * @Vector(3, f32) { scale.x, scale.y, scale.z });
+                            const bounding_max = position_vector + (mesh_box.max * @Vector(3, f32) { scale.x, scale.y, scale.z });
 
                             const box_intersection = intersection.rayAABBIntersection(
                                 ray_origin, ray_direction, 
@@ -641,6 +648,8 @@ pub fn main() !void
                 )
                 {
                     const entity_position = ecs_scene.entityGetComponent(selected_entity.?, quanta.ecs.components.Position) orelse unreachable;  
+                    const entity_rotation = ecs_scene.entityGetComponent(selected_entity.?, quanta.ecs.components.Rotation);  
+                    // const entity_scale = ecs_scene.entityGetComponent(selected_entity.?, quanta.ecs.components.NonUniformScale);  
 
                     imguizmo.ImGuizmo_SetImGuiContext(imgui.igGetCurrentContext());
                     imguizmo.ImGuizmo_Enable(true);
@@ -652,12 +661,26 @@ pub fn main() !void
                     const camera_view = camera.getView();
                     const camera_projection = camera.getProjectionNonInverse();
 
-                    var manip_matrix: [4][4]f32 = zalgebra.Mat4.fromTranslate(.{ .data = .{ entity_position.x, entity_position.y, entity_position.z } }).data;
+                    var operation = imguizmo.Operation.translate;
+
+                    var manip_matrix = zalgebra.Mat4.identity();
+
+                    if (entity_rotation != null)
+                    {
+                        manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromEulerAngles(.{ .data = .{ entity_rotation.?.x, entity_rotation.?.y, entity_rotation.?.z } }));
+
+                        operation.rotate_x = true;
+                        operation.rotate_y = true;
+                        operation.rotate_z = true;
+                        operation.rotate_screen = true;
+                    }
+
+                    manip_matrix = zalgebra.Mat4.fromTranslate(.{ .data = .{ entity_position.x, entity_position.y, entity_position.z } }).mul(manip_matrix);
 
                     _ = imguizmo.ImGuizmo_Manipulate(
                         @ptrCast([*]const f32, &camera_view),
                         @ptrCast([*]const f32, &camera_projection),
-                        imguizmo.Operation.translate,
+                        operation,
                         .world,
                         @ptrCast([*]f32, &manip_matrix),
                         null,
@@ -680,6 +703,11 @@ pub fn main() !void
                     entity_position.x = position[0];
                     entity_position.y = position[1];
                     entity_position.z = position[2];
+
+                    if (entity_rotation != null)
+                    {
+                        entity_rotation.?.* = .{ .x = rotation[0], .y = rotation[1], .z = rotation[2] };
+                    }
                 }
 
                 try entity_debugger_commands.execute(&ecs_scene);
