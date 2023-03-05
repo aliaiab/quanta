@@ -1,6 +1,6 @@
 # Quanta 
 
-A data driven game engine/framework for desktop platforms written in and for zig
+A data oriented game engine/framework for desktop platforms written in and for zig
 
 ### Required Dependencies: 
 - Git
