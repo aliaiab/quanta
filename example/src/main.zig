@@ -203,7 +203,7 @@ pub fn main() !void
         .translation = .{ 0, 3, 12.5 },
         .target = .{ 0, 0, 0 },
         .fov = 60,
-        .exposure = 10,
+        .exposure = 1,
     };
 
     var camera_position = @Vector(3, f32) { 8.7, 5.7, 0.9 };
@@ -218,7 +218,7 @@ pub fn main() !void
     var camera_enable_changed = false;
 
     var directional_light: Renderer3D.DirectionalLight = .{
-        .direction = .{ -0.5, 1, -0.3 },  
+        .direction = .{ -0.5, -1, -0.3 },  
         .diffuse = packUnorm4x8(.{ 0.45, 0.45, 0.45, 1 }),
         .intensity = 1
     };

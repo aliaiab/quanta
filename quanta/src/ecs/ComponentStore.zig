@@ -718,28 +718,24 @@ pub fn entityGetComponentPtr(
     return @ptrCast(*anyopaque, entity_archetype.chunk.data.? + column.offset + entity_description.row_index * column.element_size); 
 }
 
-///A query filter with the type T
-pub fn FilterWith(comptime T: type) Filter 
+pub fn filterWith(comptime T: type) Filter 
 {
     return .{ .with = T };
 }
 
-///A query filter without the type T
-pub fn FilterWithout(comptime T: type) Filter
+pub fn filterWithout(comptime T: type) Filter
 {
     return .{ .without = T };
 }
 
-///A query or filter 
-pub fn FilterOr(comptime T: type, comptime U: type) Filter
+pub fn filterOr(comptime T: type, comptime U: type) Filter
 {
     return .{ .@"or" = .{ T, U } };
 }
 
-///A filter for changed components of type T
-pub fn FilterChanged(comptime T: type) Filter
+pub fn filterAnd(comptime T: type, comptime U: type) Filter
 {
-    return .{ .changed = T };
+    return .{ .@"and" = .{ T, U } };
 }
 
 pub const Filter = union(enum)
@@ -747,7 +743,7 @@ pub const Filter = union(enum)
     with: type,
     without: type,
     @"or": struct { type, type },
-    changed: type,
+    @"and": struct { type, type },
 };
 
 pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anytype) type 
@@ -1477,41 +1473,63 @@ fn archetypeMoveRow(
         return try self.archetypeAddRow(destination_archetype_index, entity);
     }
 
-    const source_archetype: *Archetype = &self.archetypes.items[source_archetype_index];
-    const destination_archetype: *Archetype = &self.archetypes.items[destination_archetype_index];
+    var source_archetype: *Archetype = &self.archetypes.items[source_archetype_index];
+    var destination_archetype: *Archetype = &self.archetypes.items[destination_archetype_index];
 
     const destination_row_index = try self.archetypeAddRow(destination_archetype_index, entity);
 
     const minimum_length = std.math.min(source_archetype.chunk.columns.len, destination_archetype.chunk.columns.len); 
 
-    for (
-        source_archetype.chunk.columns[0..minimum_length],
-        destination_archetype.chunk.columns[0..minimum_length],
-        0..
-    ) |source_column, destination_column, i|
+    for (0..minimum_length) |i|
     {
+        var source_column = &source_archetype.chunk.columns[i];
+        var destination_column = &destination_archetype.chunk.columns[i];
+
         const src_id = source_archetype.component_ids.items[i];
-        const dst_id = destination_archetype.component_ids.items[i];
+        var dst_id = destination_archetype.component_ids.items[i];
+
+        if (src_id != dst_id)
+        {
+            //Find dest corrosponding column in O(n - i)
+
+            for (destination_archetype.chunk.columns[i..], 0..) |*new_destination_column, j|
+            {
+                const new_dst_id = destination_archetype.component_ids.items[j];
+
+                if (src_id == new_dst_id)
+                {
+                    std.log.warn("FOUND CORROSPONDING CHUNK!!!", .{});
+
+                    dst_id = new_dst_id;
+                    destination_column = new_destination_column;
+
+                    break;
+                } 
+            }
+
+            continue;
+        }
 
         std.debug.assert(src_id == dst_id);
+        std.debug.assert(source_column.element_size == destination_column.element_size);
+        std.debug.assert(source_column.element_alignment == destination_column.element_alignment);
 
-        if (
-            src_id == dst_id and 
-            (source_column.element_size != 0 and destination_column.element_size == 0)
-        )
+        if (source_column.element_size == 0 or destination_column.element_size == 0)
         {
-            const dst_start = destination_column.offset + destination_column.element_size * destination_row_index;
-            const dst = destination_archetype.chunk.data.?[dst_start .. dst_start + destination_column.element_size];
-
-            const src_start = source_column.offset + source_column.element_size * source_row_index;
-            const src = source_archetype.chunk.data.?[src_start .. src_start + source_column.element_size];
-
-            const src_end_start = source_column.offset + (source_archetype.chunk.row_count * source_column.element_size) - source_column.element_size;
-            const src_end = source_archetype.chunk.data.?[src_end_start .. src_end_start + source_column.element_size];
-
-            std.mem.copy(u8, dst, src);
-            std.mem.copy(u8, src, src_end);
+            continue;
         }
+
+        const dst_start = destination_column.offset + destination_column.element_size * destination_row_index;
+        const dst = destination_archetype.chunk.data.?[dst_start .. dst_start + destination_column.element_size];
+
+        const src_start = source_column.offset + source_column.element_size * source_row_index;
+        const src = source_archetype.chunk.data.?[src_start .. src_start + source_column.element_size];
+
+        const src_end_start = source_column.offset + (source_archetype.chunk.row_count * source_column.element_size) - source_column.element_size;
+        const src_end = source_archetype.chunk.data.?[src_end_start .. src_end_start + source_column.element_size];
+
+        std.mem.copy(u8, dst, src);
+        std.mem.copy(u8, src, src_end);
     }
 
     const entities = source_archetype.chunk.entities();
@@ -1724,7 +1742,7 @@ test "Queries"
 
     //Example of a query:
     //Create a query for all entities with PosComponent but must have TagComponent
-    var pos_query = ecs_scene.query(.{ Position, Rotation }, .{ FilterWith(Tag) });
+    var pos_query = ecs_scene.query(.{ Position, Rotation }, .{ filterWith(Tag) });
 
     while (pos_query.nextBlock()) |block|
     {

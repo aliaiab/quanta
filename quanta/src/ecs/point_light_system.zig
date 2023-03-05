@@ -8,13 +8,13 @@ const Position = components.Position;
 const PointLight = components.PointLight;
 const Visibility = components.Visibility;
 
-const without = ComponentStore.FilterWithout;
-
 pub fn run(
     component_store: *ComponentStore,
     scene: Renderer3D.SceneHandle,
 ) void 
 {
+    const without = ComponentStore.filterWithout;
+    
     var query = component_store.query(
         .{ Position, PointLight, }, 
         .{ without(Visibility), }
