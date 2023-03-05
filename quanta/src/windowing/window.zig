@@ -48,3 +48,15 @@ pub fn getKeyDown(key: glfw.Key) bool
 {
     return window.getKey(key) == .press;
 }
+
+pub fn getMouseDown(button: glfw.MouseButton) bool
+{
+    return window.getMouseButton(button) == glfw.Action.press;
+}
+
+pub fn getMousePos() [2]f32
+{
+    const pos = window.getCursorPos();
+
+    return .{ @floatCast(f32, pos.xpos), @floatCast(f32, pos.ypos) };
+}

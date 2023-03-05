@@ -52,7 +52,7 @@ pub fn run(
             {   
                 const transform_translate = zalgebra.Mat4.fromTranslate(.{ .data = .{ position.x, position.y, position.z } });
                 const transform_rotate = zalgebra.Mat4.fromEulerAngles(.{ .data = .{ rotation.x, rotation.y, rotation.z } });
-                const transform = transform_rotate.mul(transform_translate);
+                const transform = transform_translate.mul(transform_rotate);
 
                 Renderer3D.scenePushMesh(scene, mesh.mesh, mesh.material, transform);
             }
@@ -77,7 +77,7 @@ pub fn run(
                 const transform_translate = zalgebra.Mat4.fromTranslate(.{ .data = .{ position.x, position.y, position.z } });
                 const transform_rotate = zalgebra.Mat4.fromEulerAngles(.{ .data = .{ rotation.x, rotation.y, rotation.z } });
                 const transform_scale = zalgebra.Mat4.fromScale(.{ .data = .{ scale.x, scale.y, scale.z } });
-                const transform = transform_scale.mul(transform_rotate.mul(transform_translate));
+                const transform = transform_translate.mul(transform_rotate.mul(transform_scale));
 
                 Renderer3D.scenePushMesh(scene, mesh.mesh, mesh.material, transform);
             }

@@ -131,6 +131,8 @@ sky_pipeline: graphics.GraphicsPipeline,
 color_resolve_pipeline: graphics.ComputePipeline,
 
 meshes: std.ArrayListUnmanaged(Mesh),
+///This is probably an unecessary hack, we don't need to store bounding boxes twice?
+mesh_bounding_boxes: std.ArrayListUnmanaged(struct { min: @Vector(3, f32), max: @Vector(3, f32) }),
 mesh_buffer: graphics.Buffer,
 
 mesh_lods: std.ArrayListUnmanaged(MeshLod),
@@ -575,6 +577,7 @@ pub fn deinit() void
     defer self.sky_pipeline.deinit(self.allocator);
     defer self.color_resolve_pipeline.deinit(self.allocator);
     defer self.meshes.deinit(self.allocator);
+    defer self.mesh_bounding_boxes.deinit(self.allocator);
     defer self.mesh_lods.deinit(self.allocator);
     defer self.materials.deinit(self.allocator);
     defer self.materials_buffer.deinit();
@@ -1844,6 +1847,11 @@ pub fn createMesh(
         .index_count = @intCast(u32, indices.len),
     });
 
+    try self.mesh_bounding_boxes.append(
+        self.allocator,
+        .{ .min = bounding_box_min, .max = bounding_box_max }
+    );
+
     const bounding_box_center = (bounding_box_max + bounding_box_min) / @splat(3, @as(f32, 2));
     const bounding_box_extents = @Vector(3, f32) { 
         bounding_box_max[0] - bounding_box_center[0], 
@@ -1882,6 +1890,13 @@ pub fn createMesh(
     self.mesh_data_changed = true;
 
     return @intToEnum(MeshHandle, mesh_handle);
+}
+
+pub fn getMeshBox(mesh_handle: MeshHandle) struct { min: @Vector(3, f32), max: @Vector(3, f32) }
+{
+    const bounding_box = self.mesh_bounding_boxes.items[@enumToInt(mesh_handle)];
+
+    return .{ .min = bounding_box.min, .max = bounding_box.max };
 }
 
 const Material = extern struct 

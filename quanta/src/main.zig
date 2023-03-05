@@ -10,19 +10,11 @@ pub const imgui = @import("imgui.zig");
 pub const math = @import("math.zig");
 pub const log = @import("log.zig").log;
 pub const reflect = @import("reflect/reflect.zig");
+pub const physics = @import("physics.zig");
 
 test
 {
-    _ = app;
-    _ = graphics;
-    _ = windowing;
-    _ = asset;
-    _ = ecs;
-    _ = renderer;
-    _ = renderer_gui;
-    _ = nuklear;
-    _ = imgui;
-    _ = math;
-    _ = log;
-    _ = reflect;
+    const std = @import("std");
+
+    std.testing.refAllDecls(@This());
 }

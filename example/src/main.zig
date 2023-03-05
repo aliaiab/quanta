@@ -189,13 +189,6 @@ pub fn main() !void
 
     for (test_scene_import.sub_meshes, 0..) |sub_mesh, i|
     {
-        // try Renderer3D.sceneAddMesh(
-        //     scene, 
-        //     test_scene_meshes[i], 
-        //     test_scene_materials[sub_mesh.material_index], 
-        //     quanta.math.zalgebra.Mat4 { .data = sub_mesh.transform }
-        // );
-
         const decomposed = zalgebra.Mat4.decompose(.{ .data = sub_mesh.transform });
         const translation = decomposed.t;
         const rotation = decomposed.r.extractEulerAngles();
@@ -315,6 +308,8 @@ pub fn main() !void
     var selected_entity: ?quanta.ecs.ComponentStore.Entity = test_entity;
 
     var cloned_entity_last_frame: bool = false;
+
+    var mouse_pressed_last_Frame: bool = false;
 
     while (!window.shouldClose())
     {
@@ -534,6 +529,101 @@ pub fn main() !void
                 )
                 {
                     cloned_entity_last_frame = false;
+                }
+
+                //Selection
+                if (window.getMouseDown(.left) and !mouse_pressed_last_Frame)
+                {
+                    const mouse_pos = window.getMousePos();
+
+                    std.log.info("mouse_pos = {d}, {d}", .{ mouse_pos[0], mouse_pos[1] });
+
+                    const inverse_projection = zalgebra.Mat4.inv(.{ .data = camera.getProjectionNonInverse() });
+                    const inverse_view = zalgebra.Mat4.inv(.{ .data = camera.getView() });
+
+                    const normalized_pos = [2]f32 { 
+                        ((mouse_pos[0] / @intToFloat(f32, window.getWidth())) - 0.5) * 2, 
+                        ((mouse_pos[1] / @intToFloat(f32, window.getHeight())) - 0.5) * 2,
+                    };
+
+                    const screen_space_pos = inverse_projection.mulByVec4(.{ .data = .{ normalized_pos[0], normalized_pos[1], 0, 1 } });
+                    const world_space_pos = inverse_view.mulByVec4(screen_space_pos);
+
+                    std.log.info("world_space_pos (ray_origin) = {d}, {d}, {d}", .{ 
+                        world_space_pos.data[0] / 1000.0, 
+                        world_space_pos.data[1] / 1000.0,
+                        world_space_pos.data[2] / 1000.0,
+                    });
+
+                    std.log.info("world_space_pos (ray_dir) = {d}, {d}, {d}", .{
+                        camera_front[0],
+                        camera_front[1],
+                        camera_front[2],
+                    });
+
+                    const ray_origin = @Vector(3, f32) {
+                        world_space_pos.data[0], 
+                        world_space_pos.data[1],
+                        world_space_pos.data[2],
+                    };
+
+                    const ray_length = 1000;
+
+                    const ray_direction = @Vector(3, f32) {
+                        camera_front[0] * ray_length,
+                        camera_front[1] * ray_length,
+                        camera_front[2] * ray_length,
+                    };
+
+                    const intersection = quanta.physics.intersection;
+
+                    var query = ecs_scene.query(.{ quanta.ecs.components.Position, quanta.ecs.components.RendererMesh }, .{});
+
+                    var found_entity: ?quanta.ecs.ComponentStore.Entity = null;
+                    var closest_t_max: f32 = std.math.inf_f32;
+
+                    while (query.nextBlock()) |block|
+                    {
+                        for (
+                            block.Position,
+                            block.RendererMesh,
+                            0..
+                        ) |position, mesh, i|
+                        {
+                            const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
+
+                            const position_vector = @Vector(3, f32) { position.x, position.y, position.z };
+
+                            const bounding_min = position_vector + mesh_box.min;
+                            const bounding_max = position_vector + mesh_box.max;
+
+                            const box_intersection = intersection.rayAABBIntersection(
+                                ray_origin, ray_direction, 
+                                bounding_min, bounding_max
+                            );
+
+                            if (box_intersection.hit)
+                            {
+                                {
+                                    found_entity = block.entities[i];
+                                }
+
+                                closest_t_max = @min(closest_t_max, box_intersection.t_max - box_intersection.t_min);
+                            }
+                        }
+                    }
+
+                    if (found_entity != null)
+                    {
+                        selected_entity = found_entity;
+                    }
+
+                    mouse_pressed_last_Frame = true;
+                }
+
+                if (!window.getMouseDown(.left))
+                {
+                    mouse_pressed_last_Frame = false;
                 }
 
                 entity_editor.entityViewer(&ecs_scene, &entity_debugger_commands);

@@ -185,6 +185,9 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
             var texture_coordinates = std.ArrayList(f32).init(allocator); 
             defer texture_coordinates.deinit();
 
+            var colors = std.ArrayList(f32).init(allocator);
+            defer colors.deinit();
+
             for (primitive.attributes.items) |attribute|
             {
                 switch (attribute)
@@ -219,7 +222,17 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
 
                         gltf.getDataFromBufferView(f32, &texture_coordinates, accessor, buffer_data);
                     },
-                    .color => {},
+                    .color => |accessor_index| {
+                        const accessor = gltf.data.accessors.items[accessor_index];
+                        const buffer_view = gltf.data.buffer_views.items[accessor.buffer_view.?];
+                        const buffer_data = buffer_file_datas[buffer_view.buffer];
+
+                        try colors.ensureTotalCapacity(@intCast(usize, accessor.count));
+
+                        std.debug.assert(accessor.component_type == .float);
+
+                        gltf.getDataFromBufferView(f32, &colors, accessor, buffer_data);  
+                    },
                     .joints => {},
                     .weights => {},
                 }
@@ -234,6 +247,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
                 var position_index: usize = 0;
                 var normal_index: usize = 0;
                 var uv_index: usize = 0;
+                var color_index: usize = 0;
 
                 std.log.info("vertex position accessor.count = {}", .{ vertex_count });
 
@@ -241,15 +255,20 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
                     position_index += 3;
                     normal_index += 3;
                     uv_index += 2;
+                    color_index += 4;
                 })
                 {
-                    const position_vector = @Vector(3, f32) { positions.items[position_index], positions.items[position_index + 1], positions.items[position_index + 2], };
+                    const position_source_x = positions.items[position_index];
+                    const position_source_y = positions.items[position_index + 1];
+                    const position_source_z = positions.items[position_index + 2];
+
+                    const position_vector = @Vector(3, f32) { position_source_x, position_source_y, position_source_z };
 
                     try model_vertex_positions.append(position_vector);
                     try model_vertices.append(.{
                         .normal = .{ normals.items[normal_index], normals.items[normal_index + 1], normals.items[normal_index + 2] },
                         .uv = .{ texture_coordinates.items[uv_index], texture_coordinates.items[uv_index + 1] }, 
-                        .color = packUnorm4x8(.{ 1, 1, 1, 1 }),
+                        .color = if (colors.items.len != 0) packUnorm4x8(.{ colors.items[color_index], colors.items[color_index + 1], colors.items[color_index + 2], 1 }) else packUnorm4x8(.{ 1, 1, 1, 1 }),
                     });
 
                     bounding_min = @min(bounding_min, position_vector);
