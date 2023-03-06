@@ -7,9 +7,6 @@
 [submodule "quanta/lib/cimgui"]
 	path = quanta/lib/cimgui
 	url = https://github.com/cimgui/cimgui.git
-[submodule "quanta/lib/mach-glfw"]
-	path = quanta/lib/mach-glfw
-	url = https://github.com/hexops/mach-glfw.git
 [submodule "quanta/lib/zigimg"]
 	path = quanta/lib/zigimg
 	url = https://github.com/zigimg/zigimg.git
@@ -22,3 +19,6 @@
 [submodule "quanta/lib/ImGuizmo"]
 	path = quanta/lib/ImGuizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo.git
+[submodule "quanta/lib/mach-glfw"]
+	path = quanta/lib/mach-glfw
+	url = https://github.com/hexops/mach-glfw.git

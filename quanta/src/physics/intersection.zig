@@ -34,5 +34,5 @@ test "Basic AABB Intersection"
     const box_min = @Vector(3, f32) { 0, 0, 0 };
     const box_max = @Vector(3, f32) { 1, 1, 1 };
 
-    try std.testing.expect(rayAABBIntersection(ray_origin, ray_direction, box_min, box_max));
+    try std.testing.expect(rayAABBIntersection(ray_origin, ray_direction, box_min, box_max).hit);
 }

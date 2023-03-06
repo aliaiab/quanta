@@ -14,7 +14,7 @@ pub fn build(builder: *std.build.Builder) !void
     {
         const current_zig_version = builtin.zig_version;
 
-        const min_zig_version = std.SemanticVersion.parse("0.11.0-dev.1711+dc1f50e50") catch unreachable;
+        const min_zig_version = std.SemanticVersion.parse("0.11.0-dev.1862+e7f128c20") catch unreachable;
 
         if (current_zig_version.order(min_zig_version) == .lt) 
         {
