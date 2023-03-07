@@ -1,4 +1,2 @@
 zig-out/
 zig-cache/
-pipeline_cache
-imgui.ini

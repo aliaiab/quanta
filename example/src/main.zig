@@ -42,12 +42,16 @@ const example_assets = struct
     const lights_test = @intToEnum(asset.Archive.AssetDescriptor, 5);
 };
 
+const log = std.log.scoped(.example);
+
 pub fn main() !void 
 {
-    std.log.debug("All your {s} are belong to us.", .{ "codebase" });
-    std.log.debug("{s}", .{ "debug" });
-    std.log.warn("{s}", .{ "warn" });
-    std.log.err("{s}", .{ "err" });
+    log.debug("All your {s} are belong to us.", .{ "codebase" });
+    log.debug("{s}", .{ "debug" });
+    log.warn("{s}", .{ "warn" });
+    log.err("{s}", .{ "err" });
+
+    defer log.info("Exiting gracefully", .{});
 
     var gpa = if (builtin.mode == .Debug)
         std.heap.GeneralPurposeAllocator(.{}) {}
@@ -59,25 +63,29 @@ pub fn main() !void
     try window.init(1600, 900, "Quanta Example");
     defer window.deinit();
 
+    const enable_pipeline_cache = true;
     const pipeline_cache_file_path = "pipeline_cache";
 
     {
-        // var pipeline_cache_data: []u8 = &[_]u8 {};
+        var pipeline_cache_data: []u8 = &[_]u8 {};
 
-        // const file = std.fs.cwd().openFile(pipeline_cache_file_path, .{}) catch try std.fs.cwd().createFile(pipeline_cache_file_path, .{ .read = true });
-        // defer file.close();
+        if (enable_pipeline_cache)
+        {
+            const file = std.fs.cwd().openFile(pipeline_cache_file_path, .{}) catch try std.fs.cwd().createFile(pipeline_cache_file_path, .{ .read = true });
+            defer file.close();
 
-        // pipeline_cache_data = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
-        // defer allocator.free(pipeline_cache_data);
+            pipeline_cache_data = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+            defer allocator.free(pipeline_cache_data);
 
-        // std.log.debug("pipeline_cache_data.len = {}", .{ pipeline_cache_data.len });
+            log.debug("pipeline_cache_data.len = {}", .{ pipeline_cache_data.len });
+        }
 
-        try GraphicsContext.init(allocator, &.{});
+        try GraphicsContext.init(allocator, pipeline_cache_data);
     }
 
     defer GraphicsContext.deinit();
 
-    defer if (false)
+    defer if (enable_pipeline_cache)
     {
         const pipeline_cache_data = GraphicsContext.getPipelineCacheData() catch unreachable;
         defer allocator.free(pipeline_cache_data);
@@ -105,21 +113,21 @@ pub fn main() !void
     try RendererGui.init(allocator, swapchain);
     defer RendererGui.deinit();
 
-    var asset_archive_file_path = "zig-out/bin/assets/example_assets_archive";
+    var asset_archive_file_path = "assets/example_assets_archive";
 
     const asset_archive_fd = try std.os.open(asset_archive_file_path, std.os.O.RDONLY, std.os.S.IRUSR | std.os.S.IWUSR);
     defer std.os.close(asset_archive_fd);
 
     const asset_archive_fd_stat = try std.os.fstat(asset_archive_fd);
 
-    std.log.info("assets_archive size = {}", .{ asset_archive_fd_stat.size });
+    log.info("assets_archive size = {}", .{ asset_archive_fd_stat.size });
 
     const asset_archive_blob = try std.os.mmap(null, @intCast(usize, asset_archive_fd_stat.size), std.os.PROT.READ, std.os.MAP.PRIVATE, asset_archive_fd, 0);
     defer std.os.munmap(asset_archive_blob);
 
     const asset_archive = try asset.Archive.decode(allocator, asset_archive_blob);
 
-    std.log.info("asset_archive.assets.len = {any}", .{ asset_archive.assets.len });
+    log.info("asset_archive.assets.len = {any}", .{ asset_archive.assets.len });
     
     const test_scene_blob = asset_archive.getAssetData(@intToEnum(asset.Archive.AssetDescriptor, 3));
 
@@ -159,8 +167,8 @@ pub fn main() !void
     {
         for (test_scene_import.materials, 0..) |material, i|
         {
-            std.log.info("material albedo index {}", .{ material.albedo_texture_index });
-            std.log.info("material albedo {any}", .{ material.albedo });
+            log.info("material albedo index {}", .{ material.albedo_texture_index });
+            log.info("material albedo {any}", .{ material.albedo });
 
             test_scene_materials[i] = try Renderer3D.createMaterial(
                 if (material.albedo_texture_index != 0) test_scene_textures[material.albedo_texture_index - 1] else null,
@@ -486,7 +494,7 @@ pub fn main() !void
 
                     if (widgets.button("Button test"))
                     {
-                        std.log.info("Praise be the {s}", .{ "BIG BUTTON" });
+                        log.info("Praise be the {s}", .{ "BIG BUTTON" });
                     }
 
                     widgets.text("Renderer Statistics:");
@@ -536,7 +544,7 @@ pub fn main() !void
                 {
                     const mouse_pos = window.getMousePos();
 
-                    std.log.info("mouse_pos = {d}, {d}", .{ mouse_pos[0], mouse_pos[1] });
+                    log.info("mouse_pos = {d}, {d}", .{ mouse_pos[0], mouse_pos[1] });
 
                     const inverse_projection = zalgebra.Mat4.inv(.{ .data = camera.getProjectionNonInverse() });
                     const inverse_view = zalgebra.Mat4.inv(.{ .data = camera.getView() });
@@ -549,13 +557,13 @@ pub fn main() !void
                     const screen_space_pos = inverse_projection.mulByVec4(.{ .data = .{ normalized_pos[0], normalized_pos[1], 0, 1 } });
                     const world_space_pos = inverse_view.mulByVec4(screen_space_pos);
 
-                    std.log.info("world_space_pos (ray_origin) = {d}, {d}, {d}", .{ 
+                    log.info("world_space_pos (ray_origin) = {d}, {d}, {d}", .{ 
                         world_space_pos.data[0] / 1000.0, 
                         world_space_pos.data[1] / 1000.0,
                         world_space_pos.data[2] / 1000.0,
                     });
 
-                    std.log.info("world_space_pos (ray_dir) = {d}, {d}, {d}", .{
+                    log.info("world_space_pos (ray_dir) = {d}, {d}, {d}", .{
                         camera_front[0],
                         camera_front[1],
                         camera_front[2],

@@ -81,6 +81,8 @@ pub fn build(builder: *std.build.Builder) !void
             run_cmd.addArgs(args);
         }
 
+        run_cmd.cwd = "zig-out/bin/";
+
         const run_step = builder.step("run_example", "Run the example application");
         run_step.dependOn(&run_cmd.step);
     }
