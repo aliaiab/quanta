@@ -155,11 +155,18 @@ pub fn entityViewer(
                                                 1 => unreachable,
                                                 2 => unreachable,
                                                 3 => {        
+                                                    const array_ptr_f32 = @ptrCast(*f32, @alignCast(@alignOf(f32), ptr_to_array));
+
+                                                    if (field_editor_info == null)
+                                                    {
+                                                        _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.f32_min, std.math.f32_max, null, 0);
+
+                                                        continue;
+                                                    }
+
                                                     widgets.textFormat("{any}", .{ field_editor_info });
 
                                                     const edit_type_field = field_editor_info.?.type.getStructField("edit_type");
-
-                                                    const array_ptr_f32 = @ptrCast(*f32, @alignCast(@alignOf(f32), ptr_to_array));
 
                                                     const edit_type_ptr = quanta.reflect.Type.getStructFieldValue([]const u8, edit_info.?.value, edit_type_field.?);
 

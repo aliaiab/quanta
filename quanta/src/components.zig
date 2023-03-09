@@ -69,6 +69,26 @@ pub const RendererMesh = struct
     material: Renderer3D.MaterialHandle,
 };
 
+pub const DirectionalLight = struct 
+{
+    intensity: f32,
+    diffuse: [3]f32,
+
+    pub const editor = EditorInfo
+    {
+        .diffuse = .{
+            .edit_type = "color"
+        }
+    };
+
+    pub const EditorInfo = struct 
+    {
+        diffuse: struct {
+            edit_type: []const u8
+        },
+    };
+};
+
 pub const PointLight = struct 
 {
     intensity: f32,

@@ -190,6 +190,7 @@ pub fn main() !void
     const scene = try Renderer3D.createScene(
         1, 
         50_000,
+        4,
         4096,
         environment_map_data, 
         1024, 1024,
@@ -234,14 +235,16 @@ pub fn main() !void
     var camera_enable = false;
     var camera_enable_changed = false;
 
-    var directional_light: Renderer3D.DirectionalLight = .{
-        .direction = .{ -0.5, -1, -0.3 },  
-        .diffuse = packUnorm4x8(.{ 0.45, 0.45, 0.45, 1 }),
-        .intensity = 1
-    };
-    var enable_directional_light: bool = true;
-
-    const time_at_start = std.time.milliTimestamp();
+    _ = try ecs_scene.entityCreate(
+        .{
+            quanta_components.Rotation { .x = -0.5, .y = -1, .z = -0.3 },
+            quanta_components.DirectionalLight
+            {  
+                .intensity = 1,
+                .diffuse = .{ 0.45, 0.45, 0.45, },
+            },
+        }
+    ); 
 
     const TestEnumComponent = enum 
     {
@@ -310,6 +313,39 @@ pub fn main() !void
     );
 
     std.debug.assert(ecs_scene.entitiesAreIsomers(entity_a, entity_b));   
+
+    _ = try ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 0, .y = 1, .z = -4 },
+            quanta_components.PointLight 
+            {  
+                .intensity = 10 + 40,
+                .diffuse = .{ 0.8, 0.4, 0.1 },
+            },
+        }
+    ); 
+
+    _ = try ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 4, .y = 4, .z = 4 },
+            quanta_components.PointLight 
+            {  
+                .intensity = 10 + 40,
+                .diffuse = .{ 0.4, 0.8, 0.1 },
+            },
+        }
+    ); 
+
+    _ = try ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 80, .y = 4, .z = 4 },
+            quanta_components.PointLight 
+            {  
+                .intensity = 1000,
+                .diffuse = .{ 0.6, 0.6, 0.8 },
+            },
+        }
+    ); 
 
     var entity_debugger_commands = quanta.ecs.CommandBuffer.init(allocator);
     defer entity_debugger_commands.deinit();
@@ -427,46 +463,14 @@ pub fn main() !void
                 scene, 
                 &.{ Renderer3D.View { .camera = camera } },
                 .{ .diffuse = packUnorm4x8(.{ 0.005, 0.005, 0.005, 1 }) },
-                if (enable_directional_light) directional_light else null
+                0,
             );
             defer Renderer3D.endSceneRender(scene);
 
-            quanta.systems.renderer3d_system.run(&ecs_scene, scene);   
+            quanta.systems.mesh_instance_system.run(&ecs_scene, scene);   
             quanta.systems.point_light_system.run(&ecs_scene, scene);
-
-            if (true)
-            {
-                Renderer3D.scenePushPointLight(scene, .{
-                    .position = .{ 0, 1, -4 },
-                    .intensity = 10 + 40 * std.math.fabs(@sin(@intToFloat(f32, std.time.milliTimestamp() - time_at_start) / 1000)), 
-                    .diffuse = packUnorm4x8(.{ 0.8, 0.4, 0.1, 1 }),
-                });
-
-                Renderer3D.scenePushPointLight(scene, .{
-                    .position = .{ 4, 4, 4 },
-                    .intensity = 10 + 40 * std.math.fabs(@sin(@intToFloat(f32, std.time.milliTimestamp() - time_at_start) / 1000)), 
-                    .diffuse = packUnorm4x8(.{ 0.4, 0.8, 0.1, 1 }),
-                });
-
-                Renderer3D.scenePushPointLight(scene, .{
-                    .position = .{ 80, 4, 4 },
-                    .intensity = 400 + 600 * std.math.fabs(@sin(@intToFloat(f32, std.time.milliTimestamp() - time_at_start) / 1000)), 
-                    .diffuse = packUnorm4x8(.{ 0.6, 0.6, 0.8, 1 }),
-                });
-
-                Renderer3D.scenePushPointLight(scene, .{
-                    .position = .{ -80, 4, 4 },
-                    .intensity = 600 + 600 * std.math.fabs(@sin(@intToFloat(f32, std.time.milliTimestamp() - time_at_start) / 1000)), 
-                    .diffuse = packUnorm4x8(.{ 0.8, 0.5, 0.5, 1 }),
-                });
-            }
-
-            Renderer3D.scenePushPointLight(scene, .{
-                .position = .{ 4.0762, 35, 5.9 },
-                .intensity = 1000, 
-                .diffuse = packUnorm4x8(.{ 1, 1, 1, 1 }),
-            });
-
+            quanta.systems.directional_light_system.run(&ecs_scene, scene);
+            
             for (test_scene_import.point_lights) |point_light|
             {
                 Renderer3D.scenePushPointLight(scene, .{ .position = point_light.position, .intensity = point_light.intensity, .diffuse = std.math.maxInt(u32) });
@@ -510,11 +514,6 @@ pub fn main() !void
                     );
 
                     _ = imgui.igDragFloat("Camera Exposure: ", &camera.exposure, 0.1, 0.1, 15, null, 0);
-
-                    widgets.text("Directional Light: ");
-
-                    _ = imgui.igDragFloat3("Direction: ", &directional_light.direction[0], 0.05, -1, 1, null, 0);
-                    _ = imgui.igDragFloat("Intensity: ", &directional_light.intensity, 0.1, 0, 1, null, 0);
                 }
                 widgets.end();
 

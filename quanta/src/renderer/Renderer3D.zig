@@ -29,23 +29,9 @@ const ColorPassUniforms = extern struct
 {
     view_projection: [4][4]f32 align(1),
     view_position: [3]f32 align(1),
-    
     point_light_count: u32 align(1),
     ambient_light: AmbientLight align(1),
-
-    directional_light: DirectionalLight align(1),
-    use_directional_light: u32 align(1),
-    directional_light_view_projection: [4][4]f32 align(1),
-};
-
-const ColorPassPushConstants = extern struct
-{
-    view_projection: [4][4]f32 align(1),
-    point_light_count: u32 align(1),
-    view_position: [3]f32 align(1),
-    ambient_light: AmbientLight align(1),
-    directional_light: DirectionalLight align(1),
-    use_directional_light: u32 align(1),
+    primary_directional_light_index: u32 align(1),
 };
 
 const ColorResolvePushData = extern struct 
@@ -400,7 +386,7 @@ pub fn init(
             },
         },
         null,
-        ColorPassPushConstants,
+        null,
     );
     errdefer self.color_pipeline.deinit(allocator);
 
@@ -635,7 +621,7 @@ pub fn beginSceneRender(
     scene: SceneHandle, 
     active_views: []const View,
     ambient_light: AmbientLight,
-    directional_light: ?DirectionalLight,
+    primary_directional_light_index: u32,
     ) !void 
 {
     const scene_data: *Scene = &self.scenes.items[@enumToInt(scene)];
@@ -643,11 +629,12 @@ pub fn beginSceneRender(
     std.debug.assert(active_views.len == 1);
 
     scene_data.ambient_light = ambient_light;
-    scene_data.directional_light = directional_light orelse undefined;
-    scene_data.enable_directional_light = directional_light != null;
 
     scene_data.dynamic_draw_count = 0;
+    scene_data.directional_light_count = 0;
     scene_data.point_light_count = 0;
+    scene_data.primary_directional_light_index = primary_directional_light_index;
+
     self.camera = active_views[0].camera;
 
     if (self.material_data_changed or self.mesh_data_changed)
@@ -945,11 +932,13 @@ fn endRenderInternal(scene: SceneHandle) !void
     shadow_view_frustrum_center[1] /= @intToFloat(f32, view_frustum_corners.len);
     shadow_view_frustrum_center[2] /= @intToFloat(f32, view_frustum_corners.len);
 
+    const primary_directional_light = &scene_data.directional_lights[scene_data.primary_directional_light_index];
+
     const shadow_view_position = [3]f32 
     { 
-        shadow_view_frustrum_center[0] + scene_data.directional_light.direction[0], 
-        shadow_view_frustrum_center[1] + scene_data.directional_light.direction[1], 
-        shadow_view_frustrum_center[2] + scene_data.directional_light.direction[2] 
+        shadow_view_frustrum_center[0] + primary_directional_light.direction[0], 
+        shadow_view_frustrum_center[1] + primary_directional_light.direction[1], 
+        shadow_view_frustrum_center[2] + primary_directional_light.direction[2] 
     };
 
     const shadow_view = zalgebra.lookAt(
@@ -1015,10 +1004,10 @@ fn endRenderInternal(scene: SceneHandle) !void
         .view_position = self.camera.translation,
         .point_light_count = scene_data.point_light_count,
         .ambient_light = scene_data.ambient_light,
-        .directional_light = scene_data.directional_light,
-        .use_directional_light = @boolToInt(scene_data.enable_directional_light),
-        .directional_light_view_projection = shadow_view_projection.data,
+        .primary_directional_light_index = scene_data.primary_directional_light_index,
     };
+
+    primary_directional_light.view_projection = shadow_view_projection.data;
 
     //sneaky hack due to our incomplete swapchain abstraction
     var color_image: Image = undefined;
@@ -1341,14 +1330,6 @@ fn endRenderInternal(scene: SceneHandle) !void
 
             command_buffer.setGraphicsPipeline(self.color_pipeline);
             command_buffer.setIndexBuffer(self.index_buffer, .u32);
-            command_buffer.setPushData(ColorPassPushConstants, .{
-                .view_projection = view_projection.data,
-                .point_light_count = scene_data.point_light_count,
-                .view_position = self.camera.translation,
-                .ambient_light = scene_data.ambient_light,
-                .directional_light = scene_data.directional_light,
-                .use_directional_light = @boolToInt(scene_data.enable_directional_light),
-            });
 
             GraphicsContext.self.vkd.cmdWriteTimestamp2(command_buffer.handle, vk.PipelineStageFlags2
             {
@@ -1512,13 +1493,12 @@ pub const DirectionalLight = extern struct
     direction: [3]f32,
     intensity: f32,
     diffuse: u32,
+    view_projection: [4][4]f32,
 };
 
 const Scene = struct 
 {
     ambient_light: AmbientLight,
-    directional_light: DirectionalLight,
-    enable_directional_light: bool,
     views: []View,
     
     transforms: [][4][3]f32,
@@ -1542,6 +1522,11 @@ const Scene = struct
     post_depth_cull_dispatch_buffer: graphics.Buffer,
 
     post_depth_draw_command_offset: u32,
+
+    directional_lights: []DirectionalLight,
+    directional_light_buffer: graphics.Buffer,
+    directional_light_count: u32,
+    primary_directional_light_index: u32,
 
     point_lights: []PointLight,
     point_light_buffer: graphics.Buffer,
@@ -1567,6 +1552,7 @@ pub const SceneHandle = enum(u32) { _ };
 pub fn createScene(
     max_view_count: u32,
     max_mesh_draw_count: u32,
+    max_directional_light_count: u32,
     max_point_light_count: u32,
     environment_data: ?[]const u8,
     environment_width: ?u32,
@@ -1650,6 +1636,14 @@ pub fn createScene(
         self.sky_pipeline.setDescriptorImageSampler(0, 0, scene.environment_image, scene.environment_sampler);
     }
 
+    scene.directional_light_buffer = try graphics.Buffer.init(max_directional_light_count * @sizeOf(DirectionalLight), .storage);
+    errdefer scene.directional_light_buffer.deinit();
+
+    scene.directional_lights = try scene.directional_light_buffer.map(DirectionalLight);
+    errdefer scene.directional_light_buffer.unmap();
+
+    scene.directional_light_count = 0;
+
     scene.point_light_buffer = try graphics.Buffer.init(max_point_light_count * @sizeOf(PointLight), .storage);
     errdefer scene.point_light_buffer.deinit();
 
@@ -1664,6 +1658,7 @@ pub fn createScene(
     self.color_pipeline.setDescriptorBuffer(7, 0, scene.point_light_buffer);
     self.color_pipeline.setDescriptorImageSampler(8, 0, scene.environment_image, scene.environment_sampler);
     self.color_pipeline.setDescriptorBuffer(10, 0, scene.uniforms_buffer);
+    self.color_pipeline.setDescriptorBuffer(11, 0, scene.directional_light_buffer);
 
     self.depth_pipeline.setDescriptorBuffer(1, 0, scene.transforms_buffer);
     self.depth_pipeline.setDescriptorBuffer(2, 0, scene.draw_indirect_buffer);
@@ -1705,6 +1700,8 @@ pub fn destroyScene(scene: SceneHandle) void
     defer scene_data.material_indices_buffer.deinit();
     defer scene_data.point_light_buffer.deinit();
     defer scene_data.point_light_buffer.unmap();
+    defer scene_data.directional_light_buffer.deinit();
+    defer scene_data.directional_light_buffer.unmap();
     defer if (scene_data.environment_enabled) scene_data.environment_image.deinit();
     defer if (scene_data.environment_enabled) scene_data.environment_sampler.deinit();
 } 
@@ -1809,6 +1806,18 @@ pub fn scenePushPointLight(scene: SceneHandle, point_light: PointLight) void
     scene_data.point_lights[index] = point_light;
 
     scene_data.point_light_count += 1;
+}
+
+///Pushes a dynamic directional light into the scene
+pub fn scenePushDirectionalLight(scene: SceneHandle, directional_light: DirectionalLight) void 
+{
+    const scene_data: *Scene = &self.scenes.items[@enumToInt(scene)];
+
+    const index = scene_data.directional_light_count;
+
+    scene_data.directional_lights[index] = directional_light;
+
+    scene_data.directional_light_count += 1;
 }
 
 const Mesh = extern struct 

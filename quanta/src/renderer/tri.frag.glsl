@@ -16,6 +16,7 @@ struct DirectionalLight
     vec3 direction;
     float intensity;
     uint diffuse;
+    mat4 view_projection;
 };
 
 struct PointLight 
@@ -34,9 +35,7 @@ layout(binding = 10, scalar) restrict readonly buffer SceneUniforms
     u32 point_light_count;
     AmbientLight ambient_light;
 
-    DirectionalLight directional_light;
-    bool use_directional_light;
-    mat4 directional_light_view_projection;
+    u32 primary_directional_light_index;
 } scene_uniforms;
 
 in Out
@@ -71,6 +70,11 @@ layout(binding = 6) uniform sampler2D samplers[16000];
 layout(binding = 7, scalar) restrict readonly buffer PointLights 
 {
     PointLight point_lights[];
+};
+
+layout(binding = 11, scalar) restrict readonly buffer DirectionalLights
+{
+    DirectionalLight directional_lights[];
 };
 
 layout(binding = 8) uniform samplerCube environment_sampler;
@@ -179,7 +183,7 @@ vec4 directionalLightContribution(
     float denominator = 4.0 * max(dot(normal, view_direction), 0.0) * n_dot_l + 0.0001;
     vec3 specular = numerator / denominator;  
 
-    return vec4((kD * albedo.rgb / PI + specular) * vec3(1) * n_dot_l * directional_light.intensity, 0); 
+    return vec4((kD * albedo.rgb / PI + specular) * radiance * n_dot_l * directional_light.intensity, 0); 
 }
 
 vec4 pointLightContribution(
@@ -249,8 +253,10 @@ void main()
     vec3 F0 = vec3(0.04); 
     F0 = mix(F0, vec3(albedo), metallic);
 
-    if (scene_uniforms.use_directional_light)
+    for (int i = 0; i < directional_lights.length(); i += 1)
     {
+        DirectionalLight directional_light = directional_lights[i];
+
         vec3 projection_coordinates = in_data.position_light_space.xyz;
 
         projection_coordinates = projection_coordinates * 0.5 + 0.5;
@@ -270,11 +276,11 @@ void main()
                 roughness,
                 metallic, 
                 F0, 
-                scene_uniforms.directional_light, 
+                directional_light, 
                 in_data.normal, 
                 in_data.position, 
                 view_direction
-        ) * (1 - shadow);
+        ) * (1 - shadow); 
     }
 
     uint point_light_count = scene_uniforms.point_light_count;
