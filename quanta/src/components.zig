@@ -96,4 +96,4 @@ pub const PointLight = struct
     };
 };
 
-const Renderer3D = @import("../renderer.zig").Renderer3D;
+const Renderer3D = @import("renderer.zig").Renderer3D;

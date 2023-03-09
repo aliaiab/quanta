@@ -1,6 +1,6 @@
 const std = @import("std");
-const components = @import("components.zig");
-const ComponentStore = @import("ComponentStore.zig");
+const components = @import("../components.zig");
+const ComponentStore = @import("../ecs/ComponentStore.zig");
 
 const Velocity = components.Velocity;
 const TerminalVelocity = components.TerminalVelocity;

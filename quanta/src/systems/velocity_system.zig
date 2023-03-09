@@ -1,8 +1,8 @@
 const std = @import("std");
 const log = std.log.scoped(.velocity_system);
-const components = @import("components.zig");
-const ComponentStore = @import("ComponentStore.zig");
-const CommandBuffer = @import("CommandBuffer.zig");
+const components = @import("../components.zig");
+const ComponentStore = @import("../ecs/ComponentStore.zig");
+const CommandBuffer = @import("../ecs/CommandBuffer.zig");
 
 const Position = components.Position;
 const Velocity = components.Velocity;

@@ -11,6 +11,8 @@ pub const math = @import("math.zig");
 pub const log = @import("log.zig").log;
 pub const reflect = @import("reflect/reflect.zig");
 pub const physics = @import("physics.zig");
+pub const systems = @import("systems.zig");
+pub const components = @import("components.zig");
 
 test
 {

@@ -1,7 +1,7 @@
 const std = @import("std");
 const log = std.log.scoped(.acceleration_system);
-const components = @import("components.zig");
-const ComponentStore = @import("ComponentStore.zig");
+const components = @import("../components.zig");
+const ComponentStore = @import("../ecs/ComponentStore.zig");
 
 const Acceleration = components.Acceleration;
 const Velocity = components.Velocity;

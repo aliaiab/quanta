@@ -1,6 +1,6 @@
 const std = @import("std");
-const components = @import("components.zig");
-const ComponentStore = @import("ComponentStore.zig");
+const components = @import("../components.zig");
+const ComponentStore = @import("../ecs/ComponentStore.zig");
 const Renderer3D = @import("../renderer.zig").Renderer3D;
 const zalgebra = @import("zalgebra");
 

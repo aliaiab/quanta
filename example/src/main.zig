@@ -19,10 +19,9 @@ const imguizmo = quanta.imgui.guizmo;
 const entity_editor = quanta.imgui.entity_editor;
 const asset = quanta.asset;
 
-const quanta_components = quanta.ecs.components;
-const transform_system = quanta.ecs.transform_system;
-const velocity_system = quanta.ecs.velocity_system;
-const acceleration_system = quanta.ecs.acceleration_system;
+const quanta_components = quanta.components;
+const velocity_system = quanta.systems.velocity_system;
+const acceleration_system = quanta.systems.acceleration_system;
 
 const vk = quanta.graphics.vulkan;
 const graphics = quanta.graphics;
@@ -205,10 +204,10 @@ pub fn main() !void
         const scale = decomposed.s;
 
         _ = try ecs_scene.entityCreate(.{
-            quanta.ecs.components.Position { .x = translation.x(), .y = translation.y(), .z = translation.z() },
-            quanta.ecs.components.Rotation { .x = rotation.x(), .y = rotation.y(), .z = rotation.z() },
-            quanta.ecs.components.NonUniformScale { .x = scale.x(), .y = scale.y(), .z = scale.z() },
-            quanta.ecs.components.RendererMesh { .mesh = test_scene_meshes[i], .material = test_scene_materials[sub_mesh.material_index] },
+            quanta.components.Position { .x = translation.x(), .y = translation.y(), .z = translation.z() },
+            quanta.components.Rotation { .x = rotation.x(), .y = rotation.y(), .z = rotation.z() },
+            quanta.components.NonUniformScale { .x = scale.x(), .y = scale.y(), .z = scale.z() },
+            quanta.components.RendererMesh { .mesh = test_scene_meshes[i], .material = test_scene_materials[sub_mesh.material_index] },
         });
     }
 
@@ -400,9 +399,8 @@ pub fn main() !void
             camera.translation = camera_position;
         }
 
-        transform_system.run(&ecs_scene);
         acceleration_system.run(&ecs_scene, delta_time);
-        quanta.ecs.force_system.run(&ecs_scene, delta_time);
+        quanta.systems.force_system.run(&ecs_scene, delta_time);
 
         try quanta.ecs.system_scheduler.run(
             &ecs_scene, 
@@ -412,7 +410,7 @@ pub fn main() !void
             }
         );
 
-        quanta.ecs.terminal_velocity_system.run(&ecs_scene);
+        quanta.systems.terminal_velocity_system.run(&ecs_scene);
 
         const image_index = swapchain.image_index;
         const image = swapchain.swap_images[image_index];
@@ -433,8 +431,8 @@ pub fn main() !void
             );
             defer Renderer3D.endSceneRender(scene);
 
-            quanta.ecs.renderer3d_system.run(&ecs_scene, scene);   
-            quanta.ecs.point_light_system.run(&ecs_scene, scene);
+            quanta.systems.renderer3d_system.run(&ecs_scene, scene);   
+            quanta.systems.point_light_system.run(&ecs_scene, scene);
 
             if (true)
             {
@@ -608,9 +606,9 @@ pub fn main() !void
 
                     var query = ecs_scene.query(
                         .{ 
-                            quanta.ecs.components.Position, 
-                            quanta.ecs.components.NonUniformScale, 
-                            quanta.ecs.components.RendererMesh, 
+                            quanta.components.Position, 
+                            quanta.components.NonUniformScale, 
+                            quanta.components.RendererMesh, 
                         }, .{}
                     );
 
@@ -671,12 +669,12 @@ pub fn main() !void
 
                 if (
                     selected_entity != null and
-                    ecs_scene.entityHasComponent(selected_entity.?, quanta.ecs.components.Position)
+                    ecs_scene.entityHasComponent(selected_entity.?, quanta.components.Position)
                 )
                 {
-                    const entity_position = ecs_scene.entityGetComponent(selected_entity.?, quanta.ecs.components.Position) orelse unreachable;  
-                    const entity_rotation = ecs_scene.entityGetComponent(selected_entity.?, quanta.ecs.components.Rotation);  
-                    const entity_scale = if (false) ecs_scene.entityGetComponent(selected_entity.?, quanta.ecs.components.NonUniformScale) else null;  
+                    const entity_position = ecs_scene.entityGetComponent(selected_entity.?, quanta.components.Position) orelse unreachable;  
+                    const entity_rotation = ecs_scene.entityGetComponent(selected_entity.?, quanta.components.Rotation);  
+                    const entity_scale = if (false) ecs_scene.entityGetComponent(selected_entity.?, quanta.components.NonUniformScale) else null;  
 
                     imguizmo.ImGuizmo_SetImGuiContext(imgui.igGetCurrentContext());
                     imguizmo.ImGuizmo_Enable(true);
