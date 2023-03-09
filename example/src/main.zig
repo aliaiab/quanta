@@ -570,7 +570,7 @@ pub fn main() !void
 
                     const normalized_pos = [2]f32 { 
                         ((mouse_pos[0] / @intToFloat(f32, window.getWidth())) * 2) - 1, 
-                        ((mouse_pos[1] / @intToFloat(f32, window.getHeight())) * 2) - 1,
+                        (((mouse_pos[1] - @intToFloat(f32, window.getHeight())) / @intToFloat(f32, window.getHeight())) * 2) - 1,
                     };
 
                     const world_space_pos = inverse_view_projection.mulByVec4(.{ .data = .{ normalized_pos[0], normalized_pos[1], 0, 1 } });
@@ -673,7 +673,7 @@ pub fn main() !void
                 {
                     const entity_position = ecs_scene.entityGetComponent(selected_entity.?, quanta.components.Position) orelse unreachable;  
                     const entity_rotation = ecs_scene.entityGetComponent(selected_entity.?, quanta.components.Rotation);  
-                    const entity_scale = if (false) ecs_scene.entityGetComponent(selected_entity.?, quanta.components.NonUniformScale) else null;  
+                    const entity_scale = ecs_scene.entityGetComponent(selected_entity.?, quanta.components.NonUniformScale);  
 
                     imguizmo.ImGuizmo_SetImGuiContext(imgui.igGetCurrentContext());
                     imguizmo.ImGuizmo_Enable(true);
@@ -684,21 +684,13 @@ pub fn main() !void
 
                     const camera_view = camera.getView();
                     const camera_projection = camera.getProjectionNonInverse();
+                    const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
 
                     var operation = imguizmo.Operation.translate;
 
                     var manip_matrix = zalgebra.Mat4.identity();
 
-                    if (entity_scale != null)
-                    {
-                        manip_matrix = manip_matrix.scale(.{ .data = .{ entity_scale.?.x, entity_scale.?.y, entity_scale.?.z } });
-
-                        operation.scale_x = true;
-                        operation.scale_y = true;
-                        operation.scale_z = true;
-                    }
-
-                    manip_matrix = manip_matrix.translate(.{ .data = .{ entity_position.x, entity_position.y, entity_position.z } });
+                    manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromTranslate(.{ .data = .{ entity_position.x, entity_position.y, entity_position.z } }));
                     
                     if (entity_rotation != null)
                     {
@@ -708,6 +700,15 @@ pub fn main() !void
                         operation.rotate_y = true;
                         operation.rotate_z = true;
                         operation.rotate_screen = true;
+                    }
+
+                    if (entity_scale != null)
+                    {
+                        manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromScale(.{ .data = .{ entity_scale.?.x, entity_scale.?.y, entity_scale.?.z } }));
+
+                        operation.scale_x = true;
+                        operation.scale_y = true;
+                        operation.scale_z = true;
                     }
 
                     _ = imguizmo.ImGuizmo_Manipulate(
@@ -740,6 +741,21 @@ pub fn main() !void
                     if (entity_scale != null)
                     {
                         entity_scale.?.* = .{ .x = scale[0], .y = scale[1], .z = scale[2] };
+                    }
+
+                    if (ecs_scene.entityGetComponent(selected_entity.?, quanta_components.RendererMesh)) |mesh|
+                    {
+                        const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
+
+                        const bounding_min = mesh_box.min;
+                        const bounding_max = mesh_box.max;
+
+                        widgets.drawBoundingBox(
+                            camera_view_projection,
+                            manip_matrix,
+                            bounding_min,
+                            bounding_max
+                        );
                     }
                 }
 
