@@ -64,6 +64,25 @@ pub fn dragFloat(label: []const u8, float: *f32) void
     _ = imgui.igDragFloat(label.ptr, float, 0.1, 0, 0, null, 0);
 }
 
+pub fn drawBillboard(
+    view_projection: zalgebra.Mat4,
+    position: @Vector(3, f32),
+) void 
+{
+    const viewport = imgui.igGetWindowViewport();
+    const draw_list = imgui.igGetBackgroundDrawList_ViewportPtr(viewport);
+
+    const screen_pos = worldToScreenPos(position, view_projection, viewport) orelse return;
+
+    imgui.ImDrawList_AddCircleFilled(
+        draw_list, 
+        .{ .x = screen_pos[0], .y = screen_pos[1] },
+        10,
+        0xffffffff,
+        32,
+    );
+}
+
 pub fn drawBoundingBox(
     view_projection: zalgebra.Mat4,
     transform: zalgebra.Mat4,

@@ -762,6 +762,25 @@ pub fn main() !void
                 try entity_debugger_commands.execute(&ecs_scene);
             }
             
+            //Draw point light gizmos
+            {
+                const camera_view = camera.getView();
+                const camera_projection = camera.getProjectionNonInverse();
+                const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
+
+                var query = ecs_scene.query(.{ quanta_components.Position, quanta_components.PointLight }, .{});
+
+                while (query.nextBlock()) |block|
+                {
+                    for (
+                        block.Position
+                    ) |position|
+                    {
+                        quanta.imgui.widgets.drawBillboard(camera_view_projection, .{ position.x, position.y, position.z });
+                    }
+                }
+            }
+
             imgui.igRender();
 
             {
