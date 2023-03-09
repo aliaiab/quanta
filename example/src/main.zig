@@ -71,16 +71,17 @@ pub fn main() !void
 
         if (enable_pipeline_cache)
         {
-            const file = std.fs.cwd().openFile(pipeline_cache_file_path, .{}) catch try std.fs.cwd().createFile(pipeline_cache_file_path, .{ .read = true });
+            const file = std.fs.cwd().openFile(pipeline_cache_file_path, .{ .mode = .read_only }) catch try std.fs.cwd().createFile(pipeline_cache_file_path, .{ .read = true });
             defer file.close();
 
             pipeline_cache_data = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
-            defer allocator.free(pipeline_cache_data);
 
             log.debug("pipeline_cache_data.len = {}", .{ pipeline_cache_data.len });
         }
 
         try GraphicsContext.init(allocator, pipeline_cache_data);
+
+        allocator.free(pipeline_cache_data);
     }
 
     defer GraphicsContext.deinit();
@@ -93,6 +94,7 @@ pub fn main() !void
         const file = std.fs.cwd().openFile(pipeline_cache_file_path, .{ .mode = .write_only }) catch unreachable;
         defer file.close();
 
+        file.setEndPos(0) catch unreachable;
         file.seekTo(0) catch unreachable;
 
         file.writeAll(pipeline_cache_data) catch unreachable;
@@ -518,6 +520,11 @@ pub fn main() !void
                 }
                 widgets.end();
 
+                if (selected_entity != null and !ecs_scene.entityExists(selected_entity.?))
+                {
+                    selected_entity = null;
+                }
+
                 //Duplicate
                 if (
                     window.getKeyDown(.left_control) and
@@ -539,23 +546,37 @@ pub fn main() !void
                     cloned_entity_last_frame = false;
                 }
 
+                if (selected_entity != null and window.getKeyDown(.delete))
+                {
+                    entity_debugger_commands.entityDestroy(selected_entity.?);
+                }
+
                 //Selection
-                if (window.getMouseDown(.left) and !mouse_pressed_last_Frame)
+                if (
+                    window.getMouseDown(.left) 
+                    and !mouse_pressed_last_Frame
+                    and !imguizmo.ImGuizmo_IsUsing() 
+                    and !imguizmo.ImGuizmo_IsOver() 
+                    and !imgui.igIsAnyItemFocused()
+                    )
                 {
                     const mouse_pos = window.getMousePos();
 
                     log.info("mouse_pos = {d}, {d}", .{ mouse_pos[0], mouse_pos[1] });
 
-                    const inverse_projection = zalgebra.Mat4.inv(.{ .data = camera.getProjectionNonInverse() });
-                    const inverse_view = zalgebra.Mat4.inv(.{ .data = camera.getView() });
+                    const view_projection = zalgebra.Mat4.mul(
+                        .{ .data = camera.getView() },
+                        .{ .data = camera.getProjectionNonInverse() },
+                    );
+
+                    const inverse_view_projection = view_projection.inv();
 
                     const normalized_pos = [2]f32 { 
-                        ((mouse_pos[0] / @intToFloat(f32, window.getWidth())) - 0.5) * 2, 
-                        ((mouse_pos[1] / @intToFloat(f32, window.getHeight())) - 0.5) * 2,
+                        ((mouse_pos[0] / @intToFloat(f32, window.getWidth())) * 2) - 1, 
+                        ((mouse_pos[1] / @intToFloat(f32, window.getHeight())) * 2) - 1,
                     };
 
-                    const screen_space_pos = inverse_projection.mulByVec4(.{ .data = .{ normalized_pos[0], normalized_pos[1], 0, 1 } });
-                    const world_space_pos = inverse_view.mulByVec4(screen_space_pos);
+                    const world_space_pos = inverse_view_projection.mulByVec4(.{ .data = .{ normalized_pos[0], normalized_pos[1], 0, 1 } });
 
                     log.info("world_space_pos (ray_origin) = {d}, {d}, {d}", .{ 
                         world_space_pos.data[0] / 1000.0, 
@@ -612,18 +633,16 @@ pub fn main() !void
                             const bounding_min = position_vector + (mesh_box.min * @Vector(3, f32) { scale.x, scale.y, scale.z });
                             const bounding_max = position_vector + (mesh_box.max * @Vector(3, f32) { scale.x, scale.y, scale.z });
 
-                            const box_intersection = intersection.rayAABBIntersection(
+                            if (intersection.rayAABBIntersection(
                                 ray_origin, ray_direction, 
                                 bounding_min, bounding_max
-                            );
-
-                            if (box_intersection.hit)
+                            )) |hit|
                             {
                                 {
                                     found_entity = block.entities[i];
                                 }
 
-                                closest_t_max = @min(closest_t_max, box_intersection.t_max - box_intersection.t_min);
+                                closest_t_max = @min(closest_t_max, hit.t_max - hit.t_min);
                             }
                         }
                     }
@@ -657,7 +676,7 @@ pub fn main() !void
                 {
                     const entity_position = ecs_scene.entityGetComponent(selected_entity.?, quanta.ecs.components.Position) orelse unreachable;  
                     const entity_rotation = ecs_scene.entityGetComponent(selected_entity.?, quanta.ecs.components.Rotation);  
-                    // const entity_scale = ecs_scene.entityGetComponent(selected_entity.?, quanta.ecs.components.NonUniformScale);  
+                    const entity_scale = if (false) ecs_scene.entityGetComponent(selected_entity.?, quanta.ecs.components.NonUniformScale) else null;  
 
                     imguizmo.ImGuizmo_SetImGuiContext(imgui.igGetCurrentContext());
                     imguizmo.ImGuizmo_Enable(true);
@@ -673,6 +692,17 @@ pub fn main() !void
 
                     var manip_matrix = zalgebra.Mat4.identity();
 
+                    if (entity_scale != null)
+                    {
+                        manip_matrix = manip_matrix.scale(.{ .data = .{ entity_scale.?.x, entity_scale.?.y, entity_scale.?.z } });
+
+                        operation.scale_x = true;
+                        operation.scale_y = true;
+                        operation.scale_z = true;
+                    }
+
+                    manip_matrix = manip_matrix.translate(.{ .data = .{ entity_position.x, entity_position.y, entity_position.z } });
+                    
                     if (entity_rotation != null)
                     {
                         manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromEulerAngles(.{ .data = .{ entity_rotation.?.x, entity_rotation.?.y, entity_rotation.?.z } }));
@@ -683,30 +713,23 @@ pub fn main() !void
                         operation.rotate_screen = true;
                     }
 
-                    manip_matrix = zalgebra.Mat4.fromTranslate(.{ .data = .{ entity_position.x, entity_position.y, entity_position.z } }).mul(manip_matrix);
-
                     _ = imguizmo.ImGuizmo_Manipulate(
                         @ptrCast([*]const f32, &camera_view),
                         @ptrCast([*]const f32, &camera_projection),
                         operation,
                         .world,
-                        @ptrCast([*]f32, &manip_matrix),
+                        @ptrCast([*]f32, &manip_matrix.data),
                         null,
                         null,
                         null,
                         null,
                     );
 
-                    var position: [3]f32 = undefined;
-                    var rotation: [3]f32 = undefined;
-                    var scale: [3]f32 = undefined;
+                    const decomposed = manip_matrix.decompose();
 
-                    imguizmo.ImGuizmo_DecomposeMatrixToComponents(
-                        @ptrCast([*]f32, &manip_matrix),
-                        &position,
-                        &rotation,
-                        &scale
-                    );
+                    const position = decomposed.t.data;
+                    const scale = decomposed.s.data;
+                    const rotation = decomposed.r.extractEulerAngles().data; 
 
                     entity_position.x = position[0];
                     entity_position.y = position[1];
@@ -715,6 +738,11 @@ pub fn main() !void
                     if (entity_rotation != null)
                     {
                         entity_rotation.?.* = .{ .x = rotation[0], .y = rotation[1], .z = rotation[2] };
+                    }
+
+                    if (entity_scale != null)
+                    {
+                        entity_scale.?.* = .{ .x = scale[0], .y = scale[1], .z = scale[2] };
                     }
                 }
 

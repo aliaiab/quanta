@@ -141,7 +141,6 @@ pub const ChunkPool = struct
         max_count: u16 = 0,
     };
 
-    small_chunk_allocations: [6][*]u8,
     free_lists: [std.enums.values(Chunk.Size).len]FreeList,
     chunk_ptrs: [][*]u8 align(Chunk.alignment),
 
@@ -153,7 +152,6 @@ pub const ChunkPool = struct
         { 
             .free_lists = .{}, 
             .chunk_ptrs = &.{},
-            .small_chunk_allocations = undefined,
         };
 
         var chunk_ptr_count: usize = 0;

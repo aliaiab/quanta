@@ -56,8 +56,9 @@ pub fn make(step: *Step) !void
 
     const shader_optimisation = switch (self.optimize_mode)
     {
+        //TODO: There is currently an issue with -O shaders which seems to result in a miscompile 
         .ReleaseFast => "-O0",
-        .ReleaseSafe => "-O",
+        .ReleaseSafe => "-O0",
         .ReleaseSmall => "-Os",
         .Debug => "-O0",
     };

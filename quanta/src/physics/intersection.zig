@@ -7,7 +7,7 @@ pub inline fn rayAABBIntersection(
     ray_direction: @Vector(3, f32), 
     box_min: @Vector(3, f32),
     box_max: @Vector(3, f32),
-) struct { hit: bool, t_min: f32, t_max: f32 } 
+) ?struct { t_min: f32, t_max: f32 } 
 {
     var inv_ray_direction = @splat(3, @as(f32, 1)) / ray_direction;
 
@@ -23,7 +23,7 @@ pub inline fn rayAABBIntersection(
     t_min = @max(t_min, @min(ty1, ty2));
     t_max = @min(t_max, @max(ty1, ty2));
 
-    return .{ .hit = t_max >= t_min, .t_min = t_min, .t_max = t_max };
+    return if (t_max >= t_min) .{ .t_min = t_min, .t_max = t_max } else null;
 }
 
 test "Basic AABB Intersection"

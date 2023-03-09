@@ -55,10 +55,18 @@ pub fn build(builder: *std.build.Builder) !void
 
     //example
     {
+        var example_target = target;
+
+        if (mode == .ReleaseFast or mode == .ReleaseSmall or mode == .ReleaseSafe)
+        {
+            //TODO: Would use musl, but there seems to be an issue with mach-glfw/glfw
+            example_target.abi = std.Target.Abi.gnu;
+        }
+
         const exe = builder.addExecutable(.{
             .name = "example",
             .root_source_file = std.build.FileSource.relative("example/src/main.zig"),
-            .target = target,
+            .target = example_target,
             .optimize = mode,
         });
 
