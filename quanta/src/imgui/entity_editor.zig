@@ -282,14 +282,15 @@ pub fn chunkViewer(
 
     for (ecs_scene.archetypes.items[1..]) |archetype|
     {
-        const chunk: *const quanta.ecs.ComponentStore.Chunk = &archetype.chunk;
+        for (archetype.chunks.items) |chunk|
+        {
+            if (chunk.data == null) continue;
 
-        if (chunk.data == null) continue;
+            total_chunk_entity_count += chunk.max_row_count;
+            total_used_chunk_entity_count += chunk.row_count;
 
-        total_chunk_entity_count += archetype.chunk_max_entity_count;
-        total_used_chunk_entity_count += chunk.row_count;
-
-        total_chunk_size += quanta.ecs.ComponentStore.Chunk.max_size;
+            total_chunk_size += quanta.ecs.ComponentStore.Chunk.max_size;
+        }
     }
 
     widgets.textFormat("total entity utilization: {d:.1}%", .{ (@intToFloat(f32, total_used_chunk_entity_count) / @intToFloat(f32, total_chunk_entity_count)) * 100.0 });                        
@@ -309,23 +310,23 @@ pub fn chunkViewer(
         },
     }
 
-    for (ecs_scene.archetypes.items[1..], 1..) |archetype, archetype_index|
+    for (ecs_scene.archetypes.items[1..]) |archetype|
     {
-        const chunk_index = archetype_index;
-        const chunk: *const quanta.ecs.ComponentStore.Chunk = &archetype.chunk;
-
-        if (chunk.data == null) continue;
-
-        imgui.igSeparator();
-
-        if (widgets.collapsingHeader("Chunk ({})", .{ chunk_index }))
+        for (archetype.chunks.items, 0..) |chunk, chunk_index|
         {
-            widgets.textFormat("alignment: {}", .{ quanta.ecs.ComponentStore.Chunk.alignment });
-            widgets.textFormat("size: {}", .{ quanta.ecs.ComponentStore.Chunk.max_size });
-            widgets.textFormat("address: {x}", .{ @ptrToInt(chunk.data) });
-            widgets.textFormat("entity_count: {}", .{ chunk.row_count });
-            widgets.textFormat("max_entity_count: {}", .{ archetype.chunk_max_entity_count });                        
-            widgets.textFormat("entity utilization: {d:.1}%", .{ (@intToFloat(f32, chunk.row_count) / @intToFloat(f32, archetype.chunk_max_entity_count)) * 100.0 });                        
+            if (chunk.data == null) continue;
+
+            imgui.igSeparator();
+
+            if (widgets.collapsingHeader("Chunk ({})", .{ chunk_index }))
+            {
+                widgets.textFormat("alignment: {}", .{ quanta.ecs.ComponentStore.Chunk.alignment });
+                widgets.textFormat("size: {}", .{ quanta.ecs.ComponentStore.Chunk.max_size });
+                widgets.textFormat("address: {x}", .{ @ptrToInt(chunk.data.?.ptr) });
+                widgets.textFormat("entity_count: {}", .{ chunk.row_count });
+                widgets.textFormat("max_entity_count: {}", .{ chunk.max_row_count });                        
+                widgets.textFormat("entity utilization: {d:.1}%", .{ (@intToFloat(f32, chunk.row_count) / @intToFloat(f32, chunk.max_row_count)) * 100.0 });                        
+            }
         }
     }
 }

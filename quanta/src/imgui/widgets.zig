@@ -148,6 +148,123 @@ pub fn drawLine(
     );   
 }
 
+const OutCode = packed struct(u6) 
+{
+    left: bool = false,
+    right: bool = false,
+    forward: bool = false,
+    backward: bool = false, 
+    bottom: bool = false,
+    top: bool = false,    
+
+    pub const inside = OutCode {};
+};
+
+fn lineComputeOutCodeNormalized(point: @Vector(3, f32)) OutCode
+{
+    var out_code = OutCode.inside;
+
+    const min = -1;
+    const max = 1;
+
+    if (point[0] < min)
+    {
+        out_code.left = true;
+    }
+    else if (point[0] > max)
+    {
+        out_code.right = true;
+    }
+
+    if (point[1] < min)
+    {
+        out_code.bottom = true;
+    }
+    else if (point[1] > max)
+    {
+        out_code.top = true;
+    }
+
+    if (point[2] < min)
+    {
+        out_code.backward = true;
+    }
+    else if (point[2] > max)
+    {
+        out_code.forward = true;
+    }
+
+    return out_code;
+}
+
+///Clips the input line to a -1 to +1 clip volume
+fn lineClipNormalized(line: [2]@Vector(3, f32)) ?[2]@Vector(3, f32)
+{
+    var outcode_0 = lineComputeOutCodeNormalized(line[0]);
+    var outcode_1 = lineComputeOutCodeNormalized(line[1]);
+
+    var new_line = line;
+
+    while (true)
+    {
+        if (outcode_0 == OutCode.inside and outcode_1 == OutCode.inside)
+        {
+            return new_line;
+        }
+        else if (outcode_0 != OutCode.inside and outcode_1 == OutCode.inside)
+        {
+            break;
+        }
+        else 
+        {
+            const min = -1;
+            const max = 1;
+
+            const outcode_out = if (outcode_0 != OutCode.inside) outcode_0 else outcode_1;
+
+            var endpoint: @Vector(3, f32) = .{ 0, 0, 0 };
+
+            if (outcode_out.top)
+            {
+                endpoint[0] = new_line[0][0] + (new_line[1][0] - new_line[0][0]) * (max - new_line[0][1]) / (new_line[1][1] - new_line[0][1]);
+                endpoint[1] = max;
+                endpoint[2] = min;
+            }
+            else if (outcode_out.bottom)
+            {
+
+            }
+            else if (outcode_out.left)
+            {
+
+            }
+            else if (outcode_out.right)
+            {
+
+            }
+            else if (outcode_out.forward)
+            {
+
+            }
+            else if (outcode_out.backward)
+            {
+
+            }
+
+            if (outcode_out == outcode_0)
+            {
+                outcode_0 = lineComputeOutCodeNormalized(new_line[0]);
+            }
+            else 
+            {
+                outcode_1 = lineComputeOutCodeNormalized(new_line[1]);
+            }
+        }
+    }
+
+    return null;
+}
+
 ///Returns null if world_pos doesn't map to a position on the screen (and should be clipped)
 fn worldToScreenPos(
     world_pos: @Vector(3, f32), 
