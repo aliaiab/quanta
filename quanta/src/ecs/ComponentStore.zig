@@ -1270,15 +1270,7 @@ fn createArchetype(
 {
     const archetype_index = @intCast(ArchetypeIndex, self.archetypes.items.len);
 
-    const chunk_data = try self.chunk_pool.alloc(.@"16kb");
-    errdefer self.chunk_pool.free(chunk_data.ptr, .@"16kb");
-
     std.sort.sort(ComponentId, component_ids, {}, componentLessThan);
-
-    for (component_ids) |component_id|
-    {
-        std.log.warn("{}", .{ component_id.* });
-    }
 
     try self.archetypes.append(self.allocator, .{
         .component_ids = std.ArrayListUnmanaged(ComponentId).fromOwnedSlice(component_ids),
@@ -1287,15 +1279,13 @@ fn createArchetype(
 
     const archetype: *Archetype = &self.archetypes.items[archetype_index];
 
+    for (archetype.component_ids.items, 0..) |new_component_id, i|
     {
-        for (archetype.component_ids.items, 0..) |new_component_id, i|
-        {
-            const component_description = try self.component_index.getOrPutValue(self.allocator, new_component_id, .{});
+        const component_description = try self.component_index.getOrPutValue(self.allocator, new_component_id, .{});
 
-            const archetype_record = try component_description.value_ptr.archetypes.getOrPut(self.allocator, archetype_index);
+        const archetype_record = try component_description.value_ptr.archetypes.getOrPut(self.allocator, archetype_index);
 
-            archetype_record.value_ptr.column = @intCast(u32, i);
-        }
+        archetype_record.value_ptr.column = @intCast(u32, i);
     }
 
     return archetype_index;
@@ -1339,7 +1329,7 @@ fn archetypeAllocateChunk(
     }
 
     //Maximum size the chunk to be allocated with alignment padding subtracted
-    const max_size_without_padding = Chunk.max_size - max_padding;
+    const max_size_without_padding = size.toSize() - max_padding;
 
     //The maximium number of entities that can be stored in a chunk based on the size of 
     //The size of an entity id, the size of the components and their alignment

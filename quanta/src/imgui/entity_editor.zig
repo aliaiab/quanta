@@ -289,7 +289,7 @@ pub fn chunkViewer(
             total_chunk_entity_count += chunk.max_row_count;
             total_used_chunk_entity_count += chunk.row_count;
 
-            total_chunk_size += quanta.ecs.ComponentStore.Chunk.max_size;
+            total_chunk_size += chunk.data.?.len;
         }
     }
 
