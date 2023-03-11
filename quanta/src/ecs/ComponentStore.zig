@@ -552,29 +552,11 @@ pub fn entityRemoveComponent(
     comptime Component: type,
 ) !void 
 {
+    //Doesn't seem to work when using componentId(Component) instead of this, why? 
+    //I suspect it might be an issue with the compiler and compile time function memoisation but I have no clue
     const component_type = componentType(Component);
 
-    const entity_description = self.entity_index.getPtr(entity).?;
-
-    const source_archetype_index = entity_description.archetype_index;
-
-    const archetype_index = try self.removeFromArchetype(source_archetype_index, component_type.id);
-
-    entity_description.archetype_index = archetype_index;
-
-    if (archetype_index == 0)
-    {
-        entity_description.row = .{};
-
-        return;
-    }
-
-    entity_description.row = try self.archetypeMoveRow(
-        source_archetype_index, 
-        archetype_index, 
-        entity_description.row, 
-        entity
-    );
+    return try self.entityRemoveComponentId(entity, component_type.id);
 }
 
 pub fn entityRemoveComponentId(
@@ -591,19 +573,21 @@ pub fn entityRemoveComponentId(
 
     entity_description.archetype_index = archetype_index;
 
+    std.debug.assert(archetype_index != source_archetype_index);
+
     if (archetype_index == 0)
     {
+        entity_description.row = .{};
+
         return;
     }
 
-    const row = try self.archetypeMoveRow(
+    entity_description.row = try self.archetypeMoveRow(
         source_archetype_index, 
         archetype_index, 
-        entity_description.row,
+        entity_description.row, 
         entity
     );
-
-    entity_description.row = row;
 }
 
 pub fn entitySetComponent(
@@ -828,11 +812,13 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
 
         pub fn init(component_store: *const ComponentStore) @This()
         {
-            return .{
+            var self = @This() {
                 .component_store = component_store,
                 .archetype_index = 1,
                 .chunk_index = 0,
             };
+
+            return self;
         } 
 
         pub const Block = block: {
@@ -867,14 +853,14 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             }});
         };
 
-        pub fn nextBlock(self: *@This()) ?Block 
+        fn nextArchetype(self: *@This()) ?ArchetypeIndex
         {
             if (self.archetype_index >= self.component_store.archetypes.items.len)
             {
                 return null;
             }
 
-            var archetype: *Archetype = &self.component_store.archetypes.items[self.archetype_index];
+            var archetype: *const Archetype = &self.component_store.archetypes.items[self.archetype_index];
 
             while (
                 !(
@@ -897,10 +883,19 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
 
             if (self.chunk_index >= archetype.chunks.items.len)
             {
-                self.archetype_index += 1;
+                defer self.archetype_index += 1;
+                self.chunk_index = 0;
 
-                return self.nextBlock();
+                return self.archetype_index;
             }
+
+            return self.archetype_index;
+        }
+
+        pub fn nextBlock(self: *@This()) ?Block 
+        {
+            var archetype_index: ArchetypeIndex = self.nextArchetype() orelse return null;
+            var archetype: *const Archetype = &self.component_store.archetypes.items[archetype_index];
 
             var chunk = &archetype.chunks.items[self.chunk_index];
 
@@ -910,9 +905,8 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
 
                 if (self.chunk_index >= archetype.chunks.items.len)
                 {
-                    self.archetype_index += 1;
-
-                    return self.nextBlock();
+                    archetype_index = self.nextArchetype() orelse return null;
+                    archetype = &self.component_store.archetypes.items[archetype_index];
                 }
 
                 chunk = &archetype.chunks.items[self.chunk_index];
@@ -926,7 +920,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             {
                 const component_type_desc = self.component_store.component_index.get(componentId(component_type)).?;
 
-                const archetype_record = component_type_desc.archetypes.get(self.archetype_index).?;
+                const archetype_record = component_type_desc.archetypes.get(archetype_index).?;
 
                 const column: *ChunkColumn = &chunk.columns[archetype_record.column];
 
