@@ -3,8 +3,15 @@ const root = @import("root");
 
 pub const AppCompileStep = @import("AppCompileStep.zig");
 
+pub const InitContext = struct 
+{
+    allocator: std.mem.Allocator,
+    user_data: ?*anyopaque,
+};
+
 pub const UpdateContext = struct 
 {
+    user_data: ?*anyopaque,
     ///An arena allocator which is cleared every update
     arena_allocator: std.mem.Allocator,
     ///A fixed buffer allocator which is cleared every update
@@ -39,24 +46,52 @@ comptime {
     if (
         @hasDecl(root, "init") and 
         @hasDecl(root, "deinit") and 
-        @hasDecl(root, "update")
+        @hasDecl(root, "update") and 
+        !@hasDecl(root, "main")
     )
     {
         const S = struct 
         {
-            pub fn init() callconv(.C) void
+            pub fn init(ctx: *InitContext) callconv(.C) void
             {
-                root.init();
+                switch (@typeInfo(@typeInfo(@TypeOf(root.init)).Fn.return_type.?)) 
+                {
+                    .Void => {
+                        root.init(ctx);   
+                    },
+                    .ErrorUnion => {
+                        root.init(ctx) catch unreachable;
+                    },
+                    else => @compileError("Wrong return type"),
+                }
             }  
 
-            pub fn deinit() callconv(.C) void 
+            pub fn deinit(ctx: *InitContext) callconv(.C) void 
             {
-                root.deinit();
+                switch (@typeInfo(@typeInfo(@TypeOf(root.deinit)).Fn.return_type.?)) 
+                {
+                    .Void => {
+                        root.deinit(ctx);   
+                    },
+                    .ErrorUnion => {
+                        root.deinit(ctx) catch unreachable;
+                    },
+                    else => @compileError("Wrong return type"),
+                }
             }
 
             pub fn update(ctx: *const UpdateContext) callconv(.C) UpdateResult
             {
-                return root.update(ctx.*);
+                switch (@typeInfo(@typeInfo(@TypeOf(root.update)).Fn.return_type.?)) 
+                {
+                    .Enum => {
+                        return root.update(ctx.*);
+                    },
+                    .ErrorUnion => {
+                        return root.update(ctx.*) catch unreachable;
+                    },
+                    else => @compileError("Wrong return type"),
+                }
             }
         };
 

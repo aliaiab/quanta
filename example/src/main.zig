@@ -43,7 +43,818 @@ const example_assets = struct
 
 const log = std.log.scoped(.example);
 
+var state: struct 
+{
+    gpa: std.heap.GeneralPurposeAllocator(.{}) = .{},
+    allocator: std.mem.Allocator = undefined,
+    swapchain: graphics.Swapchain = undefined,
+    asset_archive_blob: []align(std.mem.page_size) u8 = undefined,
+    asset_archive: asset.Archive = undefined,
+
+    test_scene_meshes: []Renderer3D.MeshHandle = &.{},
+    test_scene_textures: []Renderer3D.TextureHandle = &.{},
+    test_scene_materials: []Renderer3D.MaterialHandle = &.{},
+
+    renderer_scene: Renderer3D.SceneHandle = undefined,
+    ecs_scene: quanta.ecs.ComponentStore = undefined,
+
+    entity_debugger_commands: quanta.ecs.CommandBuffer = undefined,
+
+    camera: Renderer3D.Camera = .{
+        .translation = .{ 0, 3, 12.5 },
+        .target = .{ 0, 0, 0 },
+        .fov = 60,
+        .exposure = 1,
+    },
+
+    camera_position: @Vector(3, f32) = .{ 8.7, 5.7, 0.9 },
+    camera_front: @Vector(3, f32) = .{ -0.9, -0.1, -0.2 },
+    camera_up: @Vector(3, f32) = .{ 0, 1, 0 },
+    yaw: f32 = 168.1,
+    pitch: f32 = -9.1,
+
+    last_mouse_x: f32 = 0,
+    last_mouse_y: f32 = 0,
+    camera_enable: bool = false,
+    camera_enable_changed: bool = false,
+
+    selected_entity: ?quanta.ecs.ComponentStore.Entity = null,
+    cloned_entity_last_frame: bool = false,
+    mouse_pressed_last_Frame: bool = false,
+
+    delta_time: f32 = 0.016,
+} = .{};
+
+const enable_pipeline_cache = true;
+const pipeline_cache_file_path = "pipeline_cache";
+
+pub fn init() !void 
+{
+    _ = try std.io.getStdErr().write("HLJLAFLJAFLAFF GHELLHLOOOOOOOOO!\n");
+
+    log.debug("All your {s} are belong to us.", .{ "codebase" });
+    log.debug("{s}", .{ "debug" });
+    log.warn("{s}", .{ "warn" });
+    log.err("{s}", .{ "err" });
+
+    state.gpa = if (builtin.mode == .Debug)
+        std.heap.GeneralPurposeAllocator(.{}) {}
+    else {};
+
+    state.allocator = if (builtin.mode == .Debug) state.gpa.allocator() else std.heap.c_allocator;
+
+    try window.init(1600, 900, "Quanta Example");
+
+    {
+        var pipeline_cache_data: []u8 = &[_]u8 {};
+
+        if (enable_pipeline_cache)
+        {
+            const file = std.fs.cwd().openFile(pipeline_cache_file_path, .{ .mode = .read_only }) catch try std.fs.cwd().createFile(pipeline_cache_file_path, .{ .read = true });
+            defer file.close();
+
+            pipeline_cache_data = try file.readToEndAlloc(state.allocator, std.math.maxInt(usize));
+
+            log.debug("pipeline_cache_data.len = {}", .{ pipeline_cache_data.len });
+        }
+
+        try GraphicsContext.init(state.allocator, pipeline_cache_data);
+
+        state.allocator.free(pipeline_cache_data);
+    }
+
+    state.swapchain = try Swapchain.init(state.allocator, .{ .width = window.getWidth(), .height = window.getHeight() });
+
+    try Renderer3D.init(state.allocator, &state.swapchain);
+
+    const imgui_context = imgui.igCreateContext(null);
+
+    std.debug.assert(imgui_context != null);
+    imgui.igSetCurrentContext(imgui_context);
+    
+    try quanta.imgui.driver.init();
+    try RendererGui.init(state.allocator, state.swapchain);
+
+    var asset_archive_file_path = "assets/example_assets_archive";
+
+    const asset_archive_fd = try std.os.open(asset_archive_file_path, std.os.O.RDONLY, std.os.S.IRUSR | std.os.S.IWUSR);
+    defer std.os.close(asset_archive_fd);
+
+    const asset_archive_fd_stat = try std.os.fstat(asset_archive_fd);
+
+    log.info("assets_archive size = {}", .{ asset_archive_fd_stat.size });
+
+    state.asset_archive_blob = try std.os.mmap(null, @intCast(usize, asset_archive_fd_stat.size), std.os.PROT.READ, std.os.MAP.PRIVATE, asset_archive_fd, 0);
+    state.asset_archive = try asset.Archive.decode(state.allocator, state.asset_archive_blob);
+
+    log.info("asset_archive.assets.len = {any}", .{ state.asset_archive.assets.len });
+
+    const test_scene_blob = state.asset_archive.getAssetData(@intToEnum(asset.Archive.AssetDescriptor, 3));
+
+    const test_scene_import = try gltf.decode(state.allocator, test_scene_blob);
+    defer gltf.decodeFree(test_scene_import, state.allocator);
+
+    state.test_scene_meshes = try state.allocator.alloc(Renderer3D.MeshHandle, test_scene_import.sub_meshes.len);
+    state.test_scene_textures = try state.allocator.alloc(Renderer3D.TextureHandle, test_scene_import.textures.len);
+    state.test_scene_materials = try state.allocator.alloc(Renderer3D.MaterialHandle, test_scene_import.materials.len);
+
+    for (test_scene_import.sub_meshes, 0..) |sub_mesh, i|
+    {
+        state.test_scene_meshes[i] = try Renderer3D.createMesh(
+            test_scene_import.vertex_positions[sub_mesh.vertex_offset..sub_mesh.vertex_offset + sub_mesh.vertex_count],
+            test_scene_import.vertices[sub_mesh.vertex_offset..sub_mesh.vertex_offset + sub_mesh.vertex_count], 
+            test_scene_import.indices[sub_mesh.index_offset..sub_mesh.index_offset + sub_mesh.index_count],
+            sub_mesh.bounding_min,
+            sub_mesh.bounding_max,
+        );
+    }
+
+    for (test_scene_import.textures, 0..) |texture, i|
+    {
+        state.test_scene_textures[i] = try Renderer3D.createTexture(
+            texture.data,
+            texture.width, 
+            texture.height, 
+        );
+    }
+
+    if (test_scene_import.materials.len != 0)
+    {
+        for (test_scene_import.materials, 0..) |material, i|
+        {
+            log.info("material albedo index {}", .{ material.albedo_texture_index });
+            log.info("material albedo {any}", .{ material.albedo });
+
+            state.test_scene_materials[i] = try Renderer3D.createMaterial(
+                if (material.albedo_texture_index != 0) state.test_scene_textures[material.albedo_texture_index - 1] else null,
+                material.albedo,
+                null,
+                material.metalness,
+                if (material.roughness_texture_index != 0) state.test_scene_textures[material.roughness_texture_index - 1] else null,
+                material.roughness,
+            );
+        }
+    }
+
+    const environment_map_data = state.asset_archive.getAssetData(@intToEnum(asset.Archive.AssetDescriptor, 2));
+
+    state.ecs_scene = try quanta.ecs.ComponentStore.init(state.allocator);
+
+    state.renderer_scene = try Renderer3D.createScene(
+        1, 
+        50_000,
+        4,
+        4096,
+        environment_map_data, 
+        1024, 1024,
+    );
+
+    for (test_scene_import.sub_meshes, 0..) |sub_mesh, i|
+    {
+        const decomposed = zalgebra.Mat4.decompose(.{ .data = sub_mesh.transform });
+        const translation = decomposed.t;
+        const rotation = decomposed.r.extractEulerAngles();
+        const scale = decomposed.s;
+
+        _ = try state.ecs_scene.entityCreate(.{
+            quanta.components.Position { .x = translation.x(), .y = translation.y(), .z = translation.z() },
+            quanta.components.Rotation { .x = rotation.x(), .y = rotation.y(), .z = rotation.z() },
+            quanta.components.NonUniformScale { .x = scale.x(), .y = scale.y(), .z = scale.z() },
+            quanta.components.RendererMesh { .mesh = state.test_scene_meshes[i], .material = state.test_scene_materials[sub_mesh.material_index] },
+        });
+    }
+
+    const target_frame_time: f32 = 16; 
+
+    state.delta_time = target_frame_time;
+
+    _ = try state.ecs_scene.entityCreate(
+        .{
+            quanta_components.Rotation { .x = -0.5, .y = -1, .z = -0.3 },
+            quanta_components.DirectionalLight
+            {  
+                .intensity = 1,
+                .diffuse = .{ 0.45, 0.45, 0.45, },
+            },
+        }
+    ); 
+
+    const TestEnumComponent = enum 
+    {
+        no_state,
+        state_0,
+        state_1,
+        ect_state,
+    };
+
+    const TestUnionComponent = union(enum)
+    {
+        no_state: void,
+        state_0: u32,
+        state_1: void,
+        ect_state: void,
+    };
+
+    _ = try state.ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 0, .y = 2, .z = 0 },
+            quanta_components.Velocity { .x = 0, .y = 1, .z = 0 },
+            TestEnumComponent.state_1,
+            TestUnionComponent.state_1,
+        }
+    );
+
+    const test_entity = try state.ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 0, .y = 50, .z = 0 },
+            quanta_components.PointLight {
+                .intensity = 1000,
+                .diffuse = .{ 1, 1, 1 },
+            },
+            quanta_components.Visibility { .is_visible = true },
+        }
+    );
+
+    state.selected_entity = test_entity;
+
+    _ = try state.ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 0, .y = 4, .z = 0 },
+            quanta_components.Velocity { .x = 0, .y = 0.5, .z = 0 },
+            quanta.ecs.ComponentStore.Entity.nil,
+        }
+    );
+
+    const entity_b = try state.ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 0, .y = -2, .z = 0 },
+            quanta_components.Velocity { .x = 0, .y = 1, .z = 0 },
+            quanta_components.Force { .x = 2, .y = 9.81, .z = 0 },
+            quanta_components.Mass { .value = 10 },
+            quanta_components.TerminalVelocity { .x = 0, .y = 0.01, .z = 0 },
+            quanta_components.RendererMesh { .mesh = state.test_scene_meshes[0], .material = state.test_scene_materials[0] }
+        }
+    );    
+
+    const entity_a = try state.ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 0, .y = -2, .z = 0 },
+            quanta_components.Velocity { .x = 0, .y = 1, .z = 0 },
+            quanta_components.Force { .x = 2, .y = 9.81, .z = 0 },
+            quanta_components.Mass { .value = 10 },
+            quanta_components.TerminalVelocity { .x = 0, .y = 0.01, .z = 0 },
+            quanta_components.RendererMesh { .mesh = state.test_scene_meshes[0], .material = state.test_scene_materials[0] },
+        }
+    );
+
+    std.debug.assert(state.ecs_scene.entitiesAreIsomers(entity_a, entity_b));   
+
+    _ = try state.ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 0, .y = 1, .z = -4 },
+            quanta_components.PointLight 
+            {  
+                .intensity = 10 + 40,
+                .diffuse = .{ 0.8, 0.4, 0.1 },
+            },
+        }
+    ); 
+
+    _ = try state.ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 4, .y = 4, .z = 4 },
+            quanta_components.PointLight 
+            {  
+                .intensity = 10 + 40,
+                .diffuse = .{ 0.4, 0.8, 0.1 },
+            },
+        }
+    ); 
+
+    _ = try state.ecs_scene.entityCreate(
+        .{
+            quanta_components.Position { .x = 80, .y = 4, .z = 4 },
+            quanta_components.PointLight 
+            {  
+                .intensity = 1000,
+                .diffuse = .{ 0.6, 0.6, 0.8 },
+            },
+        }
+    ); 
+
+    state.entity_debugger_commands = quanta.ecs.CommandBuffer.init(state.allocator);
+}
+
+pub fn deinit() void 
+{
+    GraphicsContext.self.vkd.deviceWaitIdle(GraphicsContext.self.device) catch unreachable;
+
+    defer log.info("Exiting gracefully", .{});
+    defer if (builtin.mode == .Debug) std.debug.assert(!state.gpa.deinit());
+
+    defer window.deinit();
+    defer GraphicsContext.deinit();
+
+    defer if (enable_pipeline_cache)
+    {
+        const pipeline_cache_data = GraphicsContext.getPipelineCacheData() catch unreachable;
+        defer state.allocator.free(pipeline_cache_data);
+
+        const file = std.fs.cwd().openFile(pipeline_cache_file_path, .{ .mode = .write_only }) catch unreachable;
+        defer file.close();
+
+        file.setEndPos(0) catch unreachable;
+        file.seekTo(0) catch unreachable;
+
+        file.writeAll(pipeline_cache_data) catch unreachable;
+    };
+
+    defer state.swapchain.deinit();
+    defer Renderer3D.deinit();
+    defer imgui.igDestroyContext(imgui.igGetCurrentContext());
+    defer quanta.imgui.driver.deinit();
+    defer RendererGui.deinit();
+    defer std.os.munmap(state.asset_archive_blob);
+    defer state.allocator.free(state.test_scene_meshes);
+    defer state.allocator.free(state.test_scene_textures);
+    defer state.allocator.free(state.test_scene_materials);
+    defer state.ecs_scene.deinit();
+    defer Renderer3D.destroyScene(state.renderer_scene);
+    defer state.entity_debugger_commands.deinit();
+}
+
+pub fn update() !quanta.app.UpdateResult 
+{
+    if (window.shouldClose()) return .exit;
+
+    const time_begin = std.time.nanoTimestamp();
+
+    if (!state.camera_enable_changed and window.window.getKey(.tab) == .press)
+    {
+        state.camera_enable = !state.camera_enable;
+
+        if (state.camera_enable)
+        {
+            window.window.setInputMode(.cursor, .disabled);
+        }
+        else 
+        {
+            window.window.setInputMode(.cursor, .normal);
+        }
+
+        state.camera_enable_changed = true;
+    }
+
+    if (window.window.getKey(.tab) == .release)
+    {
+        state.camera_enable_changed = false;
+    }
+
+    //update
+    {
+        const x_position = @floatCast(f32, window.window.getCursorPos().xpos);
+        const y_position = @floatCast(f32, window.window.getCursorPos().ypos);
+
+        const x_offset = x_position - state.last_mouse_x;
+        const y_offset = state.last_mouse_y - y_position;
+
+        state.last_mouse_x = x_position;
+        state.last_mouse_y = y_position;
+
+        if (state.camera_enable)
+        {
+            const sensitivity = 0.1;
+            const camera_speed = @splat(3, @as(f32, 30)) * @splat(3, state.delta_time / 1000);
+
+            state.yaw += x_offset * sensitivity;
+            state.pitch += y_offset * sensitivity;
+
+            state.pitch = std.math.clamp(state.pitch, -89, 89);
+
+            state.camera_front = zalgebra.Vec3.norm(
+                .{ 
+                    .data = .{
+                        @cos(zalgebra.toRadians(state.yaw)) * @cos(zalgebra.toRadians(-state.pitch)),
+                        @sin(zalgebra.toRadians(state.pitch)),
+                        @sin(zalgebra.toRadians(state.yaw)) * @cos(zalgebra.toRadians(-state.pitch)),
+                    } 
+                }
+            ).data;
+
+            if (window.window.getKey(.w) == .press)
+            {
+                state.camera_position += camera_speed * state.camera_front;
+            } 
+            else if (window.window.getKey(.s) == .press)
+            {
+                state.camera_position -= camera_speed * state.camera_front;
+            }
+
+            if (window.window.getKey(.a) == .press)
+            {
+                state.camera_position -= zalgebra.Vec3.norm(zalgebra.Vec3.cross(.{ .data = state.camera_front }, .{ .data = state.camera_up })).mul(.{ .data = camera_speed }).data;
+            }
+            else if (window.window.getKey(.d) == .press)
+            {
+                state.camera_position += zalgebra.Vec3.norm(zalgebra.Vec3.cross(.{ .data = state.camera_front }, .{ .data = state.camera_up })).mul(.{ .data = camera_speed }).data;
+            }
+        }
+
+        state.camera.target = state.camera_position + state.camera_front;
+        state.camera.translation = state.camera_position;
+    }
+
+    acceleration_system.run(&state.ecs_scene, state.delta_time);
+    quanta.systems.force_system.run(&state.ecs_scene, state.delta_time);
+
+    try quanta.ecs.system_scheduler.run(
+        &state.ecs_scene, 
+        &state.entity_debugger_commands, 
+        .{
+            velocity_system
+        }
+    );
+
+    quanta.systems.terminal_velocity_system.run(&state.ecs_scene);
+
+    const image_index = state.swapchain.image_index;
+    const image = state.swapchain.swap_images[image_index];
+
+    //sneaky hack due to our incomplete swapchain abstraction
+    var color_image: Image = undefined;
+
+    color_image.view = image.view;
+    color_image.handle = image.image;
+    color_image.aspect_mask = .{ .color_bit = true };
+
+    {
+        try Renderer3D.beginSceneRender(
+            state.renderer_scene, 
+            &.{ Renderer3D.View { .camera = state.camera } },
+            .{ .diffuse = packUnorm4x8(.{ 0.005, 0.005, 0.005, 1 }) },
+            0,
+        );
+        defer Renderer3D.endSceneRender(state.renderer_scene);
+
+        quanta.systems.mesh_instance_system.run(&state.ecs_scene, state.renderer_scene);   
+        quanta.systems.point_light_system.run(&state.ecs_scene, state.renderer_scene);
+        quanta.systems.directional_light_system.run(&state.ecs_scene, state.renderer_scene);
+    }
+
+    //imgui gui
+    if (true)
+    {
+        {
+            try quanta.imgui.driver.begin();
+            defer quanta.imgui.driver.end();
+
+            const widgets = quanta.imgui.widgets;
+
+            imgui.igNewFrame();
+            imguizmo.ImGuizmo_SetOrthographic(false);
+            imguizmo.ImGuizmo_BeginFrame();
+
+            imgui.igShowDemoWindow(null);
+
+            if (widgets.begin("Basic properties"))
+            {
+                widgets.textFormat("Frame time {d:.2}", .{ state.delta_time });
+
+                if (widgets.button("Button test"))
+                {
+                    log.info("Praise be the {s}", .{ "BIG BUTTON" });
+                }
+
+                widgets.text("Renderer Statistics:");
+
+                widgets.textFormat(
+                    "depth_pre_pass_time = {d:.2}ms", 
+                    .{ @intToFloat(f64, Renderer3D.getStatistics().depth_prepass_time) / @intToFloat(f64, std.time.ns_per_ms) }
+                );
+
+                widgets.textFormat(
+                    "geometry_pass_time = {d:.2}ms", 
+                    .{ @intToFloat(f64, Renderer3D.getStatistics().geometry_pass_time) / @intToFloat(f64, std.time.ns_per_ms) }
+                );
+
+                _ = imgui.igDragFloat("Camera Exposure: ", &state.camera.exposure, 0.1, 0.1, 15, null, 0);
+            }
+            widgets.end();
+
+            if (state.selected_entity != null and !state.ecs_scene.entityExists(state.selected_entity.?))
+            {
+                state.selected_entity = null;
+            }
+
+            //Duplicate
+            if (
+                window.getKeyDown(.left_control) and
+                window.getKeyDown(.d) and 
+                !state.cloned_entity_last_frame and 
+                state.selected_entity != null
+            )
+            {
+                state.entity_debugger_commands.entityClone(state.selected_entity.?);
+
+                state.cloned_entity_last_frame = true;
+            }
+            
+            if (
+                !window.getKeyDown(.left_control) and 
+                !window.getKeyDown(.d)
+            )
+            {
+                state.cloned_entity_last_frame = false;
+            }
+
+            if (state.selected_entity != null and window.getKeyDown(.delete))
+            {
+                state.entity_debugger_commands.entityDestroy(state.selected_entity.?);
+            }
+
+            //Selection
+            if (
+                window.getMouseDown(.left) 
+                and !state.mouse_pressed_last_Frame
+                and !imguizmo.ImGuizmo_IsUsing() 
+                and !imguizmo.ImGuizmo_IsOver() 
+                and !imgui.igIsAnyItemFocused()
+                )
+            {
+                const mouse_pos = window.getMousePos();
+
+                log.info("mouse_pos = {d}, {d}", .{ mouse_pos[0], mouse_pos[1] });
+
+                const view_projection = zalgebra.Mat4.mul(
+                    .{ .data = state.camera.getView() },
+                    .{ .data = state.camera.getProjectionNonInverse() },
+                );
+
+                const inverse_view_projection = view_projection.inv();
+
+                const normalized_pos = [2]f32 { 
+                    ((mouse_pos[0] / @intToFloat(f32, window.getWidth())) * 2) - 1, 
+                    (((mouse_pos[1] - @intToFloat(f32, window.getHeight())) / @intToFloat(f32, window.getHeight())) * 2) - 1,
+                };
+
+                const world_space_pos = inverse_view_projection.mulByVec4(.{ .data = .{ normalized_pos[0], normalized_pos[1], 0, 1 } });
+
+                log.info("world_space_pos (ray_origin) = {d}, {d}, {d}", .{ 
+                    world_space_pos.data[0] / 1000.0, 
+                    world_space_pos.data[1] / 1000.0,
+                    world_space_pos.data[2] / 1000.0,
+                });
+
+                log.info("world_space_pos (ray_dir) = {d}, {d}, {d}", .{
+                    state.camera_front[0],
+                    state.camera_front[1],
+                    state.camera_front[2],
+                });
+
+                const ray_origin = @Vector(3, f32) {
+                    world_space_pos.data[0] / 1000.0, 
+                    world_space_pos.data[1] / 1000.0,
+                    world_space_pos.data[2] / 1000.0,
+                };
+
+                const ray_length = 1000;
+
+                const ray_direction = @Vector(3, f32) {
+                    state.camera_front[0] * ray_length,
+                    state.camera_front[1] * ray_length,
+                    state.camera_front[2] * ray_length,
+                };
+
+                const intersection = quanta.physics.intersection;
+
+                var query = state.ecs_scene.query(
+                    .{ 
+                        quanta.components.Position, 
+                        quanta.components.NonUniformScale, 
+                        quanta.components.RendererMesh, 
+                    }, .{}
+                );
+
+                var found_entity: ?quanta.ecs.ComponentStore.Entity = null;
+                var closest_t_max: f32 = std.math.inf_f32;
+
+                while (query.nextBlock()) |block|
+                {
+                    for (
+                        block.Position,
+                        block.NonUniformScale,
+                        block.RendererMesh,
+                        0..
+                    ) |position, scale, mesh, i|
+                    {
+                        const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
+
+                        const position_vector = @Vector(3, f32) { position.x, position.y, position.z };
+
+                        const bounding_min = position_vector + (mesh_box.min * @Vector(3, f32) { scale.x, scale.y, scale.z });
+                        const bounding_max = position_vector + (mesh_box.max * @Vector(3, f32) { scale.x, scale.y, scale.z });
+
+                        if (intersection.rayAABBIntersection(
+                            ray_origin, ray_direction, 
+                            bounding_min, bounding_max
+                        )) |hit|
+                        {
+                            {
+                                found_entity = block.entities[i];
+                            }
+
+                            closest_t_max = @min(closest_t_max, hit.t_max - hit.t_min);
+                        }
+                    }
+                }
+
+                if (found_entity != null)
+                {
+                    state.selected_entity = found_entity;
+                }
+
+                state.mouse_pressed_last_Frame = true;
+            }
+
+            if (!window.getMouseDown(.left))
+            {
+                state.mouse_pressed_last_Frame = false;
+            }
+
+            entity_editor.entityViewer(&state.ecs_scene, &state.entity_debugger_commands);
+            entity_editor.chunkViewer(&state.ecs_scene);
+            quanta.imgui.log.viewer("Log");
+
+            if (state.selected_entity != null and !state.ecs_scene.entityExists(state.selected_entity.?))
+            {
+                state.selected_entity = null;
+            }
+
+            if (
+                state.selected_entity != null and
+                state.ecs_scene.entityHasComponent(state.selected_entity.?, quanta.components.Position)
+            )
+            {
+                const entity_position = state.ecs_scene.entityGetComponent(state.selected_entity.?, quanta.components.Position) orelse unreachable;  
+                const entity_rotation = state.ecs_scene.entityGetComponent(state.selected_entity.?, quanta.components.Rotation);  
+                const entity_scale = state.ecs_scene.entityGetComponent(state.selected_entity.?, quanta.components.NonUniformScale);  
+
+                imguizmo.ImGuizmo_SetImGuiContext(imgui.igGetCurrentContext());
+                imguizmo.ImGuizmo_Enable(true);
+                imguizmo.ImGuizmo_SetDrawlist(imgui.igGetBackgroundDrawList_Nil());
+                imguizmo.ImGuizmo_AllowAxisFlip(false);
+                imguizmo.ImGuizmo_SetID(0);
+                imguizmo.ImGuizmo_SetRect(0, 0, @intToFloat(f32, window.getWidth()), @intToFloat(f32, window.getHeight()));
+
+                const camera_view = state.camera.getView();
+                const camera_projection = state.camera.getProjectionNonInverse();
+                const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
+
+                var operation = imguizmo.Operation.translate;
+
+                var manip_matrix = zalgebra.Mat4.identity();
+
+                manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromTranslate(.{ .data = .{ entity_position.x, entity_position.y, entity_position.z } }));
+                
+                if (entity_rotation != null)
+                {
+                    manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromEulerAngles(.{ .data = .{ entity_rotation.?.x, entity_rotation.?.y, entity_rotation.?.z } }));
+
+                    operation.rotate_x = true;
+                    operation.rotate_y = true;
+                    operation.rotate_z = true;
+                    operation.rotate_screen = true;
+                }
+
+                if (entity_scale != null)
+                {
+                    manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromScale(.{ .data = .{ entity_scale.?.x, entity_scale.?.y, entity_scale.?.z } }));
+
+                    operation.scale_x = true;
+                    operation.scale_y = true;
+                    operation.scale_z = true;
+                }
+
+                _ = imguizmo.ImGuizmo_Manipulate(
+                    @ptrCast([*]const f32, &camera_view),
+                    @ptrCast([*]const f32, &camera_projection),
+                    operation,
+                    .world,
+                    @ptrCast([*]f32, &manip_matrix.data),
+                    null,
+                    null,
+                    null,
+                    null,
+                );
+
+                const decomposed = manip_matrix.decompose();
+
+                const position = decomposed.t.data;
+                const scale = decomposed.s.data;
+                const rotation = decomposed.r.extractEulerAngles().data; 
+
+                entity_position.x = position[0];
+                entity_position.y = position[1];
+                entity_position.z = position[2];
+
+                if (entity_rotation != null)
+                {
+                    entity_rotation.?.* = .{ .x = rotation[0], .y = rotation[1], .z = rotation[2] };
+                }
+
+                if (entity_scale != null)
+                {
+                    entity_scale.?.* = .{ .x = scale[0], .y = scale[1], .z = scale[2] };
+                }
+
+                if (state.ecs_scene.entityGetComponent(state.selected_entity.?, quanta_components.RendererMesh)) |mesh|
+                {
+                    const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
+
+                    const bounding_min = mesh_box.min;
+                    const bounding_max = mesh_box.max;
+
+                    widgets.drawBoundingBox(
+                        camera_view_projection,
+                        manip_matrix,
+                        bounding_min,
+                        bounding_max
+                    );
+                }
+            }
+
+            try state.entity_debugger_commands.execute(&state.ecs_scene);
+        }
+        
+        //Draw point light gizmos
+        {
+            const camera_view = state.camera.getView();
+            const camera_projection = state.camera.getProjectionNonInverse();
+            const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
+
+            var query = state.ecs_scene.query(.{ quanta_components.Position, quanta_components.PointLight }, .{});
+
+            while (query.nextBlock()) |block|
+            {
+                for (
+                    block.Position
+                ) |position|
+                {
+                    quanta.imgui.widgets.drawBillboard(camera_view_projection, .{ position.x, position.y, position.z });
+                }
+            }
+        }
+
+        imgui.igRender();
+
+        {
+            RendererGui.begin(&color_image);
+            RendererGui.renderImGuiDrawData(imgui.igGetDrawData()) catch unreachable;
+        }
+    }
+
+    _ = try GraphicsContext.self.vkd.queuePresentKHR(GraphicsContext.self.graphics_queue, &.{.wait_semaphore_count = 1,
+        .p_wait_semaphores = @ptrCast([*]const vk.Semaphore, &image.render_finished),
+        .swapchain_count = 1,
+        .p_swapchains = @ptrCast([*]const vk.SwapchainKHR, &state.swapchain.handle),
+        .p_image_indices = @ptrCast([*]const u32, &image_index),
+        .p_results = null,
+    });
+
+    const result = try GraphicsContext.self.vkd.acquireNextImageKHR(
+        GraphicsContext.self.device,
+        state.swapchain.handle,
+        std.math.maxInt(u64),
+        state.swapchain.next_image_acquired,
+        .null_handle,
+    );
+
+    std.mem.swap(vk.Semaphore, &state.swapchain.swap_images[result.image_index].image_acquired, &state.swapchain.next_image_acquired);
+    state.swapchain.image_index = result.image_index;
+
+    {
+        state.delta_time = @intToFloat(f32, std.time.nanoTimestamp() - time_begin) / @intToFloat(f32, std.time.ns_per_ms);
+    }
+
+    return .pass;
+}
+
 pub fn main() !void 
+{
+    try init();
+    defer deinit();
+
+    while (true)
+    {
+        switch (try update())
+        {
+            .pass => continue,
+            .exit => break,
+        }
+    }
+}
+
+pub fn _main() !void 
 {
     log.debug("All your {s} are belong to us.", .{ "codebase" });
     log.debug("{s}", .{ "debug" });
@@ -61,9 +872,6 @@ pub fn main() !void
 
     try window.init(1600, 900, "Quanta Example");
     defer window.deinit();
-
-    const enable_pipeline_cache = true;
-    const pipeline_cache_file_path = "pipeline_cache";
 
     {
         var pipeline_cache_data: []u8 = &[_]u8 {};

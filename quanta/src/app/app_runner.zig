@@ -6,20 +6,25 @@ pub fn main() !void
 {
     log.info("Starting app...", .{});
 
+    var gpa = std.heap.GeneralPurposeAllocator(.{}) {};
+    defer std.debug.assert(!gpa.deinit());
+
     const app_lib_file_path = "lib/libexample_app.so";
 
     var app_lib = try std.DynLib.open(app_lib_file_path);
     defer app_lib.close();
 
-    var init = app_lib.lookup(*const fn () callconv(.C) void, "init") orelse return error.FunctionNotFound;
-    var deinit = app_lib.lookup(*const fn () callconv(.C) void, "deinit") orelse return error.FunctionNotFound;
+    var init = app_lib.lookup(*const fn (ctx: *app.InitContext) callconv(.C) void, "init") orelse return error.FunctionNotFound;
+    var deinit = app_lib.lookup(*const fn (ctx: *app.InitContext) callconv(.C) void, "deinit") orelse return error.FunctionNotFound;
     var update = app_lib.lookup(*const fn (ctx: *const app.UpdateContext) callconv(.C) app.UpdateResult, "update") orelse return error.FunctionNotFound;
 
-    init();
-    defer deinit();
+    var init_ctx: app.InitContext = .{
+        .allocator = gpa.allocator(),
+        .user_data = null,
+    };
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}) {};
-    defer std.debug.assert(!gpa.deinit());
+    init(&init_ctx);
+    defer deinit(&init_ctx);
 
     var update_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer update_arena.deinit();
@@ -33,6 +38,7 @@ pub fn main() !void
         .fixed_buffer_allocator = update_fixed_buffer.allocator(),
         .time_start = 0,
         .timestep = 0,
+        .user_data = init_ctx.user_data,
     };
 
     var file = try std.fs.cwd().openFile(app_lib_file_path, .{}); 
@@ -62,7 +68,7 @@ pub fn main() !void
 
             _ = try std.os.poll(&fds, 1);
 
-            std.log.info("polled!! = {}", .{ fds[0] });
+            // std.log.info("polled!! = {}", .{ fds[0] });
 
             const size = std.os.read(file_notify_fd, &notify_event_buffer) catch |e|
             {
@@ -80,8 +86,8 @@ pub fn main() !void
             app_lib.close();
             app_lib = try std.DynLib.open(app_lib_file_path);
 
-            init = app_lib.lookup(*const fn () callconv(.C) void, "init") orelse return error.FunctionNotFound;
-            deinit = app_lib.lookup(*const fn () callconv(.C) void, "deinit") orelse return error.FunctionNotFound;
+            init = app_lib.lookup(*const fn (ctx: *app.InitContext) callconv(.C) void, "init") orelse return error.FunctionNotFound;
+            deinit = app_lib.lookup(*const fn (ctx: *app.InitContext) callconv(.C) void, "deinit") orelse return error.FunctionNotFound;
             update = app_lib.lookup(*const fn (ctx: *const app.UpdateContext) callconv(.C) app.UpdateResult, "update") orelse return error.FunctionNotFound;
         }
 

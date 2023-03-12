@@ -99,13 +99,15 @@ pub fn build(builder: *std.build.Builder) !void
     {
         const app = quanta.app.AppCompileStep.create(builder, .{
             .name = "example_app",
-            .root_source_file = std.build.FileSource.relative("example/src/app.zig"),
+            .root_source_file = std.build.FileSource.relative("example/src/main.zig"),
             .target = target,
             .optimize = mode,
             .mode = .dynamic,
             .cwd = "zig-out/",
             .quanta_module = quanta_module,
         });
+
+        try quanta_build.link(app.app_compile_step);
 
         const run_step = app.run();
 

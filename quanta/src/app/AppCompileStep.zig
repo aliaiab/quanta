@@ -55,6 +55,10 @@ pub fn create(
         .version = options.version,
     });
 
+    app_compile_step.force_pic = true;
+    app_compile_step.bundle_compiler_rt = true;
+    app_compile_step.dll_export_fns = true;
+
     app_compile_step.addModule("quanta", options.quanta_module);
     app_compile_step.install();
 
@@ -66,7 +70,9 @@ pub fn create(
         .optimize = options.optimize,
         .version = options.version,
     });
+
     app_runner_compile_step.install();
+    app_runner_compile_step.linkLibC();
 
     self.* = .{
         .builder = builder,
