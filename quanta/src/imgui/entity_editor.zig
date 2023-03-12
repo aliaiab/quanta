@@ -310,7 +310,7 @@ pub fn chunkViewer(
         },
     }
 
-    for (ecs_scene.archetypes.items[1..]) |archetype|
+    for (ecs_scene.archetypes.items[1..], 1..) |archetype, archetype_index|
     {
         for (archetype.chunks.items, 0..) |chunk, chunk_index|
         {
@@ -318,7 +318,7 @@ pub fn chunkViewer(
 
             imgui.igSeparator();
 
-            if (widgets.collapsingHeader("Chunk ({})", .{ chunk_index }))
+            if (widgets.collapsingHeader("Chunk ({}):({})", .{ archetype_index, chunk_index }))
             {
                 widgets.textFormat("alignment: {}", .{ quanta.ecs.ComponentStore.Chunk.alignment });
                 widgets.textFormat("size: {}", .{ quanta.ecs.ComponentStore.Chunk.max_size });

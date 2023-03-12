@@ -72,17 +72,17 @@ pub const Chunk = struct
     ///Valid dynamic logarithmic sizes for chunks
     pub const Size = enum(u8)
     {
-        @"64b", //1 0000 0001
-        @"128b", //2 0000 0010
-        @"256b", //4 0000 0100
-        @"512b", //8 0000 1000
-        @"1kb", //16 0001 0000
-        @"2kb", //32 0010 0000
-        @"4kb", //64 0100 0000
-        @"8kb", //128 0100 0000
-        @"16kb", //256 1000 0000
-        @"32kb", //512 0001 0000 0000
-        @"64kb", //1024 0010 0000 0000
+        @"64b",
+        @"128b",
+        @"256b",
+        @"512b",
+        @"1kb",
+        @"2kb",
+        @"4kb",
+        @"8kb",
+        @"16kb",
+        @"32kb",
+        @"64kb",
 
         pub inline fn toSize(self: Size) usize 
         {
@@ -1398,6 +1398,58 @@ fn archetypeFreeChunk(
     chunk.row_count = 0;
 }
 
+///Finds or creates a chunk which can fit the specified number of rows
+///Will return a chunk which can fit desired_row_count contigiously
+fn archetypeGetOrAllocateChunk(
+    self: *ComponentStore,
+    archetype_index: ArchetypeIndex,
+    desired_row_count: u32,
+) !ChunkIndex
+{
+    const archetype: *Archetype = &self.archetypes.items[archetype_index];
+
+    if (archetype.chunks.items.len == 0)
+    {
+        const chunk_index = try self.archetypeAllocateChunk(archetype_index, .@"512b");
+
+        archetype.next_free_chunk_index = @intCast(ChunkIndex, chunk_index);
+
+        return chunk_index;
+    }
+
+    var next_free_chunk_index = archetype.next_free_chunk_index;
+
+    var next_free_chunk: *Chunk = &archetype.chunks.items[next_free_chunk_index];
+
+    const free_row_count = next_free_chunk.max_row_count - next_free_chunk.row_count;
+
+    if (free_row_count == 0)
+    {
+        const chunk_index = try self.archetypeAllocateChunk(archetype_index, .@"512b");
+
+        archetype.next_free_chunk_index = @intCast(ChunkIndex, chunk_index);
+
+        return archetype.next_free_chunk_index;
+    }
+
+    if (desired_row_count <= free_row_count)
+    {
+        return next_free_chunk_index;
+    }
+
+    for (archetype.chunks.items[next_free_chunk_index..], 0..) |chunk, chunk_index|
+    {
+        if (desired_row_count <= (chunk.max_row_count - chunk.row_count))
+        {
+            archetype.next_free_chunk_index = @intCast(ChunkIndex, chunk_index);
+
+            return archetype.next_free_chunk_index;
+        }
+    }
+
+    return next_free_chunk_index;
+}
+
 ///Adds a row to the archetype, leaving the component data undefined
 fn archetypeAddRow(
     self: *ComponentStore,
@@ -1409,18 +1461,11 @@ fn archetypeAddRow(
 
     const archetype: *Archetype = &self.archetypes.items[archetype_index];
 
-    const next_free_chunk_index = if (
-        archetype.chunks.items.len == 0 or 
-        archetype.chunks.items[archetype.next_free_chunk_index].data == null
-    )
-        try self.archetypeAllocateChunk(archetype_index, .@"16kb")
-    else archetype.next_free_chunk_index;
+    const chunk_index = try self.archetypeGetOrAllocateChunk(archetype_index, 1);
 
-    archetype.next_free_chunk_index = next_free_chunk_index;
+    const chunk: *Chunk = &archetype.chunks.items[chunk_index];
 
-    const chunk: *Chunk = &archetype.chunks.items[archetype.next_free_chunk_index];
-
-    const chunk_index = @intCast(u16, archetype.next_free_chunk_index);
+    std.debug.assert(chunk.row_count + 1 <= chunk.max_row_count);
 
     const row_index = chunk.row_count;
 
@@ -1430,7 +1475,6 @@ fn archetypeAddRow(
     std.log.info("chunk.max_row_count = {}", .{ chunk.max_row_count });
 
     std.debug.assert(chunk.data != null);
-    std.debug.assert(chunk.row_count <= chunk.max_row_count);
 
     const entities = chunk.entities();
 
@@ -1468,9 +1512,15 @@ fn archetypeRemoveRow(
         {
             self.archetypeFreeChunk(archetype_index, row.chunk_index);
         }
+        else 
+        {
+            archetype.next_free_chunk_index = @min(archetype.next_free_chunk_index, row.chunk_index);
+        }
     }
 
-    if (chunk.row_count == 1 or row.row_index >= chunk.row_count - 1)
+    if (
+        chunk.row_count == 1 or row.row_index >= chunk.row_count - 1
+    )
     {
         return;
     }
