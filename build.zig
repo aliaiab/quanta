@@ -95,6 +95,27 @@ pub fn build(builder: *std.build.Builder) !void
         run_step.dependOn(&run_cmd.step);
     }
 
+    //example app
+    {
+        const app = quanta.app.AppCompileStep.create(builder, .{
+            .name = "example_app",
+            .root_source_file = std.build.FileSource.relative("example/src/app.zig"),
+            .target = target,
+            .optimize = mode,
+            .mode = .dynamic,
+            .cwd = "zig-out/",
+            .quanta_module = quanta_module,
+        });
+
+        const run_step = app.run();
+
+        run_step.step.dependOn(builder.getInstallStep());
+
+        const run_cmd = builder.step("run_example_app", "Run the example application (quanta.app)");
+
+        run_cmd.dependOn(&run_step.step);
+    }
+
     {
         const test_step = builder.step("test", "Run the tests");
 
