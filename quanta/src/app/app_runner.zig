@@ -38,18 +38,43 @@ pub fn main() !void
     var file = try std.fs.cwd().openFile(app_lib_file_path, .{}); 
     defer file.close();
 
-    var last_modification_time = (try file.stat()).mtime;
-    var creation_time = (try file.stat()).mtime;
+    const file_notify_fd = try std.os.inotify_init1(std.os.linux.IN.NONBLOCK | std.os.linux.IN.CLOEXEC);
+    defer std.os.close(file_notify_fd);
+
+    _ = try std.os.inotify_add_watch(
+        file_notify_fd, 
+        std.fs.path.dirname(app_lib_file_path).?, 
+        std.os.linux.IN.CLOSE_WRITE | std.os.linux.IN.NONBLOCK | std.os.linux.IN.DELETE | std.os.linux.IN.EXCL_UNLINK | std.os.linux.IN.CREATE
+    );
 
     while (true)
     {
-        const file_stat = try file.stat();
+        block: {
+            var notify_event_buffer: [1024]u8 = undefined;
 
-        if (
-            file_stat.mtime != last_modification_time or 
-            file_stat.ctime != creation_time
-        )
-        {
+            var fds: [1]std.os.pollfd = .{
+                .{
+                    .fd = file_notify_fd,
+                    .events = 0,
+                    .revents = undefined,
+                }
+            };
+
+            _ = try std.os.poll(&fds, 1);
+
+            std.log.info("polled!! = {}", .{ fds[0] });
+
+            const size = std.os.read(file_notify_fd, &notify_event_buffer) catch |e|
+            {
+                switch (e)
+                {
+                    error.WouldBlock => break: block,
+                    else => return e,
+                }
+            };
+
+            std.log.info("event_size = {}", .{ size });
+
             std.log.info("MODIFICATION", .{});
 
             app_lib.close();
@@ -58,10 +83,6 @@ pub fn main() !void
             init = app_lib.lookup(*const fn () callconv(.C) void, "init") orelse return error.FunctionNotFound;
             deinit = app_lib.lookup(*const fn () callconv(.C) void, "deinit") orelse return error.FunctionNotFound;
             update = app_lib.lookup(*const fn (ctx: *const app.UpdateContext) callconv(.C) app.UpdateResult, "update") orelse return error.FunctionNotFound;
-
-            last_modification_time = file_stat.mtime;
-            creation_time = file_stat.ctime;
-            break;
         }
 
         switch (update(&update_ctx))
