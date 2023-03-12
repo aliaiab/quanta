@@ -21,7 +21,7 @@ pub fn deinit() void
 
 pub fn update(ctx: app.UpdateContext) app.UpdateResult 
 {
-    _ = std.io.getStdErr().write("update!!\n") catch unreachable;
+    _ = std.io.getStdErr().write("update!! FAFAFAF\n") catch unreachable;
     _ = ctx;
     // _ = std.io.getStdErr().writer().print("timestep: {}", .{ ctx.timestep }) catch unreachable;
 

@@ -1,5 +1,5 @@
 const std = @import("std");
-const GlslCompileStep = @import("src/asset/build/GlslCompileStep.zig");
+const GlslCompileStep = @import("src/asset/build_steps/GlslCompileStep.zig");
 const glfw = @import("lib/mach-glfw/build.zig");
 const zgltf = @import("lib/zgltf/build.zig");
 
