@@ -56,7 +56,6 @@ pub fn create(
     });
 
     app_compile_step.addModule("quanta", options.quanta_module);
-
     app_compile_step.install();
 
     const app_runner_compile_step = std.Build.CompileStep.create(builder, .{
@@ -67,7 +66,6 @@ pub fn create(
         .optimize = options.optimize,
         .version = options.version,
     });
-
     app_runner_compile_step.install();
 
     self.* = .{
@@ -94,7 +92,6 @@ pub fn run(self: *AppCompileStep) *std.Build.RunStep
 {
     const run_step = self.builder.addRunArtifact(self.app_runner_compile_step);
 
-    run_step.step.dependOn(&self.step);
     run_step.cwd = self.cwd;
 
     return run_step;
