@@ -134,6 +134,35 @@ pub fn currentSwapImage(self: Swapchain) *const SwapImage
     return &self.swap_images[self.image_index];
 }
 
+pub fn present(self: Swapchain) !void 
+{
+    const image_index = self.image_index;
+    const image = self.swap_images[image_index];
+
+    _ = try Context.self.vkd.queuePresentKHR(Context.self.graphics_queue, &.{
+        .wait_semaphore_count = 1,
+        .p_wait_semaphores = @ptrCast([*]const vk.Semaphore, &image.render_finished),
+        .swapchain_count = 1,
+        .p_swapchains = @ptrCast([*]const vk.SwapchainKHR, &self.handle),
+        .p_image_indices = @ptrCast([*]const u32, &image_index),
+        .p_results = null,
+    });
+}
+
+pub fn swap(self: *Swapchain) !void 
+{
+    const result = try Context.self.vkd.acquireNextImageKHR(
+        Context.self.device,
+        self.handle,
+        std.math.maxInt(u64),
+        self.next_image_acquired,
+        .null_handle,
+    );
+
+    std.mem.swap(vk.Semaphore, &self.swap_images[result.image_index].image_acquired, &self.next_image_acquired);
+    self.image_index = result.image_index;
+}
+
 pub const SwapImage = struct 
 {
     image: vk.Image,

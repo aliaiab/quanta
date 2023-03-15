@@ -50,6 +50,7 @@ var state: struct
     swapchain: graphics.Swapchain = undefined,
     asset_archive_blob: []align(std.mem.page_size) u8 = undefined,
     asset_archive: asset.Archive = undefined,
+    asset_archive_reader: asset.ArchiveLoader = undefined,
 
     test_scene_meshes: []Renderer3D.MeshHandle = &.{},
     test_scene_textures: []Renderer3D.TextureHandle = &.{},
@@ -136,6 +137,9 @@ pub fn init() !void
     try RendererGui.init(state.allocator, state.swapchain);
 
     var asset_archive_file_path = "assets/example_assets_archive";
+
+    state.asset_archive_reader = try quanta.asset.ArchiveLoader.init(state.allocator, asset_archive_file_path);
+    errdefer state.asset_archive_reader.deinit();
 
     const asset_archive_fd = try std.os.open(asset_archive_file_path, std.os.O.RDONLY, std.os.S.IRUSR | std.os.S.IWUSR);
     defer std.os.close(asset_archive_fd);
@@ -813,24 +817,8 @@ pub fn update() !quanta.app.UpdateResult
         }
     }
 
-    _ = try GraphicsContext.self.vkd.queuePresentKHR(GraphicsContext.self.graphics_queue, &.{.wait_semaphore_count = 1,
-        .p_wait_semaphores = @ptrCast([*]const vk.Semaphore, &image.render_finished),
-        .swapchain_count = 1,
-        .p_swapchains = @ptrCast([*]const vk.SwapchainKHR, &state.swapchain.handle),
-        .p_image_indices = @ptrCast([*]const u32, &image_index),
-        .p_results = null,
-    });
-
-    const result = try GraphicsContext.self.vkd.acquireNextImageKHR(
-        GraphicsContext.self.device,
-        state.swapchain.handle,
-        std.math.maxInt(u64),
-        state.swapchain.next_image_acquired,
-        .null_handle,
-    );
-
-    std.mem.swap(vk.Semaphore, &state.swapchain.swap_images[result.image_index].image_acquired, &state.swapchain.next_image_acquired);
-    state.swapchain.image_index = result.image_index;
+    try state.swapchain.present();
+    try state.swapchain.swap();
 
     {
         state.delta_time = @intToFloat(f32, std.time.nanoTimestamp() - time_begin) / @intToFloat(f32, std.time.ns_per_ms);

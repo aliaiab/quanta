@@ -51,10 +51,10 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
 
     image_size += source_content_size;
 
-    // const image = try allocator.allocAdvanced(u8, @alignOf(Header), image_size, .at_least);
-
     const image = try allocator.alignedAlloc(u8, @alignOf(Header), image_size);
     errdefer allocator.free(image);
+
+    std.mem.set(u8, image, 0xaa);
 
     var image_offset: usize = 0;
 

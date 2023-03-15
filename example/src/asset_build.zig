@@ -65,7 +65,7 @@ pub fn main() !void
         .mapped_data_size = environment_map.data.len,
     });
 
-    const test_scene = try gltf.importZgltf(allocator, "example/src/assets/light_test/light_test.gltf");
+    const test_scene = try gltf.importZgltf(allocator, "example/src/assets/test_scene/test_scene.gltf");
     defer gltf.importFree(test_scene, allocator);
 
     const test_scene_encoded = try gltf.encode(allocator, test_scene);    
