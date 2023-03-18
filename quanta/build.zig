@@ -22,8 +22,11 @@ pub const Context = struct
     builder: *std.Build,
     module: *std.Build.Module,
 
+    glslc: *std.Build.CompileStep,
+
     pub fn init(
         builder: *std.Build,
+        target: std.zig.CrossTarget,
         mode: std.builtin.OptimizeMode,
     ) !Context
     {
@@ -73,16 +76,112 @@ pub const Context = struct
             }
         );
 
+        if (true)
+        {
+            return Context 
+            {
+                .builder = builder,
+                .module = module,
+                .glslc = undefined,
+            };
+        }
+
+        const glslang = builder.addStaticLibrary(.{
+            .name = "glslang",
+            .root_source_file = std.Build.FileSource.relative("quanta/lib/glslang/"),
+            .target = target,
+            .optimize = mode,
+        });
+
+        glslang.linkLibC();
+        glslang.linkLibCpp();
+
+        const libshaderc_util = builder.addStaticLibrary(.{
+            .name = "libshaderc_util",
+            .root_source_file = std.Build.FileSource.relative("quanta/lib/shaderc/libshaderc_util/src/shaderc.cc"),
+            .target = target,
+            .optimize = mode,
+        });
+
+        libshaderc_util.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/");
+        libshaderc_util.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/glslang/Include/");
+        libshaderc_util.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/HLSL/");
+        libshaderc_util.addIncludePath("quanta/lib/glslang/");
+        libshaderc_util.addCSourceFiles(&[_][]const u8 { 
+            "quanta/lib/shaderc/libshaderc_util/src/args.cc",
+            "quanta/lib/shaderc/libshaderc_util/src/compiler.cc",
+            "quanta/lib/shaderc/libshaderc_util/src/file_finder.cc",
+            "quanta/lib/shaderc/libshaderc_util/src/io_shaderc.cc",
+            "quanta/lib/shaderc/libshaderc_util/src/message.cc",
+            "quanta/lib/shaderc/libshaderc_util/src/resources.cc",
+            "quanta/lib/shaderc/libshaderc_util/src/shader_stage.cc",
+            "quanta/lib/shaderc/libshaderc_util/src/spirv_tools_wrapper.cc",
+            "quanta/lib/shaderc/libshaderc_util/src/version_profile.cc",
+        }, &.{ "-DENABLE_HLSL" });
+        libshaderc_util.linkLibC();
+        libshaderc_util.linkLibCpp();
+        libshaderc_util.linkLibrary(glslang);
+
+        const libshaderc = builder.addStaticLibrary(.{
+            .name = "libshaderc",
+            .root_source_file = std.Build.FileSource.relative("quanta/lib/shaderc/libshaderc/src/shaderc.cc"),
+            .target = target,
+            .optimize = mode,
+        });
+
+        libshaderc.addIncludePath("quanta/lib/shaderc/libshaderc/include/");
+        libshaderc.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/");
+        libshaderc.addCSourceFiles(&[_][]const u8 { 
+            "quanta/lib/shaderc/libshaderc/src/shaderc.cc",
+        }, &.{});
+        libshaderc.linkLibC();
+        libshaderc.linkLibCpp();
+        libshaderc.linkLibrary(libshaderc_util);
+
+        //TODO: Port version generation utility from shaderc/utils/update_build_version.py
+        const glslc_build_version_inc = builder.addWriteFile("glslc/build-version.inc", 
+        \\"shaderc v2022.1 v2022.1\n" 
+            \\"spirv-tools v2022.2-dev v2022.1-5-gb846f8f1\n"
+            \\"glslang 11.1.0-408-gc34bb3b6\n"
+        );
+
+        try glslc_build_version_inc.step.make();
+
+        const glslc = builder.addExecutable(.{
+            .name = "glslc",
+            .root_source_file = std.Build.FileSource.relative("quanta/lib/shaderc/glslc/src/main.cc"),
+        });
+
+        glslc.step.dependOn(&glslc_build_version_inc.step);
+
+        glslc.addCSourceFiles(&[_][]const u8 {
+            "quanta/lib/shaderc/glslc/src/dependency_info.cc",
+            "quanta/lib/shaderc/glslc/src/file_compiler.cc",
+            "quanta/lib/shaderc/glslc/src/file_includer.cc",
+            "quanta/lib/shaderc/glslc/src/file.cc",
+            "quanta/lib/shaderc/glslc/src/resource_parse.cc",
+            "quanta/lib/shaderc/glslc/src/shader_stage.cc",
+        }, &.{});
+        glslc.addIncludePath("quanta/lib/shaderc/libshaderc/include/");
+        glslc.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/");
+        glslc.addIncludePath("zig-cache/glslc/");
+
+        glslc.install();
+        glslc.linkLibC();
+        glslc.linkLibCpp();
+        glslc.linkLibrary(libshaderc);
+
         return Context 
         {
             .builder = builder,
             .module = module,
+            .glslc = glslc,
         };
     }
 };
 
 ///Links the c depencencies into step
-pub fn link(step: *std.build.CompileStep) !void 
+pub fn link(builder: *std.Build, step: *std.Build.CompileStep) !void 
 {
     step.addIncludePath("quanta/lib/Nuklear/");
     step.addIncludePath("quanta/lib/cimgui/imgui/");
@@ -100,5 +199,5 @@ pub fn link(step: *std.build.CompileStep) !void
     }, &[_][]const u8 {});
     step.linkLibCpp();
 
-    try glfw.link(step.builder, step, .{});
+    try glfw.link(builder, step, .{});
 }

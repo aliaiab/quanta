@@ -14,7 +14,7 @@ pub fn build(builder: *std.build.Builder) !void
     {
         const current_zig_version = builtin.zig_version;
 
-        const min_zig_version = std.SemanticVersion.parse("0.11.0-dev.1929+4ea2f441d") catch unreachable;
+        const min_zig_version = std.SemanticVersion.parse("0.11.0-dev.2157+f56f3c582") catch unreachable;
 
         if (current_zig_version.order(min_zig_version) == .lt) 
         {
@@ -25,7 +25,7 @@ pub fn build(builder: *std.build.Builder) !void
     const target = builder.standardTargetOptions(.{});
     const mode = builder.standardOptimizeOption(.{});
 
-    const quanta_build_context = try quanta_build.Context.init(builder, mode);
+    const quanta_build_context = try quanta_build.Context.init(builder, target, mode);
 
     const quanta_module = quanta_build_context.module;
 
@@ -43,7 +43,7 @@ pub fn build(builder: *std.build.Builder) !void
         exe.install();
 
         exe.addModule("quanta", quanta_module);
-        try quanta_build.link(exe);
+        try quanta_build.link(builder, exe);
 
         const run_cmd = builder.addRunArtifact(exe);
 
@@ -73,7 +73,7 @@ pub fn build(builder: *std.build.Builder) !void
         exe.install();
 
         exe.addModule("quanta", quanta_module);
-        try quanta_build.link(exe);
+        try quanta_build.link(builder, exe);
         
         if (mode == .ReleaseFast or mode == .ReleaseSmall)
         {
@@ -107,7 +107,7 @@ pub fn build(builder: *std.build.Builder) !void
             .quanta_module = quanta_module,
         });
 
-        try quanta_build.link(app.app_compile_step);
+        try quanta_build.link(builder, app.app_compile_step);
 
         const run_step = app.run();
 

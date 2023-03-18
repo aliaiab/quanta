@@ -34,7 +34,7 @@ pub fn create(
     self.* = GlslCompileStep
     {
         .builder = builder,
-        .step = std.Build.Step.init(base_id, name, builder.allocator, make),
+        .step = std.Build.Step.init(.{ .id = base_id, .name = name, .owner = builder, .makeFn = &make }),
         .input_path = input_path,
         .output_path = output_path,
         .shader_stage = shader_stage,
@@ -45,7 +45,7 @@ pub fn create(
     return self;
 }
 
-pub fn make(step: *Step) !void
+pub fn make(step: *Step, _: *std.Progress.Node) !void
 {
     const self = step.cast(GlslCompileStep).?;
 
@@ -90,7 +90,7 @@ pub fn make(step: *Step) !void
     cache_manifest.hash.addListOfBytes(&args);
     const input_file_index = try cache_manifest.addFile(self.input_path, std.math.maxInt(u32));
 
-    const found_existing = try cache_manifest.hit();
+    const found_existing = try step.cacheHit(&cache_manifest);
 
     if (found_existing)
     {
@@ -111,8 +111,6 @@ pub fn make(step: *Step) !void
 
     if (input_file.contents == null)
     {
-        std.debug.print("input_file_index = {}\n", .{ input_file_index });
-
         const input_file_opened = try std.fs.cwd().openFile(self.input_path, .{});
         defer input_file_opened.close();
 
@@ -126,8 +124,6 @@ pub fn make(step: *Step) !void
     for (includes) |include|
     {
         const include_path = try std.fs.path.join(self.builder.allocator, &.{ source_directory, include });
-
-        std.debug.print("include path: {s}\n", .{ include_path });
 
         try cache_manifest.addFilePost(include_path);
     }
@@ -146,23 +142,25 @@ pub fn make(step: *Step) !void
 
     args[10] = cached_path;
 
-    std.debug.print("compiling {s}\n", .{ cached_path });
-
     errdefer {
         self.generated_file.path = null;
     }
 
-    try std.Build.RunStep.runCommand(
-        &args,
-        self.builder,
-        null,
-        .ignore,
-        .inherit,
-        .Ignore,
-        self.builder.env_map,
-        self.builder.build_root.path,
-        true,
-    );
+    const result = try std.process.Child.exec(.{ 
+        .allocator = step.owner.allocator, 
+        .argv = &args,
+    });
+
+    switch (result.term) {
+        .Exited => |code| {
+            if (code != 0) {
+                return step.fail("Failed to compile: {s}", .{ result.stderr });
+            }
+        },
+        .Signal => {},
+        .Stopped => {},
+        .Unknown => {},
+    }
 
     try cache_manifest.writeManifest();
 }

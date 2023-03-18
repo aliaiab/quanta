@@ -76,7 +76,7 @@ pub fn create(
 
     self.* = .{
         .builder = builder,
-        .step = std.Build.Step.init(base_id, options.name, builder.allocator, &make),
+        .step = std.Build.Step.init(.{ .id = base_id, .name = options.name, .owner = builder, .makeFn = &make }),
         .name = options.name,
         .root_source_file = options.root_source_file.?,
         .version = options.version,
@@ -103,9 +103,9 @@ pub fn run(self: *AppCompileStep) *std.Build.RunStep
     return run_step;
 }
 
-fn make(step: *Step) !void
+fn make(step: *Step, progress_node: *std.Progress.Node) !void
 {
     const self = step.cast(@This()).?;
 
-    try self.step.make();
+    try self.step.make(progress_node);
 }

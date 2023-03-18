@@ -25,3 +25,6 @@
 [submodule "quanta/lib/shaderc"]
 	path = quanta/lib/shaderc
 	url = https://github.com/google/shaderc.git
+[submodule "quanta/lib/glslang"]
+	path = quanta/lib/glslang
+	url = https://github.com/KhronosGroup/glslang.git
