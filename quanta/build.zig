@@ -28,35 +28,36 @@ pub const Context = struct
         builder: *std.Build,
         target: std.zig.CrossTarget,
         mode: std.builtin.OptimizeMode,
+        relative_path: []const u8,
     ) !Context
     {
-        const renderer_tri_vert_spv_module = GlslCompileStep.compileModule(builder, mode, .vertex, "quanta/src/renderer/tri.vert.glsl", "tri.vert.spv");
-        const renderer_tri_frag_spv_module = GlslCompileStep.compileModule(builder, mode, .fragment, "quanta/src/renderer/tri.frag.glsl", "tri.frag.spv");
-        const renderer_sky_vert_spv_module = GlslCompileStep.compileModule(builder, mode, .vertex, "quanta/src/renderer/sky.vert.glsl", "sky.vert.spv");
-        const renderer_sky_frag_spv_module = GlslCompileStep.compileModule(builder, mode, .fragment, "quanta/src/renderer/sky.frag.glsl", "sky.frag.spv");
-        const renderer_depth_vert_spv_module = GlslCompileStep.compileModule(builder, mode, .vertex, "quanta/src/renderer/depth.vert.glsl", "depth.vert.spv");
-        const renderer_depth_frag_spv_module = GlslCompileStep.compileModule(builder, mode, .fragment, "quanta/src/renderer/depth.frag.glsl", "depth.frag.spv");
-        const renderer_pre_depth_cull_comp_module = GlslCompileStep.compileModule(builder, mode, .compute, "quanta/src/renderer/pre_depth_cull.comp.glsl", "pre_depth_cull.comp.spv");
-        const renderer_post_depth_cull_comp_module = GlslCompileStep.compileModule(builder, mode, .compute, "quanta/src/renderer/post_depth_cull.comp.glsl", "post_depth_cull.comp.spv");
-        const renderer_depth_reduce_comp_module = GlslCompileStep.compileModule(builder, mode, .compute, "quanta/src/renderer/depth_reduce.comp.glsl", "depth_reduce.comp.spv");
-        const renderer_color_resolve_comp_module = GlslCompileStep.compileModule(builder, mode, .compute, "quanta/src/renderer/color_resolve.comp.glsl", "color_resolve.comp.spv");
+        const renderer_tri_vert_spv_module = GlslCompileStep.compileModule(builder, mode, .vertex, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/tri.vert.glsl" }), "tri.vert.spv");
+        const renderer_tri_frag_spv_module = GlslCompileStep.compileModule(builder, mode, .fragment, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/tri.frag.glsl" }), "tri.frag.spv");
+        const renderer_sky_vert_spv_module = GlslCompileStep.compileModule(builder, mode, .vertex, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/sky.vert.glsl" }), "sky.vert.spv");
+        const renderer_sky_frag_spv_module = GlslCompileStep.compileModule(builder, mode, .fragment, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/sky.frag.glsl" }), "sky.frag.spv");
+        const renderer_depth_vert_spv_module = GlslCompileStep.compileModule(builder, mode, .vertex, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/depth.vert.glsl" }), "depth.vert.spv");
+        const renderer_depth_frag_spv_module = GlslCompileStep.compileModule(builder, mode, .fragment, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/depth.frag.glsl" }), "depth.frag.spv");
+        const renderer_pre_depth_cull_comp_module = GlslCompileStep.compileModule(builder, mode, .compute, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/pre_depth_cull.comp.glsl" }), "pre_depth_cull.comp.spv");
+        const renderer_post_depth_cull_comp_module = GlslCompileStep.compileModule(builder, mode, .compute, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/post_depth_cull.comp.glsl" }), "post_depth_cull.comp.spv");
+        const renderer_depth_reduce_comp_module = GlslCompileStep.compileModule(builder, mode, .compute, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/depth_reduce.comp.glsl" }), "depth_reduce.comp.spv");
+        const renderer_color_resolve_comp_module = GlslCompileStep.compileModule(builder, mode, .compute, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/color_resolve.comp.glsl" }), "color_resolve.comp.spv");
 
-        const renderer_gui_rectangle_vert_module = GlslCompileStep.compileModule(builder, mode, .vertex, "quanta/src/renderer_gui/rectangle.vert.glsl", "rectangle.vert.spv");
-        const renderer_gui_rectangle_frag_module = GlslCompileStep.compileModule(builder, mode, .fragment, "quanta/src/renderer_gui/rectangle.frag.glsl", "rectangle.frag.spv");
-        const renderer_gui_mesh_vert_module = GlslCompileStep.compileModule(builder, mode, .vertex, "quanta/src/renderer_gui/mesh.vert.glsl", "mesh.vert.spv");
-        const renderer_gui_mesh_frag_module = GlslCompileStep.compileModule(builder, mode, .fragment, "quanta/src/renderer_gui/mesh.frag.glsl", "mesh.frag.spv");
+        const renderer_gui_rectangle_vert_module = GlslCompileStep.compileModule(builder, mode, .vertex, builder.pathJoin(&.{ relative_path, "quanta/src/renderer_gui/rectangle.vert.glsl" }), "rectangle.vert.spv");
+        const renderer_gui_rectangle_frag_module = GlslCompileStep.compileModule(builder, mode, .fragment, builder.pathJoin(&.{ relative_path, "quanta/src/renderer_gui/rectangle.frag.glsl" }), "rectangle.frag.spv");
+        const renderer_gui_mesh_vert_module = GlslCompileStep.compileModule(builder, mode, .vertex, builder.pathJoin(&.{ relative_path, "quanta/src/renderer_gui/mesh.vert.glsl" }), "mesh.vert.spv");
+        const renderer_gui_mesh_frag_module = GlslCompileStep.compileModule(builder, mode, .fragment, builder.pathJoin(&.{ relative_path, "quanta/src/renderer_gui/mesh.frag.glsl" }), "mesh.frag.spv");
 
         const options = builder.addOptions();
 
         var module = builder.createModule(
             .{
-                .source_file = std.build.FileSource.relative("quanta/src/main.zig"),
+                .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/src/main.zig" })),
                 .dependencies = &.{
                     .{ .name = "options", .module = options.createModule() },
                     .{ .name = "glfw", .module = glfw.module(builder) },
-                    .{ .name = "zgltf", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative("quanta/lib/zgltf/src/main.zig") }) },
-                    .{ .name = "zigimg", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative("quanta/lib/zigimg/zigimg.zig") }) },
-                    .{ .name = "zalgebra", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative("quanta/lib/zalgebra/src/main.zig") }) },
+                    .{ .name = "zgltf", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zgltf/src/main.zig" })) }) },
+                    .{ .name = "zigimg", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zigimg/zigimg.zig" })) }) },
+                    .{ .name = "zalgebra", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zalgebra/src/main.zig" })) }) },
                     .{ .name = "renderer_tri_vert.spv", .module = renderer_tri_vert_spv_module },
                     .{ .name = "renderer_tri_frag.spv", .module = renderer_tri_frag_spv_module },
                     .{ .name = "renderer_depth_vert.spv", .module = renderer_depth_vert_spv_module },
