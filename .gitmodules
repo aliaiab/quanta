@@ -28,3 +28,6 @@
 [submodule "quanta/lib/glslang"]
 	path = quanta/lib/glslang
 	url = https://github.com/KhronosGroup/glslang.git
+[submodule "quanta/lib/SPIRV-Tools"]
+	path = quanta/lib/SPIRV-Tools
+	url = https://github.com/KhronosGroup/SPIRV-Tools.git

@@ -76,29 +76,76 @@ pub const Context = struct
             }
         );
 
-        if (true)
+        if (true) return Context 
         {
-            return Context 
-            {
-                .builder = builder,
-                .module = module,
-                .glslc = undefined,
-            };
-        }
+            .builder = builder,
+            .module = module,
+            .glslc = undefined,
+        };
 
         const glslang = builder.addStaticLibrary(.{
             .name = "glslang",
-            .root_source_file = std.Build.FileSource.relative("quanta/lib/glslang/"),
             .target = target,
             .optimize = mode,
         });
 
+        glslang.addCSourceFiles(&[_][]const u8 {
+            "quanta/lib/glslang/glslang/MachineIndependent/glslang_tab.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/attribute.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/Constant.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/iomapper.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/InfoSink.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/Initialize.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/IntermTraverse.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/Intermediate.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/ParseContextBase.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/ParseHelper.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/PoolAlloc.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/RemoveTree.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/Scan.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/ShaderLang.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/SpirvIntrinsics.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/SymbolTable.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/Versions.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/intermOut.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/limits.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/linkValidate.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/parseConst.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/reflection.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/preprocessor/Pp.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/preprocessor/PpAtom.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp",
+            "quanta/lib/glslang/glslang/MachineIndependent/propagateNoContraction.cpp", 
+            "quanta/lib/glslang/glslang/HLSL/hlslAttributes.cpp",
+            "quanta/lib/glslang/glslang/HLSL/hlslParseHelper.cpp",
+            "quanta/lib/glslang/glslang/HLSL/hlslScanContext.cpp",
+            "quanta/lib/glslang/glslang/HLSL/hlslOpMap.cpp",
+            "quanta/lib/glslang/glslang/HLSL/hlslTokenStream.cpp",
+            "quanta/lib/glslang/glslang/HLSL/hlslGrammar.cpp",
+            "quanta/lib/glslang/glslang/HLSL/hlslParseables.cpp",
+            "quanta/lib/glslang/SPIRV/GlslangToSpv.cpp",
+            "quanta/lib/glslang/SPIRV/InReadableOrder.cpp",
+            "quanta/lib/glslang/SPIRV/Logger.cpp",
+            "quanta/lib/glslang/SPIRV/SpvBuilder.cpp",
+            "quanta/lib/glslang/SPIRV/SpvPostProcess.cpp",
+            "quanta/lib/glslang/SPIRV/doc.cpp",
+            "quanta/lib/glslang/SPIRV/SpvTools.cpp",
+            "quanta/lib/glslang/SPIRV/disassemble.cpp",
+            "quanta/lib/glslang/SPIRV/CInterface/spirv_c_interface.cpp",
+        }, &.{ "-DENABLE_HLSL" });
+
+        glslang.addIncludePath("quanta/lib/glslang/");
+        glslang.addIncludePath("quanta/lib/glslang/Include/");
+        glslang.addIncludePath("quanta/lib/glslang/HLSL/");
+        glslang.addIncludePath("quanta/lib/glslang/MachineIndependent/");
+        glslang.addIncludePath("quanta/lib/glslang/Public/");
         glslang.linkLibC();
         glslang.linkLibCpp();
 
         const libshaderc_util = builder.addStaticLibrary(.{
             .name = "libshaderc_util",
-            .root_source_file = std.Build.FileSource.relative("quanta/lib/shaderc/libshaderc_util/src/shaderc.cc"),
             .target = target,
             .optimize = mode,
         });
@@ -106,6 +153,7 @@ pub const Context = struct
         libshaderc_util.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/");
         libshaderc_util.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/glslang/Include/");
         libshaderc_util.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/HLSL/");
+        libshaderc_util.addIncludePath("quanta/lib/shaderc/glslang/include/HLSL/");
         libshaderc_util.addIncludePath("quanta/lib/glslang/");
         libshaderc_util.addCSourceFiles(&[_][]const u8 { 
             "quanta/lib/shaderc/libshaderc_util/src/args.cc",
@@ -124,16 +172,20 @@ pub const Context = struct
 
         const libshaderc = builder.addStaticLibrary(.{
             .name = "libshaderc",
-            .root_source_file = std.Build.FileSource.relative("quanta/lib/shaderc/libshaderc/src/shaderc.cc"),
             .target = target,
             .optimize = mode,
         });
 
         libshaderc.addIncludePath("quanta/lib/shaderc/libshaderc/include/");
         libshaderc.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/");
+        libshaderc.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/");
+        libshaderc.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/glslang/Include/");
+        libshaderc.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/HLSL/");
+        libshaderc.addIncludePath("quanta/lib/shaderc/glslang/include/HLSL/");
+        libshaderc.addIncludePath("quanta/lib/glslang/");
         libshaderc.addCSourceFiles(&[_][]const u8 { 
             "quanta/lib/shaderc/libshaderc/src/shaderc.cc",
-        }, &.{});
+        }, &.{ "-DENABLE_HLSL" });
         libshaderc.linkLibC();
         libshaderc.linkLibCpp();
         libshaderc.linkLibrary(libshaderc_util);
@@ -145,26 +197,25 @@ pub const Context = struct
             \\"glslang 11.1.0-408-gc34bb3b6\n"
         );
 
-        try glslc_build_version_inc.step.make();
-
         const glslc = builder.addExecutable(.{
             .name = "glslc",
-            .root_source_file = std.Build.FileSource.relative("quanta/lib/shaderc/glslc/src/main.cc"),
         });
 
         glslc.step.dependOn(&glslc_build_version_inc.step);
 
         glslc.addCSourceFiles(&[_][]const u8 {
+            "quanta/lib/shaderc/glslc/src/main.cc",
             "quanta/lib/shaderc/glslc/src/dependency_info.cc",
             "quanta/lib/shaderc/glslc/src/file_compiler.cc",
             "quanta/lib/shaderc/glslc/src/file_includer.cc",
             "quanta/lib/shaderc/glslc/src/file.cc",
             "quanta/lib/shaderc/glslc/src/resource_parse.cc",
             "quanta/lib/shaderc/glslc/src/shader_stage.cc",
-        }, &.{});
+        }, &.{ "-DENABLE_HLSL" });
         glslc.addIncludePath("quanta/lib/shaderc/libshaderc/include/");
         glslc.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/");
         glslc.addIncludePath("zig-cache/glslc/");
+        // glslc.linkSystemLibraryNeeded("spirv");
 
         glslc.install();
         glslc.linkLibC();
