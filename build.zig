@@ -43,7 +43,7 @@ pub fn build(builder: *std.build.Builder) !void
         exe.install();
 
         exe.addModule("quanta", quanta_module);
-        try quanta_build.link(builder, exe);
+        try quanta_build.link(builder, exe, "");
 
         const run_cmd = builder.addRunArtifact(exe);
 
@@ -73,7 +73,7 @@ pub fn build(builder: *std.build.Builder) !void
         exe.install();
 
         exe.addModule("quanta", quanta_module);
-        try quanta_build.link(builder, exe);
+        try quanta_build.link(builder, exe, "");
         
         if (mode == .ReleaseFast or mode == .ReleaseSmall)
         {
@@ -107,7 +107,7 @@ pub fn build(builder: *std.build.Builder) !void
             .quanta_module = quanta_module,
         });
 
-        try quanta_build.link(builder, app.app_compile_step);
+        try quanta_build.link(builder, app.app_compile_step, "");
 
         const run_step = app.run();
 
