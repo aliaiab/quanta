@@ -3,14 +3,12 @@ const root = @import("root");
 
 pub const AppCompileStep = @import("AppCompileStep.zig");
 
-pub const InitContext = struct 
-{
+pub const InitContext = struct {
     allocator: std.mem.Allocator,
     user_data: ?*anyopaque,
 };
 
-pub const UpdateContext = struct 
-{
+pub const UpdateContext = struct {
     user_data: ?*anyopaque,
     ///An arena allocator which is cleared every update
     arena_allocator: std.mem.Allocator,
@@ -22,8 +20,7 @@ pub const UpdateContext = struct
     timestep: u64,
 };
 
-pub const UpdateResult = enum(u8) 
-{
+pub const UpdateResult = enum(u8) {
     ///Indicates to the app runner the app should exit
     exit,
     ///Indicates to the app runner the app should continue to next update
@@ -34,8 +31,7 @@ pub const InitFn = fn () callconv(.C) void;
 pub const DeinitFn = fn () callconv(.C) void;
 pub const UpdateFn = fn (ctx: *const UpdateContext) callconv(.C) UpdateResult;
 
-pub const DynamicAppContext = struct 
-{
+pub const DynamicAppContext = struct {
     init: *const InitFn,
     deinit: *const DeinitFn,
     update: *const UpdateFn,
@@ -43,35 +39,28 @@ pub const DynamicAppContext = struct
 };
 
 comptime {
-    if (
-        @hasDecl(root, "init") and 
-        @hasDecl(root, "deinit") and 
-        @hasDecl(root, "update") and 
-        !@hasDecl(root, "main")
-    )
+    if (@hasDecl(root, "init") and
+        @hasDecl(root, "deinit") and
+        @hasDecl(root, "update") and
+        !@hasDecl(root, "main"))
     {
-        const S = struct 
-        {
-            pub fn init(ctx: *InitContext) callconv(.C) void
-            {
-                switch (@typeInfo(@typeInfo(@TypeOf(root.init)).Fn.return_type.?)) 
-                {
+        const S = struct {
+            pub fn init(ctx: *InitContext) callconv(.C) void {
+                switch (@typeInfo(@typeInfo(@TypeOf(root.init)).Fn.return_type.?)) {
                     .Void => {
-                        root.init(ctx);   
+                        root.init(ctx);
                     },
                     .ErrorUnion => {
                         root.init(ctx) catch unreachable;
                     },
                     else => @compileError("Wrong return type"),
                 }
-            }  
+            }
 
-            pub fn deinit(ctx: *InitContext) callconv(.C) void 
-            {
-                switch (@typeInfo(@typeInfo(@TypeOf(root.deinit)).Fn.return_type.?)) 
-                {
+            pub fn deinit(ctx: *InitContext) callconv(.C) void {
+                switch (@typeInfo(@typeInfo(@TypeOf(root.deinit)).Fn.return_type.?)) {
                     .Void => {
-                        root.deinit(ctx);   
+                        root.deinit(ctx);
                     },
                     .ErrorUnion => {
                         root.deinit(ctx) catch unreachable;
@@ -80,10 +69,8 @@ comptime {
                 }
             }
 
-            pub fn update(ctx: *const UpdateContext) callconv(.C) UpdateResult
-            {
-                switch (@typeInfo(@typeInfo(@TypeOf(root.update)).Fn.return_type.?)) 
-                {
+            pub fn update(ctx: *const UpdateContext) callconv(.C) UpdateResult {
+                switch (@typeInfo(@typeInfo(@TypeOf(root.update)).Fn.return_type.?)) {
                     .Enum => {
                         return root.update(ctx.*);
                     },

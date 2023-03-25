@@ -4,19 +4,18 @@ const asset = quanta.asset;
 const gltf = quanta.asset.importers.gltf;
 const png = quanta.asset.importers.png;
 
-pub fn main() !void 
-{
+pub fn main() !void {
     std.log.info("Building assets:", .{});
 
     const cache_directory = "zig-out/bin/assets/";
 
     std.fs.cwd().makeDir(cache_directory) catch {};
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}) {};
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 
     const allocator = gpa.allocator();
 
-    var assets = std.ArrayListUnmanaged(asset.Archive.AssetDescription) {};
+    var assets = std.ArrayListUnmanaged(asset.Archive.AssetDescription){};
     defer assets.deinit(allocator);
 
     const gm_construct_bsp = try quanta.asset.importers.bsp.importFile(allocator, "example/src/assets/gm_construct.bsp");
@@ -45,18 +44,14 @@ pub fn main() !void
         .mapped_data_size = gm_castle_island_gltf_encoded.len,
     });
 
-    var environment_map = try png.importCubeFile(
-        allocator, 
-        [_][]const u8
-        {
-            "example/src/assets/skybox/right.png", //x+
-            "example/src/assets/skybox/left.png", //x-
-            "example/src/assets/skybox/top.png", //y+
-            "example/src/assets/skybox/bottom.png", //y-
-            "example/src/assets/skybox/back.png", //z+
-            "example/src/assets/skybox/front.png", //z-
-        }
-    ); 
+    var environment_map = try png.importCubeFile(allocator, [_][]const u8{
+        "example/src/assets/skybox/right.png", //x+
+        "example/src/assets/skybox/left.png", //x-
+        "example/src/assets/skybox/top.png", //y+
+        "example/src/assets/skybox/bottom.png", //y-
+        "example/src/assets/skybox/back.png", //z+
+        "example/src/assets/skybox/front.png", //z-
+    });
     defer png.free(&environment_map, allocator);
 
     try assets.append(allocator, .{
@@ -68,7 +63,7 @@ pub fn main() !void
     const test_scene = try gltf.importZgltf(allocator, "example/src/assets/test_scene/test_scene.gltf");
     defer gltf.importFree(test_scene, allocator);
 
-    const test_scene_encoded = try gltf.encode(allocator, test_scene);    
+    const test_scene_encoded = try gltf.encode(allocator, test_scene);
 
     try assets.append(allocator, .{
         .source_data = test_scene_encoded,
@@ -84,7 +79,7 @@ pub fn main() !void
     try asset_archive_file.setEndPos(0);
     try asset_archive_file.seekTo(0);
 
-    std.log.info("length of asset archive = {}", .{ asset_archive.len });
+    std.log.info("length of asset archive = {}", .{asset_archive.len});
 
     try asset_archive_file.writeAll(asset_archive);
 }

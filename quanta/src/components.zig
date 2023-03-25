@@ -1,96 +1,74 @@
-
-pub const Force = struct 
-{
+pub const Force = struct {
     x: f32,
     y: f32,
     z: f32,
 };
 
-pub const Mass = struct 
-{
+pub const Mass = struct {
     value: f32,
 };
 
-pub const TerminalVelocity = struct 
-{
+pub const TerminalVelocity = struct {
     x: f32,
     y: f32,
     z: f32,
 };
 
-pub const Velocity = struct 
-{
+pub const Velocity = struct {
     x: f32,
     y: f32,
     z: f32,
 };
 
-pub const Acceleration = struct 
-{
+pub const Acceleration = struct {
     x: f32,
     y: f32,
     z: f32,
 };
 
-pub const Position = struct 
-{ 
-    x: f32,
-    y: f32,
-    z: f32,    
-};
-
-pub const Rotation = struct 
-{
+pub const Position = struct {
     x: f32,
     y: f32,
     z: f32,
 };
 
-pub const UniformScale = struct 
-{
+pub const Rotation = struct {
+    x: f32,
+    y: f32,
+    z: f32,
+};
+
+pub const UniformScale = struct {
     value: f32,
 };
 
-pub const NonUniformScale = struct 
-{
+pub const NonUniformScale = struct {
     x: f32,
     y: f32,
     z: f32,
 };
 
-pub const Visibility = struct 
-{
+pub const Visibility = struct {
     is_visible: bool,
 };
 
-pub const RendererMesh = struct 
-{
+pub const RendererMesh = struct {
     mesh: Renderer3D.MeshHandle,
     material: Renderer3D.MaterialHandle,
 };
 
-pub const DirectionalLight = struct 
-{
+pub const DirectionalLight = struct {
     intensity: f32,
     diffuse: [3]f32,
 
-    pub const editor = EditorInfo
-    {
-        .diffuse = .{
-            .edit_type = "color"
-        }
-    };
+    pub const editor = EditorInfo{ .diffuse = .{ .edit_type = "color" } };
 
-    pub const EditorInfo = struct 
-    {
-        diffuse: struct {
-            edit_type: []const u8
-        },
+    pub const EditorInfo = struct {
+        diffuse: struct { edit_type: []const u8 },
     };
 };
 
-pub const PointLight = struct 
-{
+pub const PointLight = struct {
     intensity: f32,
     diffuse: [3]f32,
 
@@ -101,18 +79,10 @@ pub const PointLight = struct
     //     },
     // };
 
-    pub const editor = EditorInfo
-    {
-        .diffuse = .{
-            .edit_type = "color"
-        }
-    };
+    pub const editor = EditorInfo{ .diffuse = .{ .edit_type = "color" } };
 
-    pub const EditorInfo = struct 
-    {
-        diffuse: struct {
-            edit_type: []const u8
-        },
+    pub const EditorInfo = struct {
+        diffuse: struct { edit_type: []const u8 },
     };
 };
 

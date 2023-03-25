@@ -1,8 +1,7 @@
 const std = @import("std");
 const quanta = @import("../quanta/build.zig");
 
-pub fn build(builder: *std.build.Builder, target: std.zig.CrossTarget, mode: std.builtin.Mode) !void 
-{
+pub fn build(builder: *std.build.Builder, target: std.zig.CrossTarget, mode: std.builtin.Mode) !void {
     const exe = builder.addExecutable("example", "example/src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
@@ -13,8 +12,7 @@ pub fn build(builder: *std.build.Builder, target: std.zig.CrossTarget, mode: std
     const run_cmd = exe.run();
     run_cmd.step.dependOn(builder.getInstallStep());
 
-    if (builder.args) |args| 
-    {
+    if (builder.args) |args| {
         run_cmd.addArgs(args);
     }
 

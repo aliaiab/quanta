@@ -1,16 +1,14 @@
 const std = @import("std");
 const log = std.log.scoped(.bsp);
 
-pub const Lump = extern struct 
-{
-	fileofs: i32,      // offset into file (bytes)
-	filelen: u32,      // length of lump (bytes)
-	version: u32,      // lump format version
-	fourCC: [4]u8,    // lump ident code
+pub const Lump = extern struct {
+    fileofs: i32, // offset into file (bytes)
+    filelen: u32, // length of lump (bytes)
+    version: u32, // lump format version
+    fourCC: [4]u8, // lump ident code
 };
 
-pub const LumpType = enum(u8)
-{
+pub const LumpType = enum(u8) {
     entities = 0,
     planes = 1,
     tex_data = 2,
@@ -42,10 +40,9 @@ pub const LumpType = enum(u8)
     _,
 };
 
-pub const Header = extern struct 
-{
+pub const Header = extern struct {
     ident: u32,
-    version: u32, 
+    version: u32,
     lumps: [lump_count]Lump,
     map_revision: u32,
 
@@ -57,14 +54,12 @@ comptime {
     std.debug.assert(@sizeOf(Header) == 1036);
 }
 
-pub const ImportResult = struct 
-{
+pub const ImportResult = struct {
     vertices: []Vertex,
     indices: []u16,
 };
 
-pub const SurfFlags = packed struct(u32) 
-{
+pub const SurfFlags = packed struct(u32) {
     light: bool,
     sky2d: bool,
     sky: bool,
@@ -81,105 +76,94 @@ pub const SurfFlags = packed struct(u32)
     no_decals: bool,
     no_chop: bool,
     hit_box: bool,
-    
+
     pad: u16,
 };
 
-pub const TexInfo = extern struct 
-{
+pub const TexInfo = extern struct {
     texture_vecs: [2][4]f32,
     lightmap_vecs: [2][4]f32,
     flags: SurfFlags,
-    tex_data: u32, 
+    tex_data: u32,
 };
 
-pub const Vertex = extern struct 
-{
+pub const Vertex = extern struct {
     x: f32,
     y: f32,
-    z: f32,  
+    z: f32,
 };
 
-pub const Edge = extern struct 
-{
+pub const Edge = extern struct {
     v: [2]u16,
 };
 
-pub const Plane = extern struct 
-{
+pub const Plane = extern struct {
     normal: [3]f32,
     dist: f32,
     type: f32,
 };
 
-pub const Face = extern struct 
-{
-	planenum: u16,              // the plane number
-	side: u8,                   // faces opposite to the node's plane direction
-	onNode: u8,                 // 1 of on node, 0 if in leaf
-	firstedge: i32,             // index into surfedges
-	numedges: i16,              // number of surfedges
-	texinfo: i16,               // texture info
-	dispinfo: i16,              // displacement info
-	surfaceFogVolumeID: i16,    // ?
-	styles: [4]u8,              // switchable lighting info
-	lightofs: i32,              // offset into lightmap lump
-	area: f32,                  // face area in units^2
-	LightmapTextureMinsInLuxels: [2]i32, // texture lighting info
-	LightmapTextureSizeInLuxels: [2]i32, // texture lighting info
-	origFace: i32,              // original face this was split from
-	numPrims: u16,              // primitives
-	firstPrimID: u16,
-	smoothingGroups: u32,       // lightmap smoothing group
+pub const Face = extern struct {
+    planenum: u16, // the plane number
+    side: u8, // faces opposite to the node's plane direction
+    onNode: u8, // 1 of on node, 0 if in leaf
+    firstedge: i32, // index into surfedges
+    numedges: i16, // number of surfedges
+    texinfo: i16, // texture info
+    dispinfo: i16, // displacement info
+    surfaceFogVolumeID: i16, // ?
+    styles: [4]u8, // switchable lighting info
+    lightofs: i32, // offset into lightmap lump
+    area: f32, // face area in units^2
+    LightmapTextureMinsInLuxels: [2]i32, // texture lighting info
+    LightmapTextureSizeInLuxels: [2]i32, // texture lighting info
+    origFace: i32, // original face this was split from
+    numPrims: u16, // primitives
+    firstPrimID: u16,
+    smoothingGroups: u32, // lightmap smoothing group
 
     comptime {
         std.debug.assert(@sizeOf(@This()) == 56);
     }
 };
 
-const DispInfo = extern struct
-{
-	startPosition: [3]f32,                // start position used for orientation
-	DispVertStart: i32,                // Index into LUMP_DISP_VERTS.
-	DispTriStart: i32,                 // Index into LUMP_DISP_TRIS.
-	power: i32,                        // power - indicates size of surface (2^power 1)
-	minTess: i32,                      // minimum tesselation allowed
-	smoothingAngle: f32,               // lighting smoothing angle
-	contents: i32,                     // surface contents
-	MapFace: u16,                      // Which map face this displacement comes from.
-	LightmapAlphaStart: u32,           // Index into ddisplightmapalpha.
-	LightmapSamplePositionStart: u32,  // Index into LUMP_DISP_LIGHTMAP_SAMPLE_POSITIONS.
-    EdgeNeighbors: [4]DispNeighbour,             // Indexed by NEIGHBOREDGE_ defines.
-	CornerNeighbors: [4]DispCornerNeighbours,           // Indexed by CORNER_ defines.
-	AllowedVerts: [10]u32,             // active verticies
+const DispInfo = extern struct {
+    startPosition: [3]f32, // start position used for orientation
+    DispVertStart: i32, // Index into LUMP_DISP_VERTS.
+    DispTriStart: i32, // Index into LUMP_DISP_TRIS.
+    power: i32, // power - indicates size of surface (2^power 1)
+    minTess: i32, // minimum tesselation allowed
+    smoothingAngle: f32, // lighting smoothing angle
+    contents: i32, // surface contents
+    MapFace: u16, // Which map face this displacement comes from.
+    LightmapAlphaStart: u32, // Index into ddisplightmapalpha.
+    LightmapSamplePositionStart: u32, // Index into LUMP_DISP_LIGHTMAP_SAMPLE_POSITIONS.
+    EdgeNeighbors: [4]DispNeighbour, // Indexed by NEIGHBOREDGE_ defines.
+    CornerNeighbors: [4]DispCornerNeighbours, // Indexed by CORNER_ defines.
+    AllowedVerts: [10]u32, // active verticies
 };
 
-comptime
-{
+comptime {
     std.debug.assert(@sizeOf(DispInfo) == 176);
 }
 
-const DispSubNeighbour = extern struct
-{
+const DispSubNeighbour = extern struct {
     index: u16 = 0xFFFF,
     orientation: u8,
     span: u8,
     neighbourSpan: u8,
 };
 
-const DispNeighbour = extern struct
-{
+const DispNeighbour = extern struct {
     subNeighbors: [2]DispSubNeighbour,
 };
 
-const DispCornerNeighbours = extern struct
-{
+const DispCornerNeighbours = extern struct {
     neighbours: [4]u16,
     numNeighbours: u8,
 };
 
-pub fn importFile(allocator: std.mem.Allocator, file_path: []const u8) !ImportResult 
-{
+pub fn importFile(allocator: std.mem.Allocator, file_path: []const u8) !ImportResult {
     const file = try std.fs.cwd().openFile(file_path, .{});
     defer file.close();
 
@@ -189,10 +173,8 @@ pub fn importFile(allocator: std.mem.Allocator, file_path: []const u8) !ImportRe
     return try import(allocator, data);
 }
 
-pub fn import(allocator: std.mem.Allocator, data: []const u8) !ImportResult 
-{
-    var result = ImportResult 
-    {
+pub fn import(allocator: std.mem.Allocator, data: []const u8) !ImportResult {
+    var result = ImportResult{
         .vertices = &.{},
         .indices = &.{},
     };
@@ -201,40 +183,38 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !ImportResult
     const header = @ptrCast(*const Header, @alignCast(@alignOf(Header), data.ptr)).*;
     read_head += @sizeOf(Header);
 
-    if (header.ident != Header.identifier)
-    {
+    if (header.ident != Header.identifier) {
         return error.InvalidIdentifer;
     }
 
     //The bsp versions can vary wildly, and so different decoding functions may need
     //to be dispatched on this version
-    log.info("header_version {}", .{ header.version });
-    log.info("header_revision {}", .{ header.map_revision });
+    log.info("header_version {}", .{header.version});
+    log.info("header_revision {}", .{header.map_revision});
 
-    log.info("brushes lump: {}", .{ header.lumps[@enumToInt(LumpType.brushes)] });
-    log.info("entities lump: {}", .{ header.lumps[@enumToInt(LumpType.entities)] });
-    log.info("pak_file lump: {}", .{ header.lumps[@enumToInt(LumpType.pak_file)] });
-    log.info("vertexes lump: {}", .{ header.lumps[@enumToInt(LumpType.vertexes)] });
-    log.info("surfedges lump: {}", .{ header.lumps[@enumToInt(LumpType.surfedges)] });
+    log.info("brushes lump: {}", .{header.lumps[@enumToInt(LumpType.brushes)]});
+    log.info("entities lump: {}", .{header.lumps[@enumToInt(LumpType.entities)]});
+    log.info("pak_file lump: {}", .{header.lumps[@enumToInt(LumpType.pak_file)]});
+    log.info("vertexes lump: {}", .{header.lumps[@enumToInt(LumpType.vertexes)]});
+    log.info("surfedges lump: {}", .{header.lumps[@enumToInt(LumpType.surfedges)]});
 
     const vertexes_offset = @intCast(usize, header.lumps[@enumToInt(LumpType.vertexes)].fileofs);
-    const vertexes_length = header.lumps[@enumToInt(LumpType.vertexes)].filelen / @sizeOf(Vertex); 
+    const vertexes_length = header.lumps[@enumToInt(LumpType.vertexes)].filelen / @sizeOf(Vertex);
     const vertexes = @ptrCast([*]const Vertex, @alignCast(@alignOf(Vertex), data.ptr + vertexes_offset))[0..vertexes_length];
 
-    log.info("vertexes.len = {}", .{ vertexes.len });
-    log.info("vertexes[0] = {}", .{ vertexes[0] });
-    log.info("vertexes[1] = {}", .{ vertexes[1] });
-    log.info("vertexes[2] = {}", .{ vertexes[2] });
+    log.info("vertexes.len = {}", .{vertexes.len});
+    log.info("vertexes[0] = {}", .{vertexes[0]});
+    log.info("vertexes[1] = {}", .{vertexes[1]});
+    log.info("vertexes[2] = {}", .{vertexes[2]});
 
     const edges_offset = @intCast(usize, header.lumps[@enumToInt(LumpType.edges)].fileofs);
-    const edges_length = header.lumps[@enumToInt(LumpType.edges)].filelen / @sizeOf(Edge); 
+    const edges_length = header.lumps[@enumToInt(LumpType.edges)].filelen / @sizeOf(Edge);
     const edges = @ptrCast([*]const Edge, @alignCast(@alignOf(Edge), data.ptr + edges_offset))[0..edges_length];
 
     result.vertices = try allocator.alloc(Vertex, vertexes.len);
     errdefer allocator.free(result.vertices);
 
-    for (result.vertices, 0..) |*vertex, i|
-    {
+    for (result.vertices, 0..) |*vertex, i| {
         //Correct the coordinate space
         vertex.x = vertexes[i].x;
         vertex.y = vertexes[i].z;
@@ -242,73 +222,63 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !ImportResult
     }
 
     const surfedges_offset = @intCast(usize, header.lumps[@enumToInt(LumpType.surfedges)].fileofs);
-    const surfedges_length = header.lumps[@enumToInt(LumpType.surfedges)].filelen / @sizeOf(i32); 
+    const surfedges_length = header.lumps[@enumToInt(LumpType.surfedges)].filelen / @sizeOf(i32);
     const surfedges = @ptrCast([*]const i32, @alignCast(@alignOf(i32), data.ptr + surfedges_offset))[0..surfedges_length];
 
     const dispinfos_offset = @intCast(usize, header.lumps[@enumToInt(LumpType.dispinfo)].fileofs);
-    const dispinfos_length = header.lumps[@enumToInt(LumpType.dispinfo)].filelen / @sizeOf(DispInfo); 
+    const dispinfos_length = header.lumps[@enumToInt(LumpType.dispinfo)].filelen / @sizeOf(DispInfo);
     const dispinfos = @ptrCast([*]const DispInfo, @alignCast(@alignOf(DispInfo), data.ptr + dispinfos_offset))[0..dispinfos_length];
 
-    log.info("surfedges.len = {}", .{ surfedges.len });
+    log.info("surfedges.len = {}", .{surfedges.len});
 
     result.indices = try allocator.alloc(u16, surfedges.len * 2);
     errdefer allocator.free(result.indices);
 
     const faces_offset = @intCast(usize, header.lumps[@enumToInt(LumpType.faces)].fileofs);
-    const faces_length = header.lumps[@enumToInt(LumpType.faces)].filelen / @sizeOf(Face); 
+    const faces_length = header.lumps[@enumToInt(LumpType.faces)].filelen / @sizeOf(Face);
     const faces = @ptrCast([*]const Face, @alignCast(@alignOf(Face), data.ptr + faces_offset))[0..faces_length];
 
     const tex_infos_offset = @intCast(usize, header.lumps[@enumToInt(LumpType.tex_info)].fileofs);
-    const tex_infos_length = header.lumps[@enumToInt(LumpType.tex_info)].filelen / @sizeOf(TexInfo); 
+    const tex_infos_length = header.lumps[@enumToInt(LumpType.tex_info)].filelen / @sizeOf(TexInfo);
     const tex_infos = @ptrCast([*]const TexInfo, @alignCast(@alignOf(TexInfo), data.ptr + tex_infos_offset))[0..tex_infos_length];
 
-    var current_surfedge: usize = 0; 
+    var current_surfedge: usize = 0;
 
     var triangle_count: usize = 0;
 
-    for (faces) |face|
-    {
+    for (faces) |face| {
         const tex_info: TexInfo = tex_infos[@intCast(usize, face.texinfo)];
 
-        if (
-            tex_info.flags.trigger or 
-            tex_info.flags.skip or 
-            tex_info.flags.hit_box or 
+        if (tex_info.flags.trigger or
+            tex_info.flags.skip or
+            tex_info.flags.hit_box or
             tex_info.flags.no_draw or
-            tex_info.flags.sky2d or 
-            tex_info.flags.sky
-        )
+            tex_info.flags.sky2d or
+            tex_info.flags.sky)
         {
             continue;
         }
 
-        if (face.dispinfo < 0)
-        {
+        if (face.dispinfo < 0) {
             triangle_count += @intCast(u32, face.numedges) - 2;
-        }
-        else 
-        { 
+        } else {
             const size = @as(u32, 1) << @intCast(u5, dispinfos[@intCast(usize, face.dispinfo)].power);
 
             triangle_count += size * size * 2;
         }
 
-        const face_surfedges: []const i32 = surfedges[@intCast(usize, face.firstedge)..@intCast(usize, face.firstedge) + @intCast(usize, face.numedges)];
+        const face_surfedges: []const i32 = surfedges[@intCast(usize, face.firstedge) .. @intCast(usize, face.firstedge) + @intCast(usize, face.numedges)];
 
-        for (face_surfedges, 0..) |surf_edge, i|
-        {
+        for (face_surfedges, 0..) |surf_edge, i| {
             const edge_index = std.math.absCast(surf_edge);
             const edge: Edge = edges[edge_index];
 
             const index_index = (current_surfedge + i) * 2;
 
-            if (surf_edge >= 0) 
-            {
+            if (surf_edge >= 0) {
                 result.indices[index_index] = edge.v[0];
                 result.indices[index_index + 1] = edge.v[1];
-            } 
-            else 
-            {
+            } else {
                 result.indices[index_index] = edge.v[1];
                 result.indices[index_index + 1] = edge.v[0];
             }
@@ -320,8 +290,7 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !ImportResult
     return result;
 }
 
-pub fn importFree(allocator: std.mem.Allocator, import_result: ImportResult) void 
-{
+pub fn importFree(allocator: std.mem.Allocator, import_result: ImportResult) void {
     allocator.free(import_result.vertices);
     allocator.free(import_result.indices);
 }
@@ -329,8 +298,7 @@ pub fn importFree(allocator: std.mem.Allocator, import_result: ImportResult) voi
 const gltf = @import("gltf.zig");
 
 //Hacky way of getting the geometry into the engine... yuck
-pub fn convertToGltfImport(allocator: std.mem.Allocator, import_result: ImportResult) !gltf.Import
-{
+pub fn convertToGltfImport(allocator: std.mem.Allocator, import_result: ImportResult) !gltf.Import {
     var gltf_import_data: gltf.Import = .{
         .vertex_positions = &.{},
         .vertices = &.{},
@@ -349,16 +317,14 @@ pub fn convertToGltfImport(allocator: std.mem.Allocator, import_result: ImportRe
     gltf_import_data.indices = try allocator.alloc(u32, import_result.indices.len);
     errdefer allocator.free(gltf_import_data.indices);
 
-    for (import_result.indices, 0..) |index, i|
-    {
+    for (import_result.indices, 0..) |index, i| {
         gltf_import_data.indices[i] = index;
     }
 
     gltf_import_data.vertices = try allocator.alloc(std.meta.Child(@TypeOf(gltf_import_data.vertices)), import_result.vertices.len);
     errdefer allocator.free(gltf_import_data.vertices);
 
-    for (gltf_import_data.vertices) |*vertex|
-    {
+    for (gltf_import_data.vertices) |*vertex| {
         vertex.color = std.math.maxInt(u32);
         vertex.uv = .{ 0, 0 };
         vertex.normal = .{ 0, 1, 0 };
@@ -369,7 +335,7 @@ pub fn convertToGltfImport(allocator: std.mem.Allocator, import_result: ImportRe
 
     gltf_import_data.materials[0] = .{
         .albedo = .{ 1, 1, 1, 1 },
-        .albedo_texture_index = 0, 
+        .albedo_texture_index = 0,
         .roughness = 1,
         .roughness_texture_index = 0,
         .metalness = 0,

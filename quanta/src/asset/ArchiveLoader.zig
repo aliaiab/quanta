@@ -9,10 +9,8 @@ file: std.fs.File,
 pub fn init(
     allocator: std.mem.Allocator,
     file_path: []const u8,
-) !ArchiveLoader 
-{
-    var self = ArchiveLoader
-    {
+) !ArchiveLoader {
+    var self = ArchiveLoader{
         .allocator = allocator,
         .file_path = file_path,
         .file = try std.fs.cwd().openFile(file_path, .{}),
@@ -31,34 +29,29 @@ pub fn init(
 
     _ = try self.file.read(std.mem.sliceAsBytes(asset_headers));
 
-    for (asset_headers, 0..) |asset_header, i|
-    {
+    for (asset_headers, 0..) |asset_header, i| {
         std.log.info("[{}] asset_header = {}", .{ i, asset_header });
     }
 
     return self;
 }
 
-pub fn deinit(self: *ArchiveLoader) void 
-{
+pub fn deinit(self: *ArchiveLoader) void {
     defer self.* = undefined;
 
     self.file.close();
 }
 
-pub const AssetHandle = enum(u64) 
-{
+pub const AssetHandle = enum(u64) {
     _,
 };
 
-pub fn load(self: *ArchiveLoader, asset: Archive.AssetDescriptor) AssetHandle
-{
+pub fn load(self: *ArchiveLoader, asset: Archive.AssetDescriptor) AssetHandle {
     _ = self;
     _ = asset;
 }
 
-pub fn unload(self: *ArchiveLoader, asset: AssetHandle) void 
-{
+pub fn unload(self: *ArchiveLoader, asset: AssetHandle) void {
     _ = self;
     _ = asset;
 }

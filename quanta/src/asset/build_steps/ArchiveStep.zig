@@ -5,10 +5,8 @@ const ArchiveStep = @This();
 
 pub const base_id: Step.Id = .custom;
 
-pub const AssetDescription = struct 
-{
-    pub const Source = union(enum) 
-    {
+pub const AssetDescription = struct {
+    pub const Source = union(enum) {
         ///Pointer to a generated file that will be placed as an asset
         generated_file: *const std.Build.GeneratedFile,
     };
@@ -25,8 +23,7 @@ assets: std.ArrayListUnmanaged(AssetDescription),
 pub fn init(
     builder: *std.Build,
     name: []const u8,
-) !*ArchiveStep 
-{
+) !*ArchiveStep {
     const self = builder.allocator.create(ArchiveStep) catch unreachable;
 
     self.* = .{
@@ -39,16 +36,14 @@ pub fn init(
     return self;
 }
 
-pub fn make(step: *Step) !void
-{
+pub fn make(step: *Step) !void {
     const self = @fieldParentPtr(@This(), "step", step);
 
-    std.debug.print("Making asset archive '{s}'\n", .{ self.name });
+    std.debug.print("Making asset archive '{s}'\n", .{self.name});
 
     const asset_descriptions = try self.builder.allocator.alloc(Archive.AssetDescription, self.assets.items.len);
 
-    for (self.assets.items, 0..) |asset, i|
-    {
+    for (self.assets.items, 0..) |asset, i| {
         if (true) continue;
         const path: []const u8 = asset.source.generated_file.path orelse continue;
 
@@ -66,7 +61,7 @@ pub fn make(step: *Step) !void
 
     const asset_archive = try Archive.encode(self.builder.allocator, asset_descriptions);
 
-    const asset_archive_path = try std.fs.path.join(self.builder.allocator, &.{ 
+    const asset_archive_path = try std.fs.path.join(self.builder.allocator, &.{
         "zig-out/bin/",
         self.name,
     });
@@ -77,15 +72,13 @@ pub fn make(step: *Step) !void
     try asset_archive_file.writeAll(asset_archive);
 }
 
-pub fn addAsset(self: *ArchiveStep, name: []const u8, asset: AssetDescription) !void 
-{
+pub fn addAsset(self: *ArchiveStep, name: []const u8, asset: AssetDescription) !void {
     _ = name;
 
     try self.assets.append(self.builder.allocator, asset);
 }
 
-pub fn addAnonymousAsset(self: ArchiveStep, asset: Archive.AssetDescription) void 
-{
+pub fn addAnonymousAsset(self: ArchiveStep, asset: Archive.AssetDescription) void {
     _ = self;
     _ = asset;
 }

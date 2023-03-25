@@ -3,7 +3,7 @@ const Step = std.Build.Step;
 const GltfCompileStep = @This();
 const ArchiveStep = @import("ArchiveStep.zig");
 const gltf = @import("../importers/gltf.zig");
-const build = @import("../../../build.zig"); 
+const build = @import("../../../build.zig");
 
 pub const base_id: Step.Id = .custom;
 
@@ -17,21 +17,17 @@ generated_file: std.Build.GeneratedFile,
 pub fn init(
     context: build.Context,
     source_path: []const u8,
-) *GltfCompileStep 
-{
+) *GltfCompileStep {
     const builder = context.builder;
 
     const self = builder.allocator.create(GltfCompileStep) catch unreachable;
 
-    self.* = .{
-        .step = Step.init(base_id, source_path, builder.allocator, &make),
-        .builder = builder,
-        .source_path = source_path,
-        .generated_file = .{ .step = &self.step, .path = null, }
-    };
+    self.* = .{ .step = Step.init(base_id, source_path, builder.allocator, &make), .builder = builder, .source_path = source_path, .generated_file = .{
+        .step = &self.step,
+        .path = null,
+    } };
 
-    if (gltf_import_cmd == null)
-    {
+    if (gltf_import_cmd == null) {
         gltf_import_cmd = self.builder.addExecutable(.{
             .name = "gltf_import_cmd",
             .root_source_file = std.build.FileSource.relative("quanta/src/asset/build/gltf_import_cmd.zig"),
@@ -47,8 +43,7 @@ pub fn init(
     return self;
 }
 
-pub fn make(step: *Step) !void
-{
+pub fn make(step: *Step) !void {
     const self = step.cast(GltfCompileStep).?;
 
     var cache_manifest = self.builder.cache.obtain();
@@ -64,14 +59,13 @@ pub fn make(step: *Step) !void
         "o/",
         &cache_digest,
         self.source_path,
-    });  
+    });
 
-    std.fs.makeDirAbsolute(std.fs.path.dirname(cache_path).?) catch {};  
+    std.fs.makeDirAbsolute(std.fs.path.dirname(cache_path).?) catch {};
 
     self.generated_file.path = cache_path;
 
-    if (cache_hit)
-    {
+    if (cache_hit) {
         // return;
     }
 
@@ -84,8 +78,7 @@ pub fn make(step: *Step) !void
     try cache_manifest.writeManifest();
 }
 
-pub fn addToArchiveStep(self: GltfCompileStep, step: *ArchiveStep) !void 
-{
+pub fn addToArchiveStep(self: GltfCompileStep, step: *ArchiveStep) !void {
     if (true) return;
 
     try step.addAsset(self.source_path, .{

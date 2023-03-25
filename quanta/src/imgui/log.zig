@@ -3,8 +3,7 @@ const quanta = @import("../main.zig");
 const imgui = quanta.imgui.cimgui;
 const widgets = quanta.imgui.widgets;
 
-const Message = struct 
-{
+const Message = struct {
     level: std.log.Level,
     scope: ?[]const u8,
     timestamp: i64,
@@ -20,15 +19,14 @@ var show_warn: bool = true;
 var show_err: bool = true;
 var show_debug: bool = true;
 
-var dirty: bool = false; 
+var dirty: bool = false;
 
 var first_run: bool = true;
 var last_frame_height: f32 = 0;
 
 var viewed_message_count: u32 = 100;
 
-pub fn viewer(name: [:0]const u8) void 
-{
+pub fn viewer(name: [:0]const u8) void {
     defer first_run = false;
     defer widgets.end();
 
@@ -47,36 +45,29 @@ pub fn viewer(name: [:0]const u8) void
 
     imgui.igSeparator();
 
-    if (dirty)
-    {
+    if (dirty) {
         defer dirty = false;
-
-
     }
 
     const reserve_height = (imgui.igGetStyle().*.ItemSpacing.y * 2) + imgui.igGetFrameHeightWithSpacing();
 
-    if (imgui.igBeginChild_Str("Scroll Area", .{ .x = 0, .y = -reserve_height }, false, imgui.ImGuiWindowFlags_HorizontalScrollbar))
-    {    
+    if (imgui.igBeginChild_Str("Scroll Area", .{ .x = 0, .y = -reserve_height }, false, imgui.ImGuiWindowFlags_HorizontalScrollbar)) {
         const message_count = viewed_message_count;
 
-        for (messages.items[messages.items.len - message_count..]) |message|
-        {
+        for (messages.items[messages.items.len - message_count ..]) |message| {
             if (!show_info and message.level == .info) continue;
             if (!show_warn and message.level == .warn) continue;
             if (!show_err and message.level == .err) continue;
             if (!show_debug and message.level == .debug) continue;
 
-            const level_text = switch (message.level)
-            {
+            const level_text = switch (message.level) {
                 .err => "error",
                 .warn => "warning",
                 .info => "info",
                 .debug => "debug",
             };
 
-            const level_color: imgui.ImVec4 = switch (message.level)
-            {
+            const level_color: imgui.ImVec4 = switch (message.level) {
                 .err => .{ .x = 1, .y = 0, .z = 0, .w = 1 },
                 .warn => .{ .x = 1, .y = 1, .z = 0, .w = 1 },
                 .info => .{ .x = 0, .y = 0, .z = 1, .w = 1 },
@@ -85,37 +76,32 @@ pub fn viewer(name: [:0]const u8) void
 
             imgui.igSeparator();
 
-            if (false)
-            {
-                widgets.textFormat("[{}]", .{ message.timestamp });
+            if (false) {
+                widgets.textFormat("[{}]", .{message.timestamp});
 
                 imgui.igSameLine(0, 0);
             }
 
             imgui.igPushStyleColor_Vec4(imgui.ImGuiCol_Text, level_color);
 
-            widgets.textFormat("[{s}]", .{ level_text });
+            widgets.textFormat("[{s}]", .{level_text});
 
             imgui.igSameLine(0, 0);
 
             imgui.igPopStyleColor(1);
 
-            if (message.scope != null)
-            {
+            if (message.scope != null) {
                 imgui.igPushStyleColor_Vec4(imgui.ImGuiCol_Text, .{ .x = 0.5, .y = 0.5, .z = 0.5, .w = 1 });
 
-                widgets.textFormat("[{s}]", .{ message.scope.? });
+                widgets.textFormat("[{s}]", .{message.scope.?});
 
                 imgui.igSameLine(0, 0);
 
                 imgui.igPopStyleColor(1);
             }
 
-            widgets.textFormat(": {s}\n", .{ 
-                string_buffer.items[message.text_offset..message.text_offset + message.text_length] 
-            });
+            widgets.textFormat(": {s}\n", .{string_buffer.items[message.text_offset .. message.text_offset + message.text_length]});
         }
-    
     }
     imgui.igEndChild();
 }
@@ -126,8 +112,7 @@ pub fn logMessage(
     comptime scope: @Type(.EnumLiteral),
     comptime format: []const u8,
     args: anytype,
-) !void 
-{
+) !void {
     const fmt_size = std.fmt.count(format, args);
 
     const text_offset = string_buffer.items.len;
@@ -136,11 +121,11 @@ pub fn logMessage(
 
     const message_string = try std.fmt.bufPrint(string_buffer.items[text_offset..], format, args);
 
-    try messages.append(std.heap.c_allocator, .{ 
+    try messages.append(std.heap.c_allocator, .{
         .level = message_level,
         .timestamp = std.time.timestamp(),
         .scope = if (scope == .default) null else std.meta.tagName(scope),
-        .text_offset = @intCast(u32, text_offset), 
+        .text_offset = @intCast(u32, text_offset),
         .text_length = @intCast(u32, message_string.len),
     });
 

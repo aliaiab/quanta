@@ -6,35 +6,28 @@ image: []u8,
 assets: []AssetHeader,
 asset_content: []u8,
 
-pub const Header = extern struct 
-{
+pub const Header = extern struct {
     asset_count: u32,
 };
 
 pub const AssetDescriptor = enum(u32) { _ };
 
-pub const AssetHeader = extern struct 
-{
+pub const AssetHeader = extern struct {
     source_data_offset: u32,
     source_data_size: u32,
     mapped_data_size: u32,
     mapped_data_alignment: u32,
 };
 
-pub const AssetMappedRegion = extern struct 
-{
+pub const AssetMappedRegion = extern struct {};
 
-};
-
-pub const AssetDescription = struct
-{
+pub const AssetDescription = struct {
     source_data: []const u8,
     source_data_alignment: u32,
     mapped_data_size: usize,
 };
 
-pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![]const u8 
-{   
+pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![]const u8 {
     var image_size: usize = @sizeOf(Header);
 
     image_size = std.mem.alignForward(image_size, @alignOf(AssetHeader));
@@ -42,9 +35,8 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
 
     var source_content_size: usize = 0;
 
-    for (assets) |asset|
-    {
-        const aligned_size = std.mem.alignForward(source_content_size, asset.source_data_alignment); 
+    for (assets) |asset| {
+        const aligned_size = std.mem.alignForward(source_content_size, asset.source_data_alignment);
 
         source_content_size = aligned_size + asset.source_data.len;
     }
@@ -66,8 +58,7 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
 
     var current_content_offset: usize = image_offset + @sizeOf(AssetHeader) * assets.len;
 
-    for (assets) |asset|
-    {
+    for (assets) |asset| {
         const asset_header = @ptrCast(*AssetHeader, @alignCast(@alignOf(AssetHeader), image.ptr + image_offset));
 
         current_content_offset = std.mem.alignForward(current_content_offset, asset.source_data_alignment);
@@ -87,12 +78,10 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
     return image;
 }
 
-pub fn decode(allocator: std.mem.Allocator, image: []u8) !Archive
-{
+pub fn decode(allocator: std.mem.Allocator, image: []u8) !Archive {
     _ = allocator;
 
-    var archive = Archive
-    {
+    var archive = Archive{
         .image = image,
         .assets = &.{},
         .asset_content = &.{},
@@ -115,9 +104,8 @@ pub fn decode(allocator: std.mem.Allocator, image: []u8) !Archive
     return archive;
 }
 
-pub fn getAssetData(self: Archive, asset: AssetDescriptor) []u8 
-{
+pub fn getAssetData(self: Archive, asset: AssetDescriptor) []u8 {
     const header = self.assets[@enumToInt(asset)];
 
-    return self.image[header.source_data_offset..header.source_data_offset + header.source_data_size - @sizeOf(u32)];
+    return self.image[header.source_data_offset .. header.source_data_offset + header.source_data_size - @sizeOf(u32)];
 }

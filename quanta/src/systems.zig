@@ -6,8 +6,7 @@ pub const mesh_instance_system = @import("systems/mesh_instance_system.zig");
 pub const point_light_system = @import("systems/point_light_system.zig");
 pub const directional_light_system = @import("systems//directional_light_system.zig");
 
-test 
-{
+test {
     const std = @import("std");
 
     std.testing.refAllDecls(@This());

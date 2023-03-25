@@ -5,8 +5,7 @@ const glfw = @import("glfw");
 
 var time: i64 = 0;
 
-pub fn init() !void 
-{
+pub fn init() !void {
     const io: *imgui.ImGuiIO = @ptrCast(*imgui.ImGuiIO, imgui.igGetIO());
 
     io.ConfigFlags |= imgui.ImGuiConfigFlags_DockingEnable;
@@ -17,20 +16,19 @@ pub fn init() !void
     window.window.setCursorPosCallback(cursorPosCallback);
 }
 
-pub fn deinit() void 
-{
+pub fn deinit() void {}
 
-}
-
-pub fn begin() !void 
-{
+pub fn begin() !void {
     const io: *imgui.ImGuiIO = @ptrCast(*imgui.ImGuiIO, imgui.igGetIO());
 
     const width = @intToFloat(f32, window.getWidth());
     const height = @intToFloat(f32, window.getHeight());
 
-    io.DisplaySize = imgui.ImVec2 { .x = width, .y = height, };
-    io.DisplayFramebufferScale = imgui.ImVec2 { .x = 1, .y = 1 };
+    io.DisplaySize = imgui.ImVec2{
+        .x = width,
+        .y = height,
+    };
+    io.DisplayFramebufferScale = imgui.ImVec2{ .x = 1, .y = 1 };
 
     const current_time = std.time.timestamp();
 
@@ -39,15 +37,11 @@ pub fn begin() !void
     time = current_time;
 }
 
-pub fn end() void 
-{
+pub fn end() void {}
 
-}
-
-fn mouseButtonCallback(current_window: glfw.Window, button: glfw.MouseButton, action: glfw.Action, mods: glfw.Mods) void
-{
+fn mouseButtonCallback(current_window: glfw.Window, button: glfw.MouseButton, action: glfw.Action, mods: glfw.Mods) void {
     // if (bd->PrevUserCallbackMousebutton != NULL && window == bd->Window)
-        // bd->PrevUserCallbackMousebutton(window, button, action, mods);
+    // bd->PrevUserCallbackMousebutton(window, button, action, mods);
 
     // ImGui_ImplGlfw_UpdateKeyModifiers(mods);
 
@@ -59,8 +53,7 @@ fn mouseButtonCallback(current_window: glfw.Window, button: glfw.MouseButton, ac
     imgui.ImGuiIO_AddMouseButtonEvent(io, @enumToInt(button), action == .press);
 }
 
-fn keyCallback(_: glfw.Window, key: glfw.Key, scancode: i32, action: glfw.Action, mods: glfw.Mods) void
-{
+fn keyCallback(_: glfw.Window, key: glfw.Key, scancode: i32, action: glfw.Action, mods: glfw.Mods) void {
     const io = imgui.igGetIO();
 
     const imgui_key = glfwToImGuiKey(key);
@@ -71,24 +64,20 @@ fn keyCallback(_: glfw.Window, key: glfw.Key, scancode: i32, action: glfw.Action
     imgui.ImGuiIO_AddKeyEvent(io, imgui_key, action == .press);
 }
 
-fn scrollCallback(_: glfw.Window, xoffset: f64, yoffset: f64) void
-{
+fn scrollCallback(_: glfw.Window, xoffset: f64, yoffset: f64) void {
     const io = imgui.igGetIO();
 
     imgui.ImGuiIO_AddMouseWheelEvent(io, @floatCast(f32, xoffset), @floatCast(f32, yoffset));
 }
 
-fn cursorPosCallback(_: glfw.Window, xpos: f64, ypos: f64) void
-{
+fn cursorPosCallback(_: glfw.Window, xpos: f64, ypos: f64) void {
     const io = imgui.igGetIO();
 
     imgui.ImGuiIO_AddMousePosEvent(io, @floatCast(f32, xpos), @floatCast(f32, ypos));
 }
 
-fn glfwToImGuiKey(key: glfw.Key) c_uint
-{
-    return switch (key)
-    {
+fn glfwToImGuiKey(key: glfw.Key) c_uint {
+    return switch (key) {
         .tab => imgui.ImGuiKey_Tab,
         .left => imgui.ImGuiKey_LeftArrow,
         .right => imgui.ImGuiKey_RightArrow,

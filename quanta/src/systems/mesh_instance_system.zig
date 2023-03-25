@@ -12,23 +12,20 @@ const NonUniformScale = components.NonUniformScale;
 pub fn run(
     component_store: *ComponentStore,
     scene: Renderer3D.SceneHandle,
-) void 
-{
+) void {
     const without = ComponentStore.filterWithout;
 
     {
         var query = component_store.query(
-            .{ Position, RendererMesh, }, 
+            .{
+                Position,
+                RendererMesh,
+            },
             .{ without(Rotation), without(NonUniformScale) },
         );
 
-        while (query.nextBlock()) |block|
-        {
-            for (
-                block.Position, 
-                block.RendererMesh
-            ) |position, mesh|
-            {   
+        while (query.nextBlock()) |block| {
+            for (block.Position, block.RendererMesh) |position, mesh| {
                 const transform = zalgebra.Mat4.fromTranslate(.{ .data = .{ position.x, position.y, position.z } });
 
                 Renderer3D.scenePushMesh(scene, mesh.mesh, mesh.material, transform);
@@ -38,18 +35,16 @@ pub fn run(
 
     {
         var query = component_store.query(
-            .{ Position, Rotation, RendererMesh, }, 
-            .{ without(NonUniformScale) },
+            .{
+                Position,
+                Rotation,
+                RendererMesh,
+            },
+            .{without(NonUniformScale)},
         );
 
-        while (query.nextBlock()) |block|
-        {
-            for (
-                block.Position, 
-                block.Rotation,
-                block.RendererMesh
-            ) |position, rotation, mesh|
-            {   
+        while (query.nextBlock()) |block| {
+            for (block.Position, block.Rotation, block.RendererMesh) |position, rotation, mesh| {
                 const transform_translate = zalgebra.Mat4.fromTranslate(.{ .data = .{ position.x, position.y, position.z } });
                 const transform_rotate = zalgebra.Mat4.fromEulerAngles(.{ .data = .{ rotation.x, rotation.y, rotation.z } });
                 const transform = transform_translate.mul(transform_rotate);
@@ -61,19 +56,17 @@ pub fn run(
 
     {
         var query = component_store.query(
-            .{ Position, Rotation, NonUniformScale, RendererMesh, }, 
+            .{
+                Position,
+                Rotation,
+                NonUniformScale,
+                RendererMesh,
+            },
             .{},
         );
 
-        while (query.nextBlock()) |block|
-        {
-            for (
-                block.Position, 
-                block.Rotation,
-                block.NonUniformScale,
-                block.RendererMesh
-            ) |position, rotation, scale, mesh|
-            {   
+        while (query.nextBlock()) |block| {
+            for (block.Position, block.Rotation, block.NonUniformScale, block.RendererMesh) |position, rotation, scale, mesh| {
                 const transform_translate = zalgebra.Mat4.fromTranslate(.{ .data = .{ position.x, position.y, position.z } });
                 const transform_rotate = zalgebra.Mat4.fromEulerAngles(.{ .data = .{ rotation.x, rotation.y, rotation.z } });
                 const transform_scale = zalgebra.Mat4.fromScale(.{ .data = .{ scale.x, scale.y, scale.z } });

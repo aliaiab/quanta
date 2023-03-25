@@ -7,19 +7,16 @@ comptime {
     _ = app;
 }
 
-pub fn init() void 
-{
+pub fn init() void {
     _ = std.io.getStdErr().write("init!!\n") catch unreachable;
     // log.info("init!!", .{});
 }
 
-pub fn deinit() void 
-{
+pub fn deinit() void {
     _ = std.io.getStdErr().write("deinit!!\n") catch unreachable;
 }
 
-pub fn update(ctx: app.UpdateContext) app.UpdateResult 
-{
+pub fn update(ctx: app.UpdateContext) app.UpdateResult {
     _ = std.io.getStdErr().write("update!! WOOOOOOOOOOOOOOOO\n") catch unreachable;
     _ = ctx;
     // _ = std.io.getStdErr().writer().print("timestep: {}", .{ ctx.timestep }) catch unreachable;

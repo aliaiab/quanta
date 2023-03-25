@@ -19,8 +19,7 @@ app_compile_step: *std.Build.CompileStep,
 app_runner_compile_step: *std.Build.CompileStep,
 cwd: []const u8,
 
-pub const AppMode = enum
-{
+pub const AppMode = enum {
     ///The app is statically linked with the app runner
     static,
     ///The app is dynamically loaded by the app runner
@@ -41,8 +40,7 @@ pub const AppOptions = struct {
 pub fn create(
     builder: *std.Build,
     options: AppOptions,
-) *AppCompileStep
-{
+) *AppCompileStep {
     const self = builder.allocator.create(AppCompileStep) catch unreachable;
 
     const app_compile_step = std.Build.CompileStep.create(builder, .{
@@ -94,8 +92,7 @@ pub fn create(
     return self;
 }
 
-pub fn run(self: *AppCompileStep) *std.Build.RunStep
-{
+pub fn run(self: *AppCompileStep) *std.Build.RunStep {
     const run_step = self.builder.addRunArtifact(self.app_runner_compile_step);
 
     run_step.cwd = self.cwd;
@@ -103,8 +100,7 @@ pub fn run(self: *AppCompileStep) *std.Build.RunStep
     return run_step;
 }
 
-fn make(step: *Step, progress_node: *std.Progress.Node) !void
-{
+fn make(step: *Step, progress_node: *std.Progress.Node) !void {
     const self = step.cast(@This()).?;
 
     try self.step.make(progress_node);

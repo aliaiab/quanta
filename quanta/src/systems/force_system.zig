@@ -10,25 +10,18 @@ const Force = components.Force;
 pub fn run(
     component_store: *ComponentStore,
     delta_time: f32,
-) void 
-{
-    var query = component_store.query(
-        .{ Velocity, Mass, Force }, 
-        .{}
-    );
+) void {
+    var query = component_store.query(.{ Velocity, Mass, Force }, .{});
 
-    while (query.nextBlock()) |block|
-    {
+    while (query.nextBlock()) |block| {
         for (
-            block.Velocity, 
-            block.Mass, 
+            block.Velocity,
+            block.Mass,
             block.Force,
-        ) |*velocity, mass, force|
-        {
+        ) |*velocity, mass, force| {
             //f = ma
             //a = f / m
-            const acceleration = components.Acceleration
-            {
+            const acceleration = components.Acceleration{
                 .x = force.x / mass.value,
                 .y = force.y / mass.value,
                 .z = force.z / mass.value,

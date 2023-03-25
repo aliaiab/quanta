@@ -2,11 +2,10 @@ const std = @import("std");
 
 ///If this is true, then the reflection api can be used
 ///If this is false, then uses of the reflection api will throw an error
-///This value should be checked when before using the reflection api 
+///This value should be checked when before using the reflection api
 pub const reflect_enabled: bool = true;
 
-pub const Type = union(enum)
-{
+pub const Type = union(enum) {
     Struct: Struct,
     Enum: Enum,
     Union: Union,
@@ -18,8 +17,7 @@ pub const Type = union(enum)
     EnumLiteral: void,
     Pointer: Pointer,
 
-    pub const Struct = struct 
-    {
+    pub const Struct = struct {
         name: []const u8,
         size: u32,
         alignment: u32,
@@ -29,8 +27,7 @@ pub const Type = union(enum)
         is_tuple: bool,
     };
 
-    pub const StructField = struct 
-    {
+    pub const StructField = struct {
         name: []const u8,
         offset: u32,
         type: *const Type,
@@ -39,8 +36,7 @@ pub const Type = union(enum)
         alignment: u32,
     };
 
-    pub const Enum = struct 
-    {
+    pub const Enum = struct {
         name: []const u8,
         size: u32,
         alignment: u32,
@@ -50,14 +46,12 @@ pub const Type = union(enum)
         is_exhaustive: bool,
     };
 
-    pub const EnumField = struct 
-    {
+    pub const EnumField = struct {
         name: []const u8,
         value: u64,
     };
 
-    pub const Declaration = struct 
-    {
+    pub const Declaration = struct {
         name: []const u8,
         type: *const Type,
         value: *const anyopaque,
@@ -90,15 +84,13 @@ pub const Type = union(enum)
         decls: []const Declaration,
     };
 
-    pub const Array = struct 
-    {
+    pub const Array = struct {
         len: usize,
         child: *const Type,
         sentinel: ?*const anyopaque,
     };
 
-    pub const Pointer = struct 
-    {
+    pub const Pointer = struct {
         size: std.builtin.Type.Pointer.Size,
         is_const: bool,
         is_volatile: bool,
@@ -110,28 +102,23 @@ pub const Type = union(enum)
     };
 
     ///Returns a pointer to the canonical Type for T
-    pub fn info(comptime T: type) *const Type
-    {
-        const Static = struct 
-        {
+    pub fn info(comptime T: type) *const Type {
+        const Static = struct {
             pub const @"type": Type = infoValue(T);
         };
 
-        return &Static.@"type";
+        return &Static.type;
     }
 
-    pub inline fn infoValue(comptime T: type) Type
-    {
+    pub inline fn infoValue(comptime T: type) Type {
         var type_data: Type = undefined;
 
-        switch (@typeInfo(T)) 
-        {
+        switch (@typeInfo(T)) {
             .Struct => |struct_info| {
                 comptime var fields: [struct_info.fields.len]StructField = undefined;
                 comptime var decls: [struct_info.decls.len]Declaration = undefined;
 
-                inline for (&fields, struct_info.fields) |*struct_field, comptime_struct_field|
-                {
+                inline for (&fields, struct_info.fields) |*struct_field, comptime_struct_field| {
                     struct_field.* = .{
                         .name = comptime_struct_field.name,
                         .offset = if (!comptime_struct_field.is_comptime) @offsetOf(T, comptime_struct_field.name) else 0,
@@ -142,10 +129,8 @@ pub const Type = union(enum)
                     };
                 }
 
-                inline for (&decls, struct_info.decls) |*struct_decl, comptime_struct_decl|
-                {
-                    const S = struct 
-                    {
+                inline for (&decls, struct_info.decls) |*struct_decl, comptime_struct_decl| {
+                    const S = struct {
                         pub const value = @field(T, comptime_struct_decl.name);
                     };
 
@@ -157,17 +142,15 @@ pub const Type = union(enum)
                     };
                 }
 
-                type_data = .{ 
-                    .Struct = .{
-                        .name = @typeName(T),
-                        .size = @sizeOf(T),
-                        .alignment = @alignOf(T),
-                        .layout = struct_info.layout,
-                        .fields = &fields,
-                        .decls = &decls,
-                        .is_tuple = struct_info.is_tuple,
-                    } 
-                };
+                type_data = .{ .Struct = .{
+                    .name = @typeName(T),
+                    .size = @sizeOf(T),
+                    .alignment = @alignOf(T),
+                    .layout = struct_info.layout,
+                    .fields = &fields,
+                    .decls = &decls,
+                    .is_tuple = struct_info.is_tuple,
+                } };
             },
             .Union => |union_info| {
                 comptime var fields: [union_info.fields.len]UnionField = undefined;
@@ -175,8 +158,7 @@ pub const Type = union(enum)
                 //TODO: This is NOT a stable way to find the offset of the tag, and is not reliable in the long term
                 comptime var data_end: usize = 0;
 
-                inline for (&fields, union_info.fields) |*union_field, comptime_union_field|
-                {
+                inline for (&fields, union_info.fields) |*union_field, comptime_union_field| {
                     union_field.* = .{
                         .name = comptime_union_field.name,
                         .type = info(comptime_union_field.type),
@@ -188,49 +170,42 @@ pub const Type = union(enum)
 
                 data_end = std.mem.alignForwardLog2(data_end, @alignOf(union_info.tag_type.?));
 
-                type_data = .{
-                    .Union = .{
-                        .name = @typeName(T),
-                        .size = @sizeOf(T),
-                        .alignment = @alignOf(T),
-                        .layout = union_info.layout,
-                        .tag_type = if (union_info.tag_type != null) info(union_info.tag_type.?) else null, 
-                        .tag_offset = @intCast(u32, data_end),
-                        .fields = &fields,
-                        .decls = &.{},
-                    }
-                };
+                type_data = .{ .Union = .{
+                    .name = @typeName(T),
+                    .size = @sizeOf(T),
+                    .alignment = @alignOf(T),
+                    .layout = union_info.layout,
+                    .tag_type = if (union_info.tag_type != null) info(union_info.tag_type.?) else null,
+                    .tag_offset = @intCast(u32, data_end),
+                    .fields = &fields,
+                    .decls = &.{},
+                } };
             },
             .Enum => |enum_info| {
                 comptime var fields: [enum_info.fields.len]EnumField = undefined;
 
-                inline for (&fields, enum_info.fields) |*enum_field, comptime_enum_field|
-                {
+                inline for (&fields, enum_info.fields) |*enum_field, comptime_enum_field| {
                     enum_field.* = .{
                         .name = comptime_enum_field.name,
                         .value = comptime_enum_field.value,
                     };
                 }
 
-                type_data = .{
-                    .Enum = .{
-                        .name = @typeName(T),
-                        .size = @sizeOf(T),
-                        .alignment = @alignOf(T),
-                        .tag_type = info(enum_info.tag_type),
-                        .fields = &fields,
-                        .decls = &.{},
-                        .is_exhaustive = enum_info.is_exhaustive,
-                    }
-                };
+                type_data = .{ .Enum = .{
+                    .name = @typeName(T),
+                    .size = @sizeOf(T),
+                    .alignment = @alignOf(T),
+                    .tag_type = info(enum_info.tag_type),
+                    .fields = &fields,
+                    .decls = &.{},
+                    .is_exhaustive = enum_info.is_exhaustive,
+                } };
             },
             .Int => |int_info| {
-                type_data = .{ 
-                    .Int = .{  
-                        .signedness = int_info.signedness,
-                        .bits = int_info.bits,
-                    } 
-                };
+                type_data = .{ .Int = .{
+                    .signedness = int_info.signedness,
+                    .bits = int_info.bits,
+                } };
             },
             .Float => |float_info| {
                 type_data = .{
@@ -246,7 +221,7 @@ pub const Type = union(enum)
                 type_data = .Void;
             },
             .Array => |array_info| {
-                type_data = .{ 
+                type_data = .{
                     .Array = .{
                         .len = array_info.len,
                         .child = info(array_info.child),
@@ -271,20 +246,16 @@ pub const Type = union(enum)
                     },
                 };
             },
-            .Type => {
-
-            },
+            .Type => {},
             else => unreachable,
         }
 
-        return type_data;  
+        return type_data;
     }
 
     ///Returns the full, unambigious name of the type
-    pub fn name(self: Type) []const u8 
-    {
-        return switch (self)
-        {
+    pub fn name(self: Type) []const u8 {
+        return switch (self) {
             .Struct => |struct_info| struct_info.name,
             .Enum => |enum_info| enum_info.name,
             .Union => |union_info| union_info.name,
@@ -293,42 +264,35 @@ pub const Type = union(enum)
     }
 
     ///Equivalent of @sizeOf(T) builtin
-    pub fn size(self: Type) usize 
-    {
+    pub fn size(self: Type) usize {
         switch (self) {
             .Struct => |struct_info| return struct_info.size,
             .Enum => |enum_info| return enum_info.size,
             .Union => |union_info| return union_info.size,
-            else => unreachable, 
+            else => unreachable,
         }
     }
 
     ///Equivalent of @alignOf(T) builtin
-    pub fn alignment(self: Type) usize 
-    {
+    pub fn alignment(self: Type) usize {
         switch (self) {
             .Struct => |struct_info| return struct_info.alignment,
             .Enum => |enum_info| return enum_info.alignment,
             .Union => |union_info| return union_info.alignment,
-            else => unreachable, 
+            else => unreachable,
         }
     }
 
     ///Returns true if self represents the type T
-    pub fn is(self: *const Type, comptime T: type) bool 
-    {
+    pub fn is(self: *const Type, comptime T: type) bool {
         return self == info(T);
-    } 
+    }
 
-    pub fn getDecl(self: *const Type, decl_name: []const u8) ?Declaration
-    {
-        switch (self.*)
-        {
+    pub fn getDecl(self: *const Type, decl_name: []const u8) ?Declaration {
+        switch (self.*) {
             .Struct => |struct_info| {
-                for (struct_info.decls) |decl|
-                {
-                    if (std.mem.eql(u8, decl.name, decl_name))
-                    {
+                for (struct_info.decls) |decl| {
+                    if (std.mem.eql(u8, decl.name, decl_name)) {
                         return decl;
                     }
                 }
@@ -339,15 +303,11 @@ pub const Type = union(enum)
         return null;
     }
 
-    pub fn getStructField(self: *const Type, field_name: []const u8) ?StructField
-    {
-        switch (self.*)
-        {
+    pub fn getStructField(self: *const Type, field_name: []const u8) ?StructField {
+        switch (self.*) {
             .Struct => |struct_info| {
-                for (struct_info.fields) |field|
-                {
-                    if (std.mem.eql(u8, field.name, field_name))
-                    {
+                for (struct_info.fields) |field| {
+                    if (std.mem.eql(u8, field.name, field_name)) {
                         return field;
                     }
                 }
@@ -358,12 +318,11 @@ pub const Type = union(enum)
         return null;
     }
 
-    pub fn getStructFieldValue(comptime T: type, value: *const anyopaque, field: StructField) *const T 
-    {
+    pub fn getStructFieldValue(comptime T: type, value: *const anyopaque, field: StructField) *const T {
         const value_pointer = @ptrCast([*]const u8, value) + field.offset;
 
         return @ptrCast(*const T, @alignCast(@alignOf(T), value_pointer));
-    } 
+    }
 
     pub fn format(
         self: Type,
@@ -374,16 +333,14 @@ pub const Type = union(enum)
         _ = fmt;
         _ = options;
 
-        try writer.print("name: {s}", .{ self.name() });
+        try writer.print("name: {s}", .{self.name()});
     }
 };
 
-test 
-{
+test {
     const expect = std.testing.expect;
 
-    const ExampleStruct = struct 
-    {
+    const ExampleStruct = struct {
         a: f32,
         b: u32,
         c: bool,
@@ -393,21 +350,19 @@ test
 
     try expect(type_info == Type.info(ExampleStruct));
 
-    std.log.warn("type_info.sizeOf() = {}", .{ type_info.size()});
+    std.log.warn("type_info.sizeOf() = {}", .{type_info.size()});
 
     try expect(type_info.is(ExampleStruct));
     try expect(type_info.size() == @sizeOf(ExampleStruct));
     try expect(type_info.alignment() == @alignOf(ExampleStruct));
     try expect(type_info.* == .Struct);
 
-    switch (type_info.*)
-    {
+    switch (type_info.*) {
         .Struct => |struct_info| {
-            for (struct_info.fields) |field|
-            {
-                std.log.warn("field = {s}", .{ field.name });
+            for (struct_info.fields) |field| {
+                std.log.warn("field = {s}", .{field.name});
 
-                std.log.warn("type(field) = {any}", .{ field.type.* });
+                std.log.warn("type(field) = {any}", .{field.type.*});
             }
         },
         else => unreachable,

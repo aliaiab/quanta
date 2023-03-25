@@ -4,8 +4,7 @@ const zalgebra = @import("zalgebra");
 const png = @import("png.zig");
 const zgltf = @import("zgltf");
 
-pub const Import = struct 
-{
+pub const Import = struct {
     vertex_positions: [][3]f32,
     vertices: []Renderer3D.Vertex,
     indices: []u32,
@@ -14,8 +13,7 @@ pub const Import = struct
     textures: []Texture,
     point_lights: []Renderer3D.PointLight,
 
-    pub const SubMesh = extern struct 
-    {
+    pub const SubMesh = extern struct {
         vertex_offset: u32,
         vertex_count: u32,
         index_offset: u32,
@@ -26,26 +24,23 @@ pub const Import = struct
         bounding_max: [3]f32,
     };
 
-    pub const Material = extern struct 
-    {
+    pub const Material = extern struct {
         albedo: [4]f32,
-        albedo_texture_index: u32, 
+        albedo_texture_index: u32,
         metalness: f32,
         metalness_texture_index: u32,
         roughness: f32,
         roughness_texture_index: u32,
     };
 
-    pub const Texture = struct 
-    {
+    pub const Texture = struct {
         data: []u8,
         width: u32,
         height: u32,
     };
 };
 
-pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
-{
+pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import {
     var import_data: Import = .{
         .vertex_positions = &.{},
         .vertices = &.{},
@@ -67,19 +62,18 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
     const file_data = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(file_data);
 
-    var gltf = zgltf.init(allocator); 
+    var gltf = zgltf.init(allocator);
     defer gltf.deinit();
 
     try gltf.parse(file_data);
 
     const buffer_file_datas = try allocator.alloc([]const u8, gltf.data.buffers.items.len);
-    defer allocator.free(buffer_file_datas); 
+    defer allocator.free(buffer_file_datas);
 
-    for (gltf.data.buffers.items, 0..) |buffer, i|
-    {
+    for (gltf.data.buffers.items, 0..) |buffer, i| {
         if (buffer.uri == null) continue;
 
-        std.log.info("{s}", .{ buffer.uri.? });
+        std.log.info("{s}", .{buffer.uri.?});
 
         const bin_file = try file_directory.openFile(buffer.uri.?, .{});
         defer bin_file.close();
@@ -89,8 +83,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
         buffer_file_datas[i] = bin_file_data;
     }
 
-    defer for (buffer_file_datas) |buffer_file_data|
-    {
+    defer for (buffer_file_datas) |buffer_file_data| {
         allocator.free(buffer_file_data);
     };
 
@@ -117,13 +110,12 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
     var point_lights = std.ArrayList(Renderer3D.PointLight).init(allocator);
     errdefer point_lights.deinit();
 
-    for (gltf.data.images.items) |image|
-    {
+    for (gltf.data.images.items) |image| {
         if (image.uri == null) continue;
 
         const path = image.uri.?;
 
-        std.log.info("file path: {s}", .{ path });
+        std.log.info("file path: {s}", .{path});
 
         const image_file = try file_directory.openFile(path, .{});
         defer image_file.close();
@@ -140,13 +132,10 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
         });
     }
 
-    for (gltf.data.lights.items) |light|
-    {
-        switch (light.type)
-        {
+    for (gltf.data.lights.items) |light| {
+        switch (light.type) {
             .point => {
-                try point_lights.append(Renderer3D.PointLight
-                {
+                try point_lights.append(Renderer3D.PointLight{
                     .position = .{ 0, 10, 0 },
                     .intensity = light.intensity,
                     .diffuse = std.math.maxInt(u32),
@@ -156,18 +145,16 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
         }
     }
 
-    for (gltf.data.nodes.items) |node|
-    {
+    for (gltf.data.nodes.items) |node| {
         if (node.mesh == null) continue;
 
         const transform_matrix = zgltf.getGlobalTransform(&gltf.data, node);
 
         const mesh: *zgltf.Mesh = &gltf.data.meshes.items[node.mesh.?];
 
-        std.log.info("mesh.primitive_count = {}", .{ mesh.primitives.items.len });
+        std.log.info("mesh.primitive_count = {}", .{mesh.primitives.items.len});
 
-        for (mesh.primitives.items) |primitive|
-        {
+        for (mesh.primitives.items) |primitive| {
             const vertex_start = model_vertices.items.len;
             const index_start = model_indices.items.len;
 
@@ -176,22 +163,20 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
 
             var vertex_count: usize = 0;
 
-            var positions = std.ArrayList(f32).init(allocator); 
+            var positions = std.ArrayList(f32).init(allocator);
             defer positions.deinit();
 
-            var normals = std.ArrayList(f32).init(allocator); 
+            var normals = std.ArrayList(f32).init(allocator);
             defer normals.deinit();
 
-            var texture_coordinates = std.ArrayList(f32).init(allocator); 
+            var texture_coordinates = std.ArrayList(f32).init(allocator);
             defer texture_coordinates.deinit();
 
             var colors = std.ArrayList(f32).init(allocator);
             defer colors.deinit();
 
-            for (primitive.attributes.items) |attribute|
-            {
-                switch (attribute)
-                {
+            for (primitive.attributes.items) |attribute| {
+                switch (attribute) {
                     .position => |accessor_index| {
                         const accessor = gltf.data.accessors.items[accessor_index];
                         const buffer_view = gltf.data.buffer_views.items[accessor.buffer_view.?];
@@ -231,7 +216,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
 
                         std.debug.assert(accessor.component_type == .float);
 
-                        gltf.getDataFromBufferView(f32, &colors, accessor, buffer_data);  
+                        gltf.getDataFromBufferView(f32, &colors, accessor, buffer_data);
                     },
                     .joints => {},
                     .weights => {},
@@ -249,25 +234,24 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
                 var uv_index: usize = 0;
                 var color_index: usize = 0;
 
-                std.log.info("vertex position accessor.count = {}", .{ vertex_count });
+                std.log.info("vertex position accessor.count = {}", .{vertex_count});
 
                 while (position_index < vertex_count * 3) : ({
                     position_index += 3;
                     normal_index += 3;
                     uv_index += 2;
                     color_index += 4;
-                })
-                {
+                }) {
                     const position_source_x = positions.items[position_index];
                     const position_source_y = positions.items[position_index + 1];
                     const position_source_z = positions.items[position_index + 2];
 
-                    const position_vector = @Vector(3, f32) { position_source_x, position_source_y, position_source_z };
+                    const position_vector = @Vector(3, f32){ position_source_x, position_source_y, position_source_z };
 
                     try model_vertex_positions.append(position_vector);
                     try model_vertices.append(.{
                         .normal = .{ normals.items[normal_index], normals.items[normal_index + 1], normals.items[normal_index + 2] },
-                        .uv = .{ texture_coordinates.items[uv_index], texture_coordinates.items[uv_index + 1] }, 
+                        .uv = .{ texture_coordinates.items[uv_index], texture_coordinates.items[uv_index + 1] },
                         .color = if (colors.items.len != 0) packUnorm4x8(.{ colors.items[color_index], colors.items[color_index + 1], colors.items[color_index + 2], 1 }) else packUnorm4x8(.{ 1, 1, 1, 1 }),
                     });
 
@@ -276,8 +260,8 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
                 }
             }
 
-            std.log.info("bounding_min: {d}", .{ bounding_min });
-            std.log.info("bounding_max: {d}", .{ bounding_max });
+            std.log.info("bounding_min: {d}", .{bounding_min});
+            std.log.info("bounding_max: {d}", .{bounding_max});
 
             //Indices
             {
@@ -285,8 +269,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
                 const buffer_view = gltf.data.buffer_views.items[index_accessor.buffer_view.?];
                 const buffer_data = buffer_file_datas[buffer_view.buffer];
 
-                switch (index_accessor.component_type)
-                {
+                switch (index_accessor.component_type) {
                     .byte => unreachable,
                     .unsigned_byte => unreachable,
                     .short => unreachable,
@@ -298,8 +281,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
 
                         try model_indices.ensureTotalCapacity(indices_u16.items.len);
 
-                        for (indices_u16.items) |index_u16|
-                        {
+                        for (indices_u16.items) |index_u16| {
                             try model_indices.append(@as(u32, index_u16));
                         }
                     },
@@ -315,8 +297,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
             var material_index: u32 = 0;
 
             //material
-            if (has_material)
-            {
+            if (has_material) {
                 const material = gltf.data.materials.items[primitive.material.?];
 
                 const pbr = material.metallic_roughness;
@@ -327,8 +308,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
 
                 var albedo_index: ?u32 = null;
 
-                if (has_albedo_texture)
-                {
+                if (has_albedo_texture) {
                     const albedo_texture = gltf.data.textures.items[pbr.base_color_texture.?.index];
 
                     albedo_index = @intCast(u32, albedo_texture.source.?) + 1;
@@ -336,8 +316,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
 
                 var roughness_index: ?u32 = null;
 
-                if (has_roughness_texture)
-                {
+                if (has_roughness_texture) {
                     const roughness_texture = gltf.data.textures.items[pbr.metallic_roughness_texture.?.index];
 
                     roughness_index = @intCast(u32, roughness_texture.source.?) + 1;
@@ -345,7 +324,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
 
                 material_index = @intCast(u32, materials.items.len);
 
-                std.log.info("Material {any}", .{ pbr });
+                std.log.info("Material {any}", .{pbr});
 
                 try materials.append(.{
                     .albedo = pbr.base_color_factor,
@@ -370,8 +349,8 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
         }
     }
 
-    std.log.info("unique vertex count: {}", .{ model_vertices.items.len });
-    std.log.info("rendered vertex count: {}", .{ model_indices.items.len });
+    std.log.info("unique vertex count: {}", .{model_vertices.items.len});
+    std.log.info("rendered vertex count: {}", .{model_indices.items.len});
 
     _ = allocator.resize(model_vertex_positions.allocatedSlice(), model_vertex_positions.items.len);
     _ = allocator.resize(model_vertices.allocatedSlice(), model_vertices.items.len);
@@ -392,8 +371,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import
     return import_data;
 }
 
-pub fn importFree(gltf_import: Import, allocator: std.mem.Allocator) void 
-{
+pub fn importFree(gltf_import: Import, allocator: std.mem.Allocator) void {
     allocator.free(gltf_import.vertex_positions);
     allocator.free(gltf_import.vertices);
     allocator.free(gltf_import.indices);
@@ -404,8 +382,7 @@ pub fn importFree(gltf_import: Import, allocator: std.mem.Allocator) void
 }
 
 ///Header for the binary format
-pub const ImportBinHeader = packed struct 
-{
+pub const ImportBinHeader = packed struct {
     vertex_count: u32,
     index_count: u32,
     sub_mesh_count: u32,
@@ -414,8 +391,7 @@ pub const ImportBinHeader = packed struct
     point_light_count: u32,
 };
 
-pub const ImportBinTexture = packed struct 
-{
+pub const ImportBinTexture = packed struct {
     data_size: u32,
     width: u32,
     height: u32,
@@ -424,25 +400,24 @@ pub const ImportBinTexture = packed struct
 ///Platform specific runtime binary format
 ///Note that the binary format is not necessarily stable or backwards compatible
 ///Use runtime imports for modding purposes
-pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8
-{
+pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8 {
     var size: usize = 0;
 
     // size = std.mem.alignForward(size, @alignOf(ImportBinHeader));
-    size += @sizeOf(ImportBinHeader);    
+    size += @sizeOf(ImportBinHeader);
 
     size = std.mem.alignForward(size, @alignOf([3]f32));
     size += @sizeOf([3]f32) * import_data.vertex_positions.len;
 
     size = std.mem.alignForward(size, @alignOf(Renderer3D.Vertex));
     size += @sizeOf(Renderer3D.Vertex) * import_data.vertices.len;
-    
+
     size = std.mem.alignForward(size, @alignOf(u32));
     size += @sizeOf(u32) * import_data.indices.len;
 
     size = std.mem.alignForward(size, @alignOf(Import.SubMesh));
     size += @sizeOf(Import.SubMesh) * import_data.sub_meshes.len;
-    
+
     size = std.mem.alignForward(size, @alignOf(Import.Material));
     size += @sizeOf(Import.Material) * import_data.materials.len;
 
@@ -451,8 +426,7 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8
 
     var texture_data_size: usize = 0;
 
-    for (import_data.textures) |texture|
-    {
+    for (import_data.textures) |texture| {
         texture_data_size += texture.data.len;
     }
 
@@ -463,7 +437,7 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8
 
     const data = try allocator.alloc(u8, size);
 
-    var data_fba = std.heap.FixedBufferAllocator.init(data); 
+    var data_fba = std.heap.FixedBufferAllocator.init(data);
 
     const fba = data_fba.allocator();
 
@@ -484,8 +458,7 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8
 
     const textures = try fba.alloc(ImportBinTexture, import_data.textures.len);
 
-    for (textures, 0..) |*texture, i|
-    {
+    for (textures, 0..) |*texture, i| {
         _ = try fba.dupe(u8, import_data.textures[i].data);
 
         texture.* = .{
@@ -495,7 +468,7 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8
         };
     }
 
-    std.log.info("point_light_offset: {}", .{ data_fba.end_index });
+    std.log.info("point_light_offset: {}", .{data_fba.end_index});
 
     _ = try fba.dupe(Renderer3D.PointLight, import_data.point_lights);
 
@@ -503,16 +476,14 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8
 }
 
 ///Should probably use a specialized structure for decodes
-pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import
-{
-    var import_data = Import
-    {
+pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import {
+    var import_data = Import{
         .vertex_positions = &.{},
         .vertices = &.{},
         .indices = &.{},
         .sub_meshes = &.{},
         .materials = &.{},
-        .textures = &.{},   
+        .textures = &.{},
         .point_lights = &.{},
     };
 
@@ -520,7 +491,7 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import
 
     const header = @ptrCast(*const ImportBinHeader, @alignCast(@alignOf(ImportBinHeader), data.ptr + offset));
 
-    std.log.info("header: {}", .{ header });
+    std.log.info("header: {}", .{header});
 
     offset += @sizeOf(ImportBinHeader);
 
@@ -564,8 +535,7 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import
     {
         var current_texture_data_offset: usize = texture_data_offset;
 
-        for (bin_textures, 0..) |bin_texture, i|
-        {
+        for (bin_textures, 0..) |bin_texture, i| {
             import_data.textures[i] = .{
                 .data = (data.ptr + current_texture_data_offset)[0..bin_texture.data_size],
                 .width = bin_texture.width,
@@ -591,25 +561,21 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import
     import_data.materials = @ptrCast([*]Import.Material, @alignCast(@alignOf(Import.Material), data.ptr + materials_offset))[0..header.material_count];
     import_data.point_lights = @ptrCast([*]Renderer3D.PointLight, @alignCast(@alignOf(Renderer3D.PointLight), data.ptr + point_light_offset))[0..header.point_light_count];
 
-    std.log.info("point_light_offset = {}", .{ point_light_offset });
+    std.log.info("point_light_offset = {}", .{point_light_offset});
 
-    for (import_data.point_lights) |point_light|
-    {
-        std.log.info("{}", .{ point_light });
+    for (import_data.point_lights) |point_light| {
+        std.log.info("{}", .{point_light});
     }
 
     return import_data;
 }
 
-pub fn decodeFree(import_data: Import, allocator: std.mem.Allocator) void 
-{
+pub fn decodeFree(import_data: Import, allocator: std.mem.Allocator) void {
     allocator.free(import_data.textures);
 }
 
-fn packUnorm4x8(v: [4]f32) u32
-{
-    const Unorm4x8 = packed struct(u32)
-    {
+fn packUnorm4x8(v: [4]f32) u32 {
+    const Unorm4x8 = packed struct(u32) {
         x: u8,
         y: u8,
         z: u8,
@@ -621,10 +587,10 @@ fn packUnorm4x8(v: [4]f32) u32
     const z = @floatToInt(u8, v[2] * @intToFloat(f32, std.math.maxInt(u8)));
     const w = @floatToInt(u8, v[3] * @intToFloat(f32, std.math.maxInt(u8)));
 
-    return @bitCast(u32, Unorm4x8 {
+    return @bitCast(u32, Unorm4x8{
         .x = x,
         .y = y,
-        .z = z, 
+        .z = z,
         .w = w,
     });
 }

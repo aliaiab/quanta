@@ -1,13 +1,8 @@
 const cimgui = @import("cimgui.zig");
 
-pub const Mode = enum(u32) 
-{
-    local,
-    world
-};
+pub const Mode = enum(u32) { local, world };
 
-pub const Operation = packed struct(u32)
-{
+pub const Operation = packed struct(u32) {
     translate_x: bool = false,
     translate_y: bool = false,
     translate_z: bool = false,
@@ -25,11 +20,10 @@ pub const Operation = packed struct(u32)
 
     padding: u18 = 0,
 
-    pub const translate = Operation { .translate_x = true, .translate_y = true, .translate_z = true };
-    pub const scale = Operation { .scale_x = true, .scale_y = true, .scale_z = true };
-    pub const rotate = Operation { .rotate_x = true, .rotate_y = true, .rotate_z = true, .rotate_screen = true };
-    pub const universal = Operation
-    {  
+    pub const translate = Operation{ .translate_x = true, .translate_y = true, .translate_z = true };
+    pub const scale = Operation{ .scale_x = true, .scale_y = true, .scale_z = true };
+    pub const rotate = Operation{ .rotate_x = true, .rotate_y = true, .rotate_z = true, .rotate_screen = true };
+    pub const universal = Operation{
         .translate_x = true,
         .translate_y = true,
         .translate_z = true,
@@ -45,10 +39,10 @@ pub const Operation = packed struct(u32)
 
 pub extern fn ImGuizmo_SetDrawlist(drawlist: [*c]cimgui.ImDrawList) void;
 pub extern fn ImGuizmo_BeginFrame() void;
-pub extern fn ImGuizmo_SetImGuiContext(ctx: [*c]cimgui.ImGuiContext) void;   
+pub extern fn ImGuizmo_SetImGuiContext(ctx: [*c]cimgui.ImGuiContext) void;
 pub extern fn ImGuizmo_IsOver() bool;
 pub extern fn ImGuizmo_IsUsing() bool;
-pub extern fn ImGuizmo_Enable(enable: bool) void;    
+pub extern fn ImGuizmo_Enable(enable: bool) void;
 pub extern fn ImGuizmo_DecomposeMatrixToComponents(matrix: [*]f32, translation: [*]f32, rotation: [*]f32, scale: [*]f32) void;
 pub extern fn ImGuizmo_RecomposeMatrixFromComponents(translation: [*]const f32, rotation: [*]const f32, scale: [*]const f32, matrix: [*]f32) void;
 pub extern fn ImGuizmo_SetRect(x: f32, y: f32, width: f32, height: f32) void;

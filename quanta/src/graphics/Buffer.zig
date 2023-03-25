@@ -5,14 +5,13 @@ const vk = @import("vk.zig");
 const Context = @import("Context.zig");
 const CommandBuffer = @import("CommandBuffer.zig");
 
-handle: vk.Buffer, 
+handle: vk.Buffer,
 memory_page: Context.DevicePageHandle,
 size: usize,
 alignment: usize,
 usage: Usage,
 
-pub const Usage = enum 
-{
+pub const Usage = enum {
     vertex,
     index,
     uniform,
@@ -21,20 +20,15 @@ pub const Usage = enum
     staging,
 };
 
-pub fn initData(comptime T: type, data: []const T, usage: Usage) !Buffer 
-{
-    if (usage == .staging)
-    {
+pub fn initData(comptime T: type, data: []const T, usage: Usage) !Buffer {
+    if (usage == .staging) {
         const use_host_memory = false;
 
-        if (use_host_memory and std.mem.isAligned(@ptrToInt(data.ptr), 0b1000))
-        {
-            var buffer = try initDataHostMemory(.staging, @ptrCast([*]const u8, data.ptr)[0..data.len * @sizeOf(T)]);
+        if (use_host_memory and std.mem.isAligned(@ptrToInt(data.ptr), 0b1000)) {
+            var buffer = try initDataHostMemory(.staging, @ptrCast([*]const u8, data.ptr)[0 .. data.len * @sizeOf(T)]);
 
             return buffer;
-        }
-        else
-        {
+        } else {
             var buffer = try init(data.len * @sizeOf(T), .staging);
             errdefer buffer.deinit();
 
@@ -45,9 +39,7 @@ pub fn initData(comptime T: type, data: []const T, usage: Usage) !Buffer
 
             return buffer;
         }
-    }
-    else 
-    {
+    } else {
         var staging = try initData(T, data, .staging);
         defer staging.deinit();
 
@@ -70,10 +62,8 @@ pub fn initData(comptime T: type, data: []const T, usage: Usage) !Buffer
     }
 }
 
-pub fn init(size: usize, usage: Usage) !Buffer
-{
-    var self = Buffer 
-    {
+pub fn init(size: usize, usage: Usage) !Buffer {
+    var self = Buffer{
         .handle = .null_handle,
         .memory_page = undefined,
         .size = size,
@@ -81,17 +71,22 @@ pub fn init(size: usize, usage: Usage) !Buffer
         .usage = usage,
     };
 
-    const create_info = vk.BufferCreateInfo 
-    {
+    const create_info = vk.BufferCreateInfo{
         .flags = .{},
         .size = size,
-        .usage = switch (usage) 
-        {
+        .usage = switch (usage) {
             .vertex => .{ .vertex_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true },
             .index => .{ .index_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true },
             .uniform => .{ .uniform_buffer_bit = true, .transfer_dst_bit = true },
-            .storage => .{ .storage_buffer_bit = true, .transfer_dst_bit = true, },
-            .indirect => .{ .indirect_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true, },
+            .storage => .{
+                .storage_buffer_bit = true,
+                .transfer_dst_bit = true,
+            },
+            .indirect => .{
+                .indirect_buffer_bit = true,
+                .storage_buffer_bit = true,
+                .transfer_dst_bit = true,
+            },
             .staging => .{ .transfer_src_bit = true },
         },
         .sharing_mode = .exclusive,
@@ -106,34 +101,29 @@ pub fn init(size: usize, usage: Usage) !Buffer
         .memory_requirements = undefined,
     };
 
-    Context.self.vkd.getBufferMemoryRequirements2(Context.self.device, &vk.BufferMemoryRequirementsInfo2
-    {
+    Context.self.vkd.getBufferMemoryRequirements2(Context.self.device, &vk.BufferMemoryRequirementsInfo2{
         .buffer = self.handle,
     }, &memory_requirements);
 
     self.alignment = memory_requirements.memory_requirements.alignment;
 
-    self.memory_page = try Context.devicePageAllocateBuffer(
-        self.handle, 
-        switch (usage)
-        {
-            .staging => .{ .host_visible_bit = true, .host_coherent_bit = true },
-            .vertex, .index, => .{ .device_local_bit = true }, 
-            .storage, .uniform => .{ .host_visible_bit = true, .device_local_bit = true },
-            .indirect => .{ .host_visible_bit = true, .host_coherent_bit = true, .device_local_bit = true  },
-        }
-    );
+    self.memory_page = try Context.devicePageAllocateBuffer(self.handle, switch (usage) {
+        .staging => .{ .host_visible_bit = true, .host_coherent_bit = true },
+        .vertex,
+        .index,
+        => .{ .device_local_bit = true },
+        .storage, .uniform => .{ .host_visible_bit = true, .device_local_bit = true },
+        .indirect => .{ .host_visible_bit = true, .host_coherent_bit = true, .device_local_bit = true },
+    });
     errdefer Context.devicePageFree(self.memory_page);
 
     return self;
 }
 
-fn initDataHostMemory(usage: Usage, host_memory: []const u8) !Buffer
-{
+fn initDataHostMemory(usage: Usage, host_memory: []const u8) !Buffer {
     std.debug.assert(@ptrToInt(host_memory.ptr) % 0b1000 == 0);
 
-    var self = Buffer 
-    {
+    var self = Buffer{
         .handle = .null_handle,
         .memory = .null_handle,
         .size = host_memory.len,
@@ -141,17 +131,22 @@ fn initDataHostMemory(usage: Usage, host_memory: []const u8) !Buffer
         .usage = usage,
     };
 
-    const create_info = vk.BufferCreateInfo 
-    {
+    const create_info = vk.BufferCreateInfo{
         .flags = .{},
         .size = host_memory.len,
-        .usage = switch (usage) 
-        {
+        .usage = switch (usage) {
             .vertex => .{ .vertex_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true },
             .index => .{ .index_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true },
             .uniform => .{ .uniform_buffer_bit = true, .transfer_dst_bit = true },
-            .storage => .{ .storage_buffer_bit = true, .transfer_dst_bit = true, },
-            .indirect_draw => .{ .indirect_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true, },
+            .storage => .{
+                .storage_buffer_bit = true,
+                .transfer_dst_bit = true,
+            },
+            .indirect_draw => .{
+                .indirect_buffer_bit = true,
+                .storage_buffer_bit = true,
+                .transfer_dst_bit = true,
+            },
             .staging => .{ .transfer_src_bit = true },
         },
         .sharing_mode = .exclusive,
@@ -164,10 +159,8 @@ fn initDataHostMemory(usage: Usage, host_memory: []const u8) !Buffer
 
     self.alignment = 0;
 
-    self.memory = try Context.deviceAllocateHostMemory(
-        .{ .host_visible_bit = true, .host_coherent_bit = true, .host_cached_bit = true }, //vk.MemoryPropertyFlags
-        host_memory
-    );
+    self.memory = try Context.deviceAllocateHostMemory(.{ .host_visible_bit = true, .host_coherent_bit = true, .host_cached_bit = true }, //vk.MemoryPropertyFlags
+        host_memory);
     errdefer Context.self.vkd.freeMemory(Context.self.device, self.memory, &Context.self.allocation_callbacks);
 
     try Context.self.vkd.bindBufferMemory(Context.self.device, self.handle, self.memory, 0);
@@ -175,26 +168,22 @@ fn initDataHostMemory(usage: Usage, host_memory: []const u8) !Buffer
     return self;
 }
 
-pub fn deinit(self: *Buffer) void 
-{
+pub fn deinit(self: *Buffer) void {
     defer self.* = undefined;
 
     defer Context.self.vkd.destroyBuffer(Context.self.device, self.handle, &Context.self.allocation_callbacks);
     defer Context.devicePageFree(self.memory_page);
 }
 
-pub fn map(self: Buffer, comptime T: type) ![]T
-{
+pub fn map(self: Buffer, comptime T: type) ![]T {
     return Context.devicePageMap(self.memory_page, T, self.size / @sizeOf(T));
 }
 
-pub fn unmap(self: Buffer) void
-{
+pub fn unmap(self: Buffer) void {
     Context.devicePageUnmap(self.memory_page);
 }
 
-pub fn update(self: Buffer, comptime T: type, offset: usize, data: []const T) !void 
-{
+pub fn update(self: Buffer, comptime T: type, offset: usize, data: []const T) !void {
     var staging = try initData(T, data, .staging);
     defer staging.deinit();
 

@@ -1,5 +1,3 @@
-
-pub const DeltaTime = struct 
-{
+pub const DeltaTime = struct {
     value: f32,
 };

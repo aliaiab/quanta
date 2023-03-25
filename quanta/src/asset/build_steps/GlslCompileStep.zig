@@ -3,11 +3,10 @@ const std = @import("std");
 const GlslCompileStep = @This();
 const Step = std.Build.Step;
 
-pub const ShaderStage = enum
-{
+pub const ShaderStage = enum {
     vertex,
     fragment,
-    compute,    
+    compute,
 };
 
 pub const base_id: Step.Id = .custom;
@@ -17,22 +16,20 @@ builder: *std.Build,
 input_path: []const u8,
 output_path: []const u8,
 shader_stage: ShaderStage,
-optimize_mode: std.builtin.OptimizeMode, 
+optimize_mode: std.builtin.OptimizeMode,
 generated_file: std.Build.GeneratedFile,
 
 pub fn create(
-    builder: *std.Build, 
+    builder: *std.Build,
     name: []const u8,
     input_path: []const u8,
     output_path: []const u8,
     shader_stage: ShaderStage,
-    optimize_mode: std.builtin.OptimizeMode, 
-    ) *GlslCompileStep 
-{
+    optimize_mode: std.builtin.OptimizeMode,
+) *GlslCompileStep {
     const self = builder.allocator.create(GlslCompileStep) catch unreachable;
 
-    self.* = GlslCompileStep
-    {
+    self.* = GlslCompileStep{
         .builder = builder,
         .step = std.Build.Step.init(.{ .id = base_id, .name = name, .owner = builder, .makeFn = &make }),
         .input_path = input_path,
@@ -45,8 +42,7 @@ pub fn create(
     return self;
 }
 
-pub fn make(step: *Step, _: *std.Progress.Node) !void
-{
+pub fn make(step: *Step, _: *std.Progress.Node) !void {
     const self = step.cast(GlslCompileStep).?;
 
     var cache_manifest = self.builder.cache.obtain();
@@ -54,17 +50,15 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void
 
     const shader_target = "vulkan1.2";
 
-    const shader_optimisation = switch (self.optimize_mode)
-    {
-        //TODO: There is currently an issue with -O shaders which seems to result in a miscompile 
+    const shader_optimisation = switch (self.optimize_mode) {
+        //TODO: There is currently an issue with -O shaders which seems to result in a miscompile
         .ReleaseFast => "-O0",
         .ReleaseSafe => "-O0",
         .ReleaseSmall => "-Os",
         .Debug => "-O0",
     };
 
-    const stage_string = switch (self.shader_stage)
-    {
+    const stage_string = switch (self.shader_stage) {
         .vertex => "vert",
         .fragment => "frag",
         .compute => "comp",
@@ -72,18 +66,17 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void
 
     const stage_arg = try std.mem.join(self.builder.allocator, "", (&.{ "-fshader-stage=", stage_string }));
 
-    var args = [_][]const u8 
-    { 
-        "glslc", 
+    var args = [_][]const u8{
+        "glslc",
         "-fauto-map-locations",
-        "--target-env=" ++ shader_target, 
-        stage_arg, 
-        self.input_path, 
-        "-Werror", 
-        "-c", 
-        shader_optimisation, 
+        "--target-env=" ++ shader_target,
+        stage_arg,
+        self.input_path,
+        "-Werror",
+        "-c",
+        shader_optimisation,
         "-g",
-        "-o", 
+        "-o",
         self.output_path,
     };
 
@@ -92,15 +85,10 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void
 
     const found_existing = try step.cacheHit(&cache_manifest);
 
-    if (found_existing)
-    {
+    if (found_existing) {
         const digest = cache_manifest.final();
 
-        const cached_path = try self.builder.cache_root.join(self.builder.allocator, &.{
-            "o/",
-            &digest,
-            self.output_path
-        });  
+        const cached_path = try self.builder.cache_root.join(self.builder.allocator, &.{ "o/", &digest, self.output_path });
 
         self.generated_file.path = cached_path;
 
@@ -109,20 +97,18 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void
 
     const input_file: *std.Build.Cache.File = &cache_manifest.files.items[input_file_index];
 
-    if (input_file.contents == null)
-    {
+    if (input_file.contents == null) {
         const input_file_opened = try std.fs.cwd().openFile(self.input_path, .{});
         defer input_file_opened.close();
 
         input_file.contents = try input_file_opened.readToEndAlloc(self.builder.allocator, std.math.maxInt(usize));
-    } 
+    }
 
     const includes = try getIncludes(self.builder.allocator, input_file.contents.?);
 
     const source_directory = std.fs.path.dirname(self.input_path).?;
 
-    for (includes) |include|
-    {
+    for (includes) |include| {
         const include_path = try std.fs.path.join(self.builder.allocator, &.{ source_directory, include });
 
         try cache_manifest.addFilePost(include_path);
@@ -130,13 +116,9 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void
 
     const digest = cache_manifest.final();
 
-    const cached_path = try self.builder.cache_root.join(self.builder.allocator, &.{
-        "o/",
-        &digest,
-        self.output_path
-    });  
+    const cached_path = try self.builder.cache_root.join(self.builder.allocator, &.{ "o/", &digest, self.output_path });
 
-    std.fs.makeDirAbsolute(std.fs.path.dirname(cached_path).?) catch {};  
+    std.fs.makeDirAbsolute(std.fs.path.dirname(cached_path).?) catch {};
 
     self.generated_file.path = cached_path;
 
@@ -146,15 +128,15 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void
         self.generated_file.path = null;
     }
 
-    const result = try std.process.Child.exec(.{ 
-        .allocator = step.owner.allocator, 
+    const result = try std.process.Child.exec(.{
+        .allocator = step.owner.allocator,
         .argv = &args,
     });
 
     switch (result.term) {
         .Exited => |code| {
             if (code != 0) {
-                return step.fail("Failed to compile: {s}", .{ result.stderr });
+                return step.fail("Failed to compile: {s}", .{result.stderr});
             }
         },
         .Signal => {},
@@ -166,25 +148,21 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void
 }
 
 pub fn compileModule(
-    builder: *std.build.Builder, 
-    mode: std.builtin.OptimizeMode, 
-    stage: GlslCompileStep.ShaderStage, 
-    input: []const u8, 
+    builder: *std.build.Builder,
+    mode: std.builtin.OptimizeMode,
+    stage: GlslCompileStep.ShaderStage,
+    input: []const u8,
     output: []const u8,
-) *std.build.Module 
-{
+) *std.build.Module {
     const step = GlslCompileStep.create(builder, input, input, output, stage, mode);
 
-    return builder.createModule(.{
-        .source_file = std.build.FileSource { .generated = &step.generated_file }
-    });
+    return builder.createModule(.{ .source_file = std.build.FileSource{ .generated = &step.generated_file } });
 }
 
 pub fn getIncludes(
     allocator: std.mem.Allocator,
     source: []const u8,
-) ![][]const u8
-{
+) ![][]const u8 {
     var includes: std.ArrayListUnmanaged([]const u8) = .{};
 
     var state: enum {
@@ -197,15 +175,12 @@ pub fn getIncludes(
 
     var i: usize = 0;
 
-    while (i < source.len)
-    {
+    while (i < source.len) {
         const char = source[i];
 
-        switch (state)
-        {
+        switch (state) {
             .start => {
-                switch (char)
-                {
+                switch (char) {
                     '#' => {
                         state = .include_keyword;
 
@@ -217,8 +192,7 @@ pub fn getIncludes(
                 }
             },
             .include_keyword => {
-                switch (char)
-                {
+                switch (char) {
                     '<', '"' => {
                         state = .include_path;
 
@@ -237,8 +211,7 @@ pub fn getIncludes(
                 }
             },
             .include_path => {
-                switch (char)
-                {
+                switch (char) {
                     '>', '"' => {
                         state = .start;
 
