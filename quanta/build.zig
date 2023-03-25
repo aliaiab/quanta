@@ -3,13 +3,11 @@ const GlslCompileStep = @import("src/asset/build_steps/GlslCompileStep.zig");
 const glfw = @import("lib/mach-glfw/build.zig");
 const zgltf = @import("lib/zgltf/build.zig");
 
-pub fn build(builder: *std.Build) !void
-{
+pub fn build(builder: *std.Build) !void {
     _ = builder;
 }
 
-pub fn addTest(builder: *std.Build) !*std.Build.CompileStep
-{
+pub fn addTest(builder: *std.Build) !*std.Build.CompileStep {
     return builder.addTest(.{
         .name = "test",
         .root_source_file = std.build.FileSource.relative("quanta/src/main.zig"),
@@ -17,8 +15,7 @@ pub fn addTest(builder: *std.Build) !*std.Build.CompileStep
     });
 }
 
-pub const Context = struct 
-{
+pub const Context = struct {
     builder: *std.Build,
     module: *std.Build.Module,
 
@@ -29,8 +26,7 @@ pub const Context = struct
         target: std.zig.CrossTarget,
         mode: std.builtin.OptimizeMode,
         relative_path: []const u8,
-    ) !Context
-    {
+    ) !Context {
         const renderer_tri_vert_spv_module = GlslCompileStep.compileModule(builder, mode, .vertex, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/tri.vert.glsl" }), "tri.vert.spv");
         const renderer_tri_frag_spv_module = GlslCompileStep.compileModule(builder, mode, .fragment, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/tri.frag.glsl" }), "tri.frag.spv");
         const renderer_sky_vert_spv_module = GlslCompileStep.compileModule(builder, mode, .vertex, builder.pathJoin(&.{ relative_path, "quanta/src/renderer/sky.vert.glsl" }), "sky.vert.spv");
@@ -49,36 +45,33 @@ pub const Context = struct
 
         const options = builder.addOptions();
 
-        var module = builder.createModule(
-            .{
-                .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/src/main.zig" })),
-                .dependencies = &.{
-                    .{ .name = "options", .module = options.createModule() },
-                    .{ .name = "glfw", .module = glfw.module(builder) },
-                    .{ .name = "zgltf", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zgltf/src/main.zig" })) }) },
-                    .{ .name = "zigimg", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zigimg/zigimg.zig" })) }) },
-                    .{ .name = "zalgebra", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zalgebra/src/main.zig" })) }) },
-                    .{ .name = "renderer_tri_vert.spv", .module = renderer_tri_vert_spv_module },
-                    .{ .name = "renderer_tri_frag.spv", .module = renderer_tri_frag_spv_module },
-                    .{ .name = "renderer_depth_vert.spv", .module = renderer_depth_vert_spv_module },
-                    .{ .name = "renderer_depth_frag.spv", .module = renderer_depth_frag_spv_module },
-                    .{ .name = "renderer_sky_vert.spv", .module = renderer_sky_vert_spv_module },
-                    .{ .name = "renderer_sky_frag.spv", .module = renderer_sky_frag_spv_module },
-                    .{ .name = "renderer_pre_depth_cull_comp.spv", .module = renderer_pre_depth_cull_comp_module },
-                    .{ .name = "renderer_post_depth_cull_comp.spv", .module = renderer_post_depth_cull_comp_module },
-                    .{ .name = "renderer_depth_reduce_comp.spv", .module = renderer_depth_reduce_comp_module },
-                    .{ .name = "renderer_color_resolve_comp.spv", .module = renderer_color_resolve_comp_module },
+        var module = builder.createModule(.{
+            .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/src/main.zig" })),
+            .dependencies = &.{
+                .{ .name = "options", .module = options.createModule() },
+                .{ .name = "glfw", .module = glfw.module(builder) },
+                .{ .name = "zgltf", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zgltf/src/main.zig" })) }) },
+                .{ .name = "zigimg", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zigimg/zigimg.zig" })) }) },
+                .{ .name = "zalgebra", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zalgebra/src/main.zig" })) }) },
+                .{ .name = "renderer_tri_vert.spv", .module = renderer_tri_vert_spv_module },
+                .{ .name = "renderer_tri_frag.spv", .module = renderer_tri_frag_spv_module },
+                .{ .name = "renderer_depth_vert.spv", .module = renderer_depth_vert_spv_module },
+                .{ .name = "renderer_depth_frag.spv", .module = renderer_depth_frag_spv_module },
+                .{ .name = "renderer_sky_vert.spv", .module = renderer_sky_vert_spv_module },
+                .{ .name = "renderer_sky_frag.spv", .module = renderer_sky_frag_spv_module },
+                .{ .name = "renderer_pre_depth_cull_comp.spv", .module = renderer_pre_depth_cull_comp_module },
+                .{ .name = "renderer_post_depth_cull_comp.spv", .module = renderer_post_depth_cull_comp_module },
+                .{ .name = "renderer_depth_reduce_comp.spv", .module = renderer_depth_reduce_comp_module },
+                .{ .name = "renderer_color_resolve_comp.spv", .module = renderer_color_resolve_comp_module },
 
-                    .{ .name = "renderer_gui_rectangle_vert.spv", .module = renderer_gui_rectangle_vert_module },
-                    .{ .name = "renderer_gui_rectangle_frag.spv", .module = renderer_gui_rectangle_frag_module },
-                    .{ .name = "renderer_gui_mesh_vert.spv", .module = renderer_gui_mesh_vert_module },
-                    .{ .name = "renderer_gui_mesh_frag.spv", .module = renderer_gui_mesh_frag_module },
-                },  
-            }
-        );
+                .{ .name = "renderer_gui_rectangle_vert.spv", .module = renderer_gui_rectangle_vert_module },
+                .{ .name = "renderer_gui_rectangle_frag.spv", .module = renderer_gui_rectangle_frag_module },
+                .{ .name = "renderer_gui_mesh_vert.spv", .module = renderer_gui_mesh_vert_module },
+                .{ .name = "renderer_gui_mesh_frag.spv", .module = renderer_gui_mesh_frag_module },
+            },
+        });
 
-        if (true) return Context 
-        {
+        if (true) return Context{
             .builder = builder,
             .module = module,
             .glslc = undefined,
@@ -90,7 +83,7 @@ pub const Context = struct
             .optimize = mode,
         });
 
-        glslang.addCSourceFiles(&[_][]const u8 {
+        glslang.addCSourceFiles(&[_][]const u8{
             "quanta/lib/glslang/glslang/MachineIndependent/glslang_tab.cpp",
             "quanta/lib/glslang/glslang/MachineIndependent/attribute.cpp",
             "quanta/lib/glslang/glslang/MachineIndependent/Constant.cpp",
@@ -118,7 +111,7 @@ pub const Context = struct
             "quanta/lib/glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp",
             "quanta/lib/glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp",
             "quanta/lib/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp",
-            "quanta/lib/glslang/glslang/MachineIndependent/propagateNoContraction.cpp", 
+            "quanta/lib/glslang/glslang/MachineIndependent/propagateNoContraction.cpp",
             "quanta/lib/glslang/glslang/HLSL/hlslAttributes.cpp",
             "quanta/lib/glslang/glslang/HLSL/hlslParseHelper.cpp",
             "quanta/lib/glslang/glslang/HLSL/hlslScanContext.cpp",
@@ -135,7 +128,7 @@ pub const Context = struct
             "quanta/lib/glslang/SPIRV/SpvTools.cpp",
             "quanta/lib/glslang/SPIRV/disassemble.cpp",
             "quanta/lib/glslang/SPIRV/CInterface/spirv_c_interface.cpp",
-        }, &.{ "-DENABLE_HLSL" });
+        }, &.{"-DENABLE_HLSL"});
 
         glslang.addIncludePath("quanta/lib/glslang/");
         glslang.addIncludePath("quanta/lib/glslang/Include/");
@@ -156,7 +149,7 @@ pub const Context = struct
         libshaderc_util.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/HLSL/");
         libshaderc_util.addIncludePath("quanta/lib/shaderc/glslang/include/HLSL/");
         libshaderc_util.addIncludePath("quanta/lib/glslang/");
-        libshaderc_util.addCSourceFiles(&[_][]const u8 { 
+        libshaderc_util.addCSourceFiles(&[_][]const u8{
             "quanta/lib/shaderc/libshaderc_util/src/args.cc",
             "quanta/lib/shaderc/libshaderc_util/src/compiler.cc",
             "quanta/lib/shaderc/libshaderc_util/src/file_finder.cc",
@@ -166,7 +159,7 @@ pub const Context = struct
             "quanta/lib/shaderc/libshaderc_util/src/shader_stage.cc",
             "quanta/lib/shaderc/libshaderc_util/src/spirv_tools_wrapper.cc",
             "quanta/lib/shaderc/libshaderc_util/src/version_profile.cc",
-        }, &.{ "-DENABLE_HLSL" });
+        }, &.{"-DENABLE_HLSL"});
         libshaderc_util.linkLibC();
         libshaderc_util.linkLibCpp();
         libshaderc_util.linkLibrary(glslang);
@@ -184,16 +177,16 @@ pub const Context = struct
         libshaderc.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/HLSL/");
         libshaderc.addIncludePath("quanta/lib/shaderc/glslang/include/HLSL/");
         libshaderc.addIncludePath("quanta/lib/glslang/");
-        libshaderc.addCSourceFiles(&[_][]const u8 { 
+        libshaderc.addCSourceFiles(&[_][]const u8{
             "quanta/lib/shaderc/libshaderc/src/shaderc.cc",
-        }, &.{ "-DENABLE_HLSL" });
+        }, &.{"-DENABLE_HLSL"});
         libshaderc.linkLibC();
         libshaderc.linkLibCpp();
         libshaderc.linkLibrary(libshaderc_util);
 
         //TODO: Port version generation utility from shaderc/utils/update_build_version.py
-        const glslc_build_version_inc = builder.addWriteFile("glslc/build-version.inc", 
-        \\"shaderc v2022.1 v2022.1\n" 
+        const glslc_build_version_inc = builder.addWriteFile("glslc/build-version.inc",
+            \\"shaderc v2022.1 v2022.1\n" 
             \\"spirv-tools v2022.2-dev v2022.1-5-gb846f8f1\n"
             \\"glslang 11.1.0-408-gc34bb3b6\n"
         );
@@ -204,7 +197,7 @@ pub const Context = struct
 
         glslc.step.dependOn(&glslc_build_version_inc.step);
 
-        glslc.addCSourceFiles(&[_][]const u8 {
+        glslc.addCSourceFiles(&[_][]const u8{
             "quanta/lib/shaderc/glslc/src/main.cc",
             "quanta/lib/shaderc/glslc/src/dependency_info.cc",
             "quanta/lib/shaderc/glslc/src/file_compiler.cc",
@@ -212,7 +205,7 @@ pub const Context = struct
             "quanta/lib/shaderc/glslc/src/file.cc",
             "quanta/lib/shaderc/glslc/src/resource_parse.cc",
             "quanta/lib/shaderc/glslc/src/shader_stage.cc",
-        }, &.{ "-DENABLE_HLSL" });
+        }, &.{"-DENABLE_HLSL"});
         glslc.addIncludePath("quanta/lib/shaderc/libshaderc/include/");
         glslc.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/");
         glslc.addIncludePath("zig-cache/glslc/");
@@ -223,8 +216,7 @@ pub const Context = struct
         glslc.linkLibCpp();
         glslc.linkLibrary(libshaderc);
 
-        return Context 
-        {
+        return Context{
             .builder = builder,
             .module = module,
             .glslc = glslc,
@@ -233,12 +225,10 @@ pub const Context = struct
 };
 
 ///Links the c depencencies into step
-pub fn link(builder: *std.Build, step: *std.Build.CompileStep, package_path: []const u8) !void 
-{
-    step.addIncludePath(builder.pathJoin(&.{ package_path, "quanta/lib/Nuklear/" }));
+pub fn link(builder: *std.Build, step: *std.Build.CompileStep, package_path: []const u8) !void {
     step.addIncludePath(builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/" }));
     step.addIncludePath(builder.pathJoin(&.{ package_path, "quanta/lib/ImGuizmo/" }));
-    step.addCSourceFiles(&[_][]const u8 {
+    step.addCSourceFiles(&[_][]const u8{
         builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/imgui.cpp" }),
         builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/imgui_draw.cpp" }),
         builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/imgui_tables.cpp" }),
@@ -246,9 +236,8 @@ pub fn link(builder: *std.Build, step: *std.Build.CompileStep, package_path: []c
         builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/imgui_demo.cpp" }),
         builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/cimgui.cpp" }),
         builder.pathJoin(&.{ package_path, "quanta/lib/ImGuizmo/ImGuizmo.cpp" }),
-        builder.pathJoin(&.{ package_path, "quanta/src/nuklear/nuklear.c" }),
         builder.pathJoin(&.{ package_path, "quanta/src/imgui/guizmo.cpp" }),
-    }, &[_][]const u8 {});
+    }, &[_][]const u8{});
     step.linkLibCpp();
 
     try glfw.link(builder, step, .{});
