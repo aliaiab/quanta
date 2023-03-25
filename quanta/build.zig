@@ -233,21 +233,21 @@ pub const Context = struct
 };
 
 ///Links the c depencencies into step
-pub fn link(builder: *std.Build, step: *std.Build.CompileStep) !void 
+pub fn link(builder: *std.Build, step: *std.Build.CompileStep, package_path: []const u8) !void 
 {
-    step.addIncludePath("quanta/lib/Nuklear/");
-    step.addIncludePath("quanta/lib/cimgui/imgui/");
-    step.addIncludePath("quanta/lib/ImGuizmo/");
+    step.addIncludePath(builder.pathJoin(&.{ package_path, "quanta/lib/Nuklear/" }));
+    step.addIncludePath(builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/" }));
+    step.addIncludePath(builder.pathJoin(&.{ package_path, "quanta/lib/ImGuizmo/" }));
     step.addCSourceFiles(&[_][]const u8 {
-        "quanta/lib/cimgui/imgui/imgui.cpp",
-        "quanta/lib/cimgui/imgui/imgui_draw.cpp",
-        "quanta/lib/cimgui/imgui/imgui_tables.cpp",
-        "quanta/lib/cimgui/imgui/imgui_widgets.cpp",
-        "quanta/lib/cimgui/imgui/imgui_demo.cpp",
-        "quanta/lib/cimgui/cimgui.cpp",
-        "quanta/lib/ImGuizmo/ImGuizmo.cpp",
-        "quanta/src/nuklear/nuklear.c",
-        "quanta/src/imgui/guizmo.cpp",
+        builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/imgui.cpp" }),
+        builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/imgui_draw.cpp" }),
+        builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/imgui_tables.cpp" }),
+        builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/imgui_widgets.cpp" }),
+        builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/imgui_demo.cpp" }),
+        builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/cimgui.cpp" }),
+        builder.pathJoin(&.{ package_path, "quanta/lib/ImGuizmo/ImGuizmo.cpp" }),
+        builder.pathJoin(&.{ package_path, "quanta/src/nuklear/nuklear.c" }),
+        builder.pathJoin(&.{ package_path, "quanta/src/imgui/guizmo.cpp" }),
     }, &[_][]const u8 {});
     step.linkLibCpp();
 
