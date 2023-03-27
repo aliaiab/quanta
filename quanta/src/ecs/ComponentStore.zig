@@ -1390,7 +1390,7 @@ fn archetypeCopyRow(
     const archetype: *Archetype = &self.archetypes.items[archetype_index];
 
     const src_chunk: *Chunk = &archetype.chunks.items[src_row.chunk_index];
-    const dst_chunk: *Chunk = &archetype.chunks.items[src_row.chunk_index];
+    const dst_chunk: *Chunk = &archetype.chunks.items[dst_row.chunk_index];
 
     for (
         src_chunk.columns,
