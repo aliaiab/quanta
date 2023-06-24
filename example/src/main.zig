@@ -88,17 +88,12 @@ const enable_pipeline_cache = true;
 const pipeline_cache_file_path = "pipeline_cache";
 
 pub fn init() !void {
-    _ = try std.io.getStdErr().write("HLJLAFLJAFLAFF GHELLHLOOOOOOOOO!\n");
-
     log.debug("All your {s} are belong to us.", .{"codebase"});
     log.debug("{s}", .{"debug"});
     log.warn("{s}", .{"warn"});
     log.err("{s}", .{"err"});
 
-    state.gpa = if (builtin.mode == .Debug)
-        std.heap.GeneralPurposeAllocator(.{}){}
-    else {};
-
+    state.gpa = std.heap.GeneralPurposeAllocator(.{}){};
     state.allocator = if (builtin.mode == .Debug) state.gpa.allocator() else std.heap.c_allocator;
 
     try window.init(1600, 900, "Quanta Example");
@@ -274,15 +269,22 @@ pub fn init() !void {
         quanta.ecs.ComponentStore.Entity.nil,
     });
 
-    const entity_b = try state.ecs_scene.entityCreate(.{ quanta_components.Position{ .x = 0, .y = -2, .z = 0 }, quanta_components.Velocity{ .x = 0, .y = 1, .z = 0 }, quanta_components.Force{ .x = 2, .y = 9.81, .z = 0 }, quanta_components.Mass{ .value = 10 }, quanta_components.TerminalVelocity{ .x = 0, .y = 0.01, .z = 0 }, quanta_components.RendererMesh{ .mesh = state.test_scene_meshes[0], .material = state.test_scene_materials[0] } });
-
-    const entity_a = try state.ecs_scene.entityCreate(.{
+    const entity_b = try state.ecs_scene.entityCreate(.{
         quanta_components.Position{ .x = 0, .y = -2, .z = 0 },
         quanta_components.Velocity{ .x = 0, .y = 1, .z = 0 },
         quanta_components.Force{ .x = 2, .y = 9.81, .z = 0 },
         quanta_components.Mass{ .value = 10 },
         quanta_components.TerminalVelocity{ .x = 0, .y = 0.01, .z = 0 },
         quanta_components.RendererMesh{ .mesh = state.test_scene_meshes[0], .material = state.test_scene_materials[0] },
+    });
+
+    const entity_a = try state.ecs_scene.entityCreate(.{
+        quanta_components.Force{ .x = 2, .y = 9.81, .z = 0 },
+        quanta_components.Mass{ .value = 10 },
+        quanta_components.RendererMesh{ .mesh = state.test_scene_meshes[0], .material = state.test_scene_materials[0] },
+        quanta_components.Velocity{ .x = 0, .y = 1, .z = 0 },
+        quanta_components.Position{ .x = 0, .y = -2, .z = 0 },
+        quanta_components.TerminalVelocity{ .x = 0, .y = 0.01, .z = 0 },
     });
 
     std.debug.assert(state.ecs_scene.entitiesAreIsomers(entity_a, entity_b));

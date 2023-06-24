@@ -227,7 +227,7 @@ pub const Archetype = struct {
     entity_count: u32 = 0,
 };
 
-pub const EntityDescription = struct {
+pub const EntityDescription = packed struct(u64) {
     archetype_index: ArchetypeIndex,
     row: RowLocation,
 };
@@ -1241,7 +1241,7 @@ fn archetypeFreeChunk(
 fn archetypeGetOrAllocateChunk(
     self: *ComponentStore,
     archetype_index: ArchetypeIndex,
-    desired_row_count: u32,
+    desired_row_count: u16,
 ) !ChunkIndex {
     const archetype: *Archetype = &self.archetypes.items[archetype_index];
 
@@ -1335,8 +1335,8 @@ fn archetypeRemoveRow(
     const chunk: *Chunk = &archetype.chunks.items[row.chunk_index];
 
     defer {
-        chunk.row_count -= 1;
-        archetype.entity_count -= 1;
+        chunk.row_count -|= 1;
+        archetype.entity_count -|= 1;
 
         if (chunk.row_count == 0) {
             self.archetypeFreeChunk(archetype_index, row.chunk_index);
@@ -1370,7 +1370,7 @@ fn archetypeRemoveRow(
 
     entity_to_update_description.row = row;
 
-    archetype.entity_count -= 1;
+    archetype.entity_count -|= 1;
 }
 
 const RowLocation = packed struct(u32) {

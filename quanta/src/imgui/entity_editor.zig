@@ -258,7 +258,7 @@ pub fn chunkViewer(
 
             if (widgets.collapsingHeader("Chunk ({}):({})", .{ archetype_index, chunk_index })) {
                 widgets.textFormat("alignment: {}", .{quanta.ecs.ComponentStore.Chunk.alignment});
-                widgets.textFormat("size: {}", .{quanta.ecs.ComponentStore.Chunk.max_size});
+                widgets.textFormat("size: {}", .{chunk.data.?.len});
                 widgets.textFormat("address: {x}", .{@ptrToInt(chunk.data.?.ptr)});
                 widgets.textFormat("entity_count: {}", .{chunk.row_count});
                 widgets.textFormat("max_entity_count: {}", .{chunk.max_row_count});

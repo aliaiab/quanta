@@ -41,6 +41,7 @@ layout(binding = 10, scalar) restrict readonly buffer SceneUniforms
 in Out
 {
     flat uint material_index;
+    flat uint triangle_index;
     vec3 position;
     vec4 position_light_space;
     vec3 normal;
@@ -310,4 +311,5 @@ void main()
     vec4 ambient = ambient_light * albedo;
 
     output_color = ambient + vec4(vec3(light_color), 0);
+    // output_color = unpackUnorm4x8(in_data.triangle_index);
 }

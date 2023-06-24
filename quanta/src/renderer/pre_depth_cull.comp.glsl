@@ -130,7 +130,7 @@ bool isOnFrustum(mat4 transform, vec3 center, vec3 extents)
     
     vec3 global_extents = vec3(newIi, newIj, newIk);
 
-    return isOnOrForwardPlane(near_face, global_center, global_extents);
+    return isOnOrForwardPlane(near_face, global_center, global_extents) &&
            isOnOrForwardPlane(far_face, global_center, global_extents) &&
            isOnOrForwardPlane(right_face, global_center, global_extents) &&
            isOnOrForwardPlane(left_face, global_center, global_extents) &&

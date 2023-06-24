@@ -82,6 +82,7 @@ layout(set = 0, binding = 4, scalar) restrict readonly buffer DrawCommands
 out Out
 {
     flat uint material_index;
+    flat uint triangle_index;
     vec3 position;
     vec4 position_light_space;
     vec3 normal;
@@ -104,6 +105,7 @@ void main()
     out_data.normal = normalize(mat3(transpose(inverse(transform))) * vertex.normal);
     out_data.uv = vertex.uv;
     out_data.material_index = material_indices[instance_index];
+    out_data.triangle_index = gl_VertexIndex / 3;
 
     gl_Position = scene_uniforms.view_projection * transform * vec4(vertex_positions[gl_VertexIndex], 1.0);
 }

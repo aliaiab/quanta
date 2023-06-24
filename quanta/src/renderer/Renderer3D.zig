@@ -15,8 +15,6 @@ const depth_reduce_comp_spv = @alignCast(4, @embedFile("renderer_depth_reduce_co
 const depth_vert_spv = @alignCast(4, @embedFile("renderer_depth_vert.spv"));
 const depth_frag_spv = @alignCast(4, @embedFile("renderer_depth_frag.spv"));
 
-pub const frames_in_flight = 2;
-
 const SkyPipelinePushConstants = extern struct {
     view_projection: [4][4]f32,
 };
