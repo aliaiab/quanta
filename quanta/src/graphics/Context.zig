@@ -764,10 +764,11 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
         }
 
         if (self.transfer_family_index) |index| {
-            self.transfer_queue = self.vkd.getDeviceQueue(self.device, index, 0);
+            _ = index;
+            self.transfer_queue = self.vkd.getDeviceQueue(self.device, self.graphics_family_index.?, 0);
             self.transfer_command_pool = try self.vkd.createCommandPool(self.device, &.{
                 .flags = .{ .reset_command_buffer_bit = true },
-                .queue_family_index = index,
+                .queue_family_index = self.graphics_family_index.?,
             }, &self.allocation_callbacks);
         }
     }
