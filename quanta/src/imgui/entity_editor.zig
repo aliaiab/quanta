@@ -9,6 +9,7 @@ const CommandBuffer = ecs.CommandBuffer;
 pub fn entityViewer(
     ecs_scene: *ComponentStore,
     commands: *CommandBuffer,
+    selected_entity: ?ecs.ComponentStore.Entity,
 ) void {
     defer widgets.end();
 
@@ -21,7 +22,7 @@ pub fn entityViewer(
             _ = imgui.igSetDragDropPayload("Entity Drag Drop", &entity, @sizeOf(@TypeOf(entity)), imgui.ImGuiCond_None);
         }
 
-        if (widgets.treeNodePush("{}", .{entity})) {
+        if (widgets.treeNodePush("{}", .{entity}, entity == selected_entity)) {
             defer widgets.treeNodePop();
 
             if (widgets.button("Clone")) {

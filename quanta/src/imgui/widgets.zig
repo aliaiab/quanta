@@ -28,14 +28,14 @@ pub fn checkbox(label: [:0]const u8, value: *bool) bool {
     return imgui.igCheckbox(label, value);
 }
 
-pub fn treeNodePush(comptime format: []const u8, args: anytype) bool {
+pub fn treeNodePush(comptime format: []const u8, args: anytype, default_open: bool) bool {
     var format_buf: [4096 * 8]u8 = undefined;
 
     const label = std.fmt.bufPrint(&format_buf, format, args) catch unreachable;
 
     const widget_id = imgui.ImGuiWindow_GetID_Str(imgui.igGetCurrentWindow(), label.ptr, label.ptr + label.len);
 
-    return imgui.igTreeNodeBehavior(widget_id, 0, label.ptr, label.ptr + label.len);
+    return imgui.igTreeNodeBehavior(widget_id, if (default_open) imgui.ImGuiTreeNodeFlags_DefaultOpen else 0, label.ptr, label.ptr + label.len);
 }
 
 pub fn treeNodePop() void {
@@ -57,6 +57,7 @@ pub fn dragFloat(label: []const u8, float: *f32) void {
 pub fn drawBillboard(
     view_projection: zalgebra.Mat4,
     position: @Vector(3, f32),
+    radius: f32,
 ) void {
     const viewport = imgui.igGetWindowViewport();
     const draw_list = imgui.igGetBackgroundDrawList_ViewportPtr(viewport);
@@ -66,7 +67,7 @@ pub fn drawBillboard(
     imgui.ImDrawList_AddCircleFilled(
         draw_list,
         .{ .x = screen_pos[0], .y = screen_pos[1] },
-        10,
+        radius,
         0xffffffff,
         32,
     );
@@ -197,7 +198,7 @@ fn lineClipNormalized(line: [2]@Vector(3, f32)) ?[2]@Vector(3, f32) {
 }
 
 ///Returns null if world_pos doesn't map to a position on the screen (and should be clipped)
-fn worldToScreenPos(
+pub fn worldToScreenPos(
     world_pos: @Vector(3, f32),
     matrix: zalgebra.Mat4,
     viewport: *imgui.ImGuiViewport,

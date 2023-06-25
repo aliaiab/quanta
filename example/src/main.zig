@@ -13,7 +13,6 @@ const Sampler = quanta.graphics.Sampler;
 const png = quanta.asset.importers.png;
 const gltf = quanta.asset.importers.gltf;
 const zalgebra = quanta.math.zalgebra;
-const nk = quanta.nuklear.nuklear;
 const imgui = quanta.imgui.cimgui;
 const imguizmo = quanta.imgui.guizmo;
 const entity_editor = quanta.imgui.entity_editor;
@@ -560,7 +559,7 @@ pub fn update() !quanta.app.UpdateResult {
                 var found_entity: ?quanta.ecs.ComponentStore.Entity = null;
                 var closest_t_max: f32 = std.math.inf_f32;
 
-                while (query.nextBlock()) |block| {
+                if (false) while (query.nextBlock()) |block| {
                     for (block.Position, block.NonUniformScale, block.RendererMesh, 0..) |position, scale, mesh, i| {
                         const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
 
@@ -577,6 +576,29 @@ pub fn update() !quanta.app.UpdateResult {
                             closest_t_max = @min(closest_t_max, hit.t_max - hit.t_min);
                         }
                     }
+                };
+
+                var light_query = state.ecs_scene.query(.{
+                    quanta.components.Position,
+                    quanta.components.PointLight,
+                }, .{});
+
+                const camera_view = state.camera.getView();
+                const camera_projection = state.camera.getProjectionNonInverse();
+                const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
+
+                while (light_query.nextBlock()) |block| {
+                    for (block.entities, block.Position) |entity, position| {
+                        const viewport = imgui.igGetWindowViewport();
+
+                        const screen_pos = widgets.worldToScreenPos(@Vector(3, f32){ position.x, position.y, position.z }, camera_view_projection, viewport) orelse continue;
+
+                        if (mouse_pos[0] > screen_pos[0] - 10 and mouse_pos[1] > screen_pos[1] - 10 and
+                            mouse_pos[0] < screen_pos[0] + 10 and mouse_pos[1] < screen_pos[1] + 10)
+                        {
+                            found_entity = entity;
+                        }
+                    }
                 }
 
                 if (found_entity != null) {
@@ -590,7 +612,7 @@ pub fn update() !quanta.app.UpdateResult {
                 state.mouse_pressed_last_Frame = false;
             }
 
-            entity_editor.entityViewer(&state.ecs_scene, &state.entity_debugger_commands);
+            entity_editor.entityViewer(&state.ecs_scene, &state.entity_debugger_commands, state.selected_entity);
             entity_editor.chunkViewer(&state.ecs_scene);
             quanta.imgui.log.viewer("Log");
 
@@ -692,7 +714,7 @@ pub fn update() !quanta.app.UpdateResult {
 
             while (query.nextBlock()) |block| {
                 for (block.Position) |position| {
-                    quanta.imgui.widgets.drawBillboard(camera_view_projection, .{ position.x, position.y, position.z });
+                    quanta.imgui.widgets.drawBillboard(camera_view_projection, .{ position.x, position.y, position.z }, 10);
                 }
             }
         }

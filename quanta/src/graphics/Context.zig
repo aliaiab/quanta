@@ -558,7 +558,13 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
                     self.compute_family_index = @intCast(u32, queue_family_index);
                 }
 
-                if (queue_family.queue_flags.transfer_bit) {
+                //TODO: If a dedicated transfer queue doesn't exist, assign it to a non dedicated one such as compute or graphics
+                if (queue_family.queue_flags.transfer_bit and
+                    queue_family.queue_flags.sparse_binding_bit and
+                    !queue_family.queue_flags.video_decode_bit_khr and
+                    !queue_family.queue_flags.compute_bit and
+                    !queue_family.queue_flags.graphics_bit)
+                {
                     self.transfer_family_index = @intCast(u32, queue_family_index);
                 }
 
@@ -676,6 +682,12 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
                 .queue_count = 1,
                 .p_queue_priorities = @ptrCast([*]const f32, &@as(f32, 1.0)),
             },
+            .{
+                .flags = .{},
+                .queue_family_index = self.transfer_family_index.?,
+                .queue_count = 1,
+                .p_queue_priorities = @ptrCast([*]const f32, &@as(f32, 1.0)),
+            },
         };
 
         log.info("self.graphics_family_index = {?}", .{self.graphics_family_index});
@@ -765,6 +777,8 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
 
         if (self.transfer_family_index) |index| {
             _ = index;
+            //Whilst we can get a dedicated transfer queue, we currently assume elsewhere in the code that
+            //this queue has graphics capability (and as such is not technically treated as dedicated yet)
             self.transfer_queue = self.vkd.getDeviceQueue(self.device, self.graphics_family_index.?, 0);
             self.transfer_command_pool = try self.vkd.createCommandPool(self.device, &.{
                 .flags = .{ .reset_command_buffer_bit = true },
