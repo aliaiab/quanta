@@ -1,10 +1,112 @@
 const std = @import("std");
 const quanta = @import("../main.zig");
 const imgui = quanta.imgui.cimgui;
+const imguizmo = quanta.imgui.guizmo;
 const widgets = quanta.imgui.widgets;
 const ecs = quanta.ecs;
+const zalgebra = quanta.math.zalgebra;
 const ComponentStore = ecs.ComponentStore;
 const CommandBuffer = ecs.CommandBuffer;
+const Entity = ecs.ComponentStore.Entity;
+
+pub fn entitySelector(
+    ecs_scene: *ComponentStore,
+    commands: *CommandBuffer,
+    camera: quanta.renderer.Renderer3D.Camera,
+    selected_entities: *std.ArrayList(Entity),
+) !void {
+    {
+        const len = selected_entities.items.len;
+
+        for (0..len) |i| {
+            const index = len - i - 1;
+            const entity = selected_entities.items[index];
+
+            if (!ecs_scene.entityExists(entity)) {
+                _ = selected_entities.swapRemove(index);
+            }
+        }
+    }
+
+    //Duplicate
+    if (imgui.igIsKeyDown_Nil(imgui.ImGuiKey_LeftCtrl) and
+        imgui.igIsKeyPressed_Bool(imgui.ImGuiKey_D, false) and
+        // !state.cloned_entity_last_frame and
+        selected_entities.items.len != 0)
+    {
+        for (selected_entities.items) |entity| {
+            commands.entityClone(entity);
+        }
+    }
+
+    if (selected_entities.items.len != 0 and imgui.igIsKeyPressed_Bool(imgui.ImGuiKey_Delete, false)) {
+        for (selected_entities.items) |entity| {
+            commands.entityDestroy(entity);
+        }
+    }
+
+    if (imgui.igIsMouseClicked_Bool(imgui.ImGuiMouseButton_Left, false) and
+        // !imguizmo.ImGuizmo_IsUsing() and
+        // !imguizmo.ImGuizmo_IsOver() and
+        !imgui.igIsAnyItemFocused())
+    {
+        var mouse_pos_imgui: imgui.ImVec2 = undefined;
+
+        imgui.igGetMousePos(&mouse_pos_imgui);
+
+        const mouse_pos = @Vector(2, f32){ mouse_pos_imgui.x, mouse_pos_imgui.y };
+
+        var light_query = ecs_scene.query(.{
+            quanta.components.Position,
+            quanta.components.PointLight,
+        }, .{});
+
+        const camera_view = camera.getView();
+        const camera_projection = camera.getProjectionNonInverse();
+        const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
+
+        var found_entity: ?quanta.ecs.ComponentStore.Entity = null;
+        var found_entity_position: @Vector(3, f32) = .{ std.math.f32_max, std.math.f32_max, std.math.f32_max };
+
+        while (light_query.nextBlock()) |block| {
+            for (block.entities, block.Position) |entity, position| {
+                const viewport = imgui.igGetWindowViewport();
+
+                const position_vector = @Vector(3, f32){ position.x, position.y, position.z };
+
+                const screen_pos = widgets.worldToScreenPos(position_vector, camera_view_projection, viewport) orelse continue;
+
+                const selector_radius = 10;
+
+                if (mouse_pos[0] > screen_pos[0] - selector_radius and mouse_pos[1] > screen_pos[1] - selector_radius and
+                    mouse_pos[0] < screen_pos[0] + selector_radius and mouse_pos[1] < screen_pos[1] + selector_radius)
+                {
+                    found_entity_position = @min(found_entity_position, position_vector);
+
+                    if (@reduce(.And, found_entity_position == position_vector)) {
+                        found_entity = entity;
+                    }
+                }
+            }
+        }
+
+        if (found_entity != null) {
+            if (!imgui.igIsKeyDown_Nil(imgui.ImGuiKey_LeftCtrl)) {
+                selected_entities.clearAndFree();
+            }
+
+            var contains_entity: bool = block: for (selected_entities.items) |selected_entity| {
+                if (selected_entity == found_entity.?) {
+                    break :block true;
+                }
+            } else false;
+
+            if (!contains_entity) {
+                try selected_entities.append(found_entity.?);
+            }
+        }
+    }
+}
 
 pub fn entityViewer(
     ecs_scene: *ComponentStore,

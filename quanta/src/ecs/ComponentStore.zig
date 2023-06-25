@@ -536,7 +536,7 @@ pub fn entityGetComponent(
 ) ?*T {
     const component_id = componentId(T);
 
-    const entity_description = self.entity_index.get(entity).?;
+    const entity_description = self.entity_index.get(entity) orelse return null;
     const entity_archetype: *const Archetype = &self.archetypes.items[entity_description.archetype_index];
     const entity_chunk: *const Chunk = &entity_archetype.chunks.items[entity_description.row.chunk_index];
 

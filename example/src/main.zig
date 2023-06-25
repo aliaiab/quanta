@@ -77,6 +77,7 @@ var state: struct {
     camera_enable_changed: bool = false,
 
     selected_entity: ?quanta.ecs.ComponentStore.Entity = null,
+    selected_entities: std.ArrayList(quanta.ecs.ComponentStore.Entity) = undefined,
     cloned_entity_last_frame: bool = false,
     mouse_pressed_last_Frame: bool = false,
 
@@ -313,6 +314,7 @@ pub fn init() !void {
     });
 
     state.entity_debugger_commands = quanta.ecs.CommandBuffer.init(state.allocator);
+    state.selected_entities = std.ArrayList(quanta.ecs.ComponentStore.Entity).init(state.allocator);
 }
 
 pub fn deinit() void {
@@ -349,6 +351,7 @@ pub fn deinit() void {
     defer state.ecs_scene.deinit();
     defer Renderer3D.destroyScene(state.renderer_scene);
     defer state.entity_debugger_commands.deinit();
+    defer state.selected_entities.deinit();
 }
 
 pub fn update() !quanta.app.UpdateResult {
@@ -477,155 +480,164 @@ pub fn update() !quanta.app.UpdateResult {
             }
             widgets.end();
 
-            if (state.selected_entity != null and !state.ecs_scene.entityExists(state.selected_entity.?)) {
-                state.selected_entity = null;
-            }
+            try entity_editor.entitySelector(
+                &state.ecs_scene,
+                &state.entity_debugger_commands,
+                state.camera,
+                &state.selected_entities,
+            );
 
-            //Duplicate
-            if (window.getKeyDown(.left_control) and
-                window.getKeyDown(.d) and
-                !state.cloned_entity_last_frame and
-                state.selected_entity != null)
-            {
-                state.entity_debugger_commands.entityClone(state.selected_entity.?);
+            // if (state.selected_entity != null and !state.ecs_scene.entityExists(state.selected_entity.?)) {
+            //     state.selected_entity = null;
+            // }
 
-                state.cloned_entity_last_frame = true;
-            }
+            // //Duplicate
+            // if (window.getKeyDown(.left_control) and
+            //     window.getKeyDown(.d) and
+            //     !state.cloned_entity_last_frame and
+            //     state.selected_entity != null)
+            // {
+            //     state.entity_debugger_commands.entityClone(state.selected_entity.?);
 
-            if (!window.getKeyDown(.left_control) and
-                !window.getKeyDown(.d))
-            {
-                state.cloned_entity_last_frame = false;
-            }
+            //     state.cloned_entity_last_frame = true;
+            // }
 
-            if (state.selected_entity != null and window.getKeyDown(.delete)) {
-                state.entity_debugger_commands.entityDestroy(state.selected_entity.?);
-            }
+            // if (!window.getKeyDown(.left_control) and
+            //     !window.getKeyDown(.d))
+            // {
+            //     state.cloned_entity_last_frame = false;
+            // }
 
-            //Selection
-            if (window.getMouseDown(.left) and !state.mouse_pressed_last_Frame and !imguizmo.ImGuizmo_IsUsing() and !imguizmo.ImGuizmo_IsOver() and !imgui.igIsAnyItemFocused()) {
-                const mouse_pos = window.getMousePos();
+            // if (state.selected_entity != null and window.getKeyDown(.delete)) {
+            //     state.entity_debugger_commands.entityDestroy(state.selected_entity.?);
+            // }
 
-                log.info("mouse_pos = {d}, {d}", .{ mouse_pos[0], mouse_pos[1] });
+            // //Selection
+            // if (window.getMouseDown(.left) and !state.mouse_pressed_last_Frame and !imguizmo.ImGuizmo_IsUsing() and !imguizmo.ImGuizmo_IsOver() and !imgui.igIsAnyItemFocused()) {
+            //     const mouse_pos = window.getMousePos();
 
-                const view_projection = zalgebra.Mat4.mul(
-                    .{ .data = state.camera.getView() },
-                    .{ .data = state.camera.getProjectionNonInverse() },
-                );
+            //     log.info("mouse_pos = {d}, {d}", .{ mouse_pos[0], mouse_pos[1] });
 
-                const inverse_view_projection = view_projection.inv();
+            //     const view_projection = zalgebra.Mat4.mul(
+            //         .{ .data = state.camera.getView() },
+            //         .{ .data = state.camera.getProjectionNonInverse() },
+            //     );
 
-                const normalized_pos = [2]f32{
-                    ((mouse_pos[0] / @intToFloat(f32, window.getWidth())) * 2) - 1,
-                    (((mouse_pos[1] - @intToFloat(f32, window.getHeight())) / @intToFloat(f32, window.getHeight())) * 2) - 1,
-                };
+            //     const inverse_view_projection = view_projection.inv();
 
-                const world_space_pos = inverse_view_projection.mulByVec4(.{ .data = .{ normalized_pos[0], normalized_pos[1], 0, 1 } });
+            //     const normalized_pos = [2]f32{
+            //         ((mouse_pos[0] / @intToFloat(f32, window.getWidth())) * 2) - 1,
+            //         (((mouse_pos[1] - @intToFloat(f32, window.getHeight())) / @intToFloat(f32, window.getHeight())) * 2) - 1,
+            //     };
 
-                log.info("world_space_pos (ray_origin) = {d}, {d}, {d}", .{
-                    world_space_pos.data[0] / 1000.0,
-                    world_space_pos.data[1] / 1000.0,
-                    world_space_pos.data[2] / 1000.0,
-                });
+            //     const world_space_pos = inverse_view_projection.mulByVec4(.{ .data = .{ normalized_pos[0], normalized_pos[1], 0, 1 } });
 
-                log.info("world_space_pos (ray_dir) = {d}, {d}, {d}", .{
-                    state.camera_front[0],
-                    state.camera_front[1],
-                    state.camera_front[2],
-                });
+            //     log.info("world_space_pos (ray_origin) = {d}, {d}, {d}", .{
+            //         world_space_pos.data[0] / 1000.0,
+            //         world_space_pos.data[1] / 1000.0,
+            //         world_space_pos.data[2] / 1000.0,
+            //     });
 
-                const ray_origin = @Vector(3, f32){
-                    world_space_pos.data[0] / 1000.0,
-                    world_space_pos.data[1] / 1000.0,
-                    world_space_pos.data[2] / 1000.0,
-                };
+            //     log.info("world_space_pos (ray_dir) = {d}, {d}, {d}", .{
+            //         state.camera_front[0],
+            //         state.camera_front[1],
+            //         state.camera_front[2],
+            //     });
 
-                const ray_length = 1000;
+            //     const ray_origin = @Vector(3, f32){
+            //         world_space_pos.data[0] / 1000.0,
+            //         world_space_pos.data[1] / 1000.0,
+            //         world_space_pos.data[2] / 1000.0,
+            //     };
 
-                const ray_direction = @Vector(3, f32){
-                    state.camera_front[0] * ray_length,
-                    state.camera_front[1] * ray_length,
-                    state.camera_front[2] * ray_length,
-                };
+            //     const ray_length = 1000;
 
-                const intersection = quanta.physics.intersection;
+            //     const ray_direction = @Vector(3, f32){
+            //         state.camera_front[0] * ray_length,
+            //         state.camera_front[1] * ray_length,
+            //         state.camera_front[2] * ray_length,
+            //     };
 
-                var query = state.ecs_scene.query(.{
-                    quanta.components.Position,
-                    quanta.components.NonUniformScale,
-                    quanta.components.RendererMesh,
-                }, .{});
+            //     const intersection = quanta.physics.intersection;
 
-                var found_entity: ?quanta.ecs.ComponentStore.Entity = null;
-                var closest_t_max: f32 = std.math.inf_f32;
+            //     var query = state.ecs_scene.query(.{
+            //         quanta.components.Position,
+            //         quanta.components.NonUniformScale,
+            //         quanta.components.RendererMesh,
+            //     }, .{});
 
-                if (false) while (query.nextBlock()) |block| {
-                    for (block.Position, block.NonUniformScale, block.RendererMesh, 0..) |position, scale, mesh, i| {
-                        const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
+            //     var found_entity: ?quanta.ecs.ComponentStore.Entity = null;
+            //     var closest_t_max: f32 = std.math.inf_f32;
 
-                        const position_vector = @Vector(3, f32){ position.x, position.y, position.z };
+            //     if (false) while (query.nextBlock()) |block| {
+            //         for (block.Position, block.NonUniformScale, block.RendererMesh, 0..) |position, scale, mesh, i| {
+            //             const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
 
-                        const bounding_min = position_vector + (mesh_box.min * @Vector(3, f32){ scale.x, scale.y, scale.z });
-                        const bounding_max = position_vector + (mesh_box.max * @Vector(3, f32){ scale.x, scale.y, scale.z });
+            //             const position_vector = @Vector(3, f32){ position.x, position.y, position.z };
 
-                        if (intersection.rayAABBIntersection(ray_origin, ray_direction, bounding_min, bounding_max)) |hit| {
-                            {
-                                found_entity = block.entities[i];
-                            }
+            //             const bounding_min = position_vector + (mesh_box.min * @Vector(3, f32){ scale.x, scale.y, scale.z });
+            //             const bounding_max = position_vector + (mesh_box.max * @Vector(3, f32){ scale.x, scale.y, scale.z });
 
-                            closest_t_max = @min(closest_t_max, hit.t_max - hit.t_min);
-                        }
-                    }
-                };
+            //             if (intersection.rayAABBIntersection(ray_origin, ray_direction, bounding_min, bounding_max)) |hit| {
+            //                 {
+            //                     found_entity = block.entities[i];
+            //                 }
 
-                var light_query = state.ecs_scene.query(.{
-                    quanta.components.Position,
-                    quanta.components.PointLight,
-                }, .{});
+            //                 closest_t_max = @min(closest_t_max, hit.t_max - hit.t_min);
+            //             }
+            //         }
+            //     };
 
-                const camera_view = state.camera.getView();
-                const camera_projection = state.camera.getProjectionNonInverse();
-                const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
+            //     var light_query = state.ecs_scene.query(.{
+            //         quanta.components.Position,
+            //         quanta.components.PointLight,
+            //     }, .{});
 
-                while (light_query.nextBlock()) |block| {
-                    for (block.entities, block.Position) |entity, position| {
-                        const viewport = imgui.igGetWindowViewport();
+            //     const camera_view = state.camera.getView();
+            //     const camera_projection = state.camera.getProjectionNonInverse();
+            //     const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
 
-                        const screen_pos = widgets.worldToScreenPos(@Vector(3, f32){ position.x, position.y, position.z }, camera_view_projection, viewport) orelse continue;
+            //     while (light_query.nextBlock()) |block| {
+            //         for (block.entities, block.Position) |entity, position| {
+            //             const viewport = imgui.igGetWindowViewport();
 
-                        if (mouse_pos[0] > screen_pos[0] - 10 and mouse_pos[1] > screen_pos[1] - 10 and
-                            mouse_pos[0] < screen_pos[0] + 10 and mouse_pos[1] < screen_pos[1] + 10)
-                        {
-                            found_entity = entity;
-                        }
-                    }
-                }
+            //             const screen_pos = widgets.worldToScreenPos(@Vector(3, f32){ position.x, position.y, position.z }, camera_view_projection, viewport) orelse continue;
 
-                if (found_entity != null) {
-                    state.selected_entity = found_entity;
-                }
+            //             const selector_radius = 10;
 
-                state.mouse_pressed_last_Frame = true;
-            }
+            //             if (mouse_pos[0] > screen_pos[0] - selector_radius and mouse_pos[1] > screen_pos[1] - selector_radius and
+            //                 mouse_pos[0] < screen_pos[0] + selector_radius and mouse_pos[1] < screen_pos[1] + selector_radius)
+            //             {
+            //                 found_entity = entity;
+            //             }
+            //         }
+            //     }
 
-            if (!window.getMouseDown(.left)) {
-                state.mouse_pressed_last_Frame = false;
-            }
+            //     if (found_entity != null) {
+            //         state.selected_entity = found_entity;
+            //     }
 
-            entity_editor.entityViewer(&state.ecs_scene, &state.entity_debugger_commands, state.selected_entity);
-            entity_editor.chunkViewer(&state.ecs_scene);
-            quanta.imgui.log.viewer("Log");
+            //     state.mouse_pressed_last_Frame = true;
+            // }
 
-            if (state.selected_entity != null and !state.ecs_scene.entityExists(state.selected_entity.?)) {
-                state.selected_entity = null;
-            }
+            // if (!window.getMouseDown(.left)) {
+            //     state.mouse_pressed_last_Frame = false;
+            // }
 
-            if (state.selected_entity != null and
-                state.ecs_scene.entityHasComponent(state.selected_entity.?, quanta.components.Position))
-            {
-                const entity_position = state.ecs_scene.entityGetComponent(state.selected_entity.?, quanta.components.Position) orelse unreachable;
-                const entity_rotation = state.ecs_scene.entityGetComponent(state.selected_entity.?, quanta.components.Rotation);
-                const entity_scale = state.ecs_scene.entityGetComponent(state.selected_entity.?, quanta.components.NonUniformScale);
+            // entity_editor.entityViewer(&state.ecs_scene, &state.entity_debugger_commands, state.selected_entity);
+            // entity_editor.chunkViewer(&state.ecs_scene);
+            // quanta.imgui.log.viewer("Log");
+
+            // if (state.selected_entity != null and !state.ecs_scene.entityExists(state.selected_entity.?)) {
+            //     state.selected_entity = null;
+            // }
+
+            const primary_selected_entity = if (state.selected_entities.items.len != 0) state.selected_entities.items[0] else quanta.ecs.ComponentStore.Entity.nil;
+
+            if (state.selected_entities.items.len != 0 and state.ecs_scene.entityHasComponent(primary_selected_entity, quanta.components.Position)) {
+                const entity_position = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.Position) orelse unreachable;
+                const entity_rotation = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.Rotation);
+                const entity_scale = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.NonUniformScale);
 
                 imguizmo.ImGuizmo_SetImGuiContext(imgui.igGetCurrentContext());
                 imguizmo.ImGuizmo_Enable(true);
@@ -679,27 +691,54 @@ pub fn update() !quanta.app.UpdateResult {
                 const scale = decomposed.s.data;
                 const rotation = decomposed.r.extractEulerAngles().data;
 
-                entity_position.x = position[0];
-                entity_position.y = position[1];
-                entity_position.z = position[2];
+                const position_change = position - @Vector(3, f32){ entity_position.x, entity_position.y, entity_position.z };
+                const scale_change = if (entity_scale != null) @Vector(3, f32){ entity_scale.?.x, entity_scale.?.y, entity_scale.?.z } - scale else @Vector(3, f32){ 0, 0, 0 };
+                const rotation_change = if (entity_rotation != null) @Vector(3, f32){ entity_rotation.?.x, entity_rotation.?.y, entity_rotation.?.z } - rotation else @Vector(3, f32){ 0, 0, 0 };
 
-                if (entity_rotation != null) {
-                    entity_rotation.?.* = .{ .x = rotation[0], .y = rotation[1], .z = rotation[2] };
-                }
+                for (state.selected_entities.items) |selected_entity| {
+                    const selected_position = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.Position);
+                    const selected_rotation = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.Rotation);
+                    const selected_scale = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.NonUniformScale);
 
-                if (entity_scale != null) {
-                    entity_scale.?.* = .{ .x = scale[0], .y = scale[1], .z = scale[2] };
-                }
+                    if (selected_position != null) {
+                        selected_position.?.* = .{
+                            .x = selected_position.?.x + position_change[0],
+                            .y = selected_position.?.y + position_change[1],
+                            .z = selected_position.?.z + position_change[2],
+                        };
+                    }
 
-                if (state.ecs_scene.entityGetComponent(state.selected_entity.?, quanta_components.RendererMesh)) |mesh| {
-                    const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
+                    if (selected_rotation != null) {
+                        selected_rotation.?.* = .{
+                            .x = selected_rotation.?.x + rotation_change[0],
+                            .y = selected_rotation.?.y + rotation_change[1],
+                            .z = selected_rotation.?.z + rotation_change[2],
+                        };
+                    }
 
-                    const bounding_min = mesh_box.min;
-                    const bounding_max = mesh_box.max;
+                    if (selected_scale != null) {
+                        selected_scale.?.* = .{
+                            .x = selected_scale.?.x + scale_change[0],
+                            .y = selected_scale.?.y + scale_change[1],
+                            .z = selected_scale.?.z + scale_change[2],
+                        };
+                    }
 
-                    widgets.drawBoundingBox(camera_view_projection, manip_matrix, bounding_min, bounding_max);
+                    if (state.ecs_scene.entityGetComponent(selected_entity, quanta_components.RendererMesh)) |mesh| {
+                        const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
+
+                        const bounding_min = mesh_box.min;
+                        const bounding_max = mesh_box.max;
+
+                        //wrong matrix tho
+                        widgets.drawBoundingBox(camera_view_projection, manip_matrix, bounding_min, bounding_max);
+                    }
                 }
             }
+
+            entity_editor.entityViewer(&state.ecs_scene, &state.entity_debugger_commands, state.selected_entity);
+            entity_editor.chunkViewer(&state.ecs_scene);
+            quanta.imgui.log.viewer("Log");
 
             try state.entity_debugger_commands.execute(&state.ecs_scene);
         }

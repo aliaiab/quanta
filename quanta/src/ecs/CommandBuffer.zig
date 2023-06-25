@@ -77,6 +77,18 @@ pub fn entityClone(
     self.addCommand(Command{ .clone_entity = .{ .entity = entity } });
 }
 
+pub fn entityCopy(
+    self: *CommandBuffer,
+    src_entity: Entity,
+    dst_entity: Entity,
+) void {
+    _ = dst_entity;
+    _ = src_entity;
+    _ = self;
+
+    unreachable;
+}
+
 ///Clears the commands from the command buffer
 pub fn clear(self: *CommandBuffer) void {
     self.commands.clearRetainingCapacity();
