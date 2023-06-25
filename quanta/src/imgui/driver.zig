@@ -5,6 +5,8 @@ const glfw = @import("glfw");
 
 var time: i64 = 0;
 
+var cursors: [imgui.ImGuiMouseCursor_COUNT]glfw.Cursor = undefined;
+
 pub fn init() !void {
     const io: *imgui.ImGuiIO = @ptrCast(*imgui.ImGuiIO, imgui.igGetIO());
 
@@ -14,9 +16,25 @@ pub fn init() !void {
     window.window.setKeyCallback(keyCallback);
     window.window.setScrollCallback(scrollCallback);
     window.window.setCursorPosCallback(cursorPosCallback);
+    window.window.setCharCallback(charCallback);
+    window.window.setFocusCallback(focusedCallback);
+
+    cursors[imgui.ImGuiMouseCursor_Arrow] = glfw.Cursor.createStandard(glfw.Cursor.Shape.arrow) orelse return error.FailedToCreateCursor;
+    cursors[imgui.ImGuiMouseCursor_ResizeAll] = glfw.Cursor.createStandard(glfw.Cursor.Shape.resize_all) orelse return error.FailedToCreateCursor;
+    cursors[imgui.ImGuiMouseCursor_ResizeEW] = glfw.Cursor.createStandard(glfw.Cursor.Shape.resize_ew) orelse return error.FailedToCreateCursor;
+    cursors[imgui.ImGuiMouseCursor_ResizeNS] = glfw.Cursor.createStandard(glfw.Cursor.Shape.resize_ns) orelse return error.FailedToCreateCursor;
+    cursors[imgui.ImGuiMouseCursor_ResizeNESW] = glfw.Cursor.createStandard(glfw.Cursor.Shape.resize_nesw) orelse return error.FailedToCreateCursor;
+    cursors[imgui.ImGuiMouseCursor_ResizeNWSE] = glfw.Cursor.createStandard(glfw.Cursor.Shape.resize_nwse) orelse return error.FailedToCreateCursor;
+    cursors[imgui.ImGuiMouseCursor_Hand] = glfw.Cursor.createStandard(glfw.Cursor.Shape.pointing_hand) orelse return error.FailedToCreateCursor;
+    cursors[imgui.ImGuiMouseCursor_TextInput] = glfw.Cursor.createStandard(glfw.Cursor.Shape.ibeam) orelse return error.FailedToCreateCursor;
+    cursors[imgui.ImGuiMouseCursor_NotAllowed] = glfw.Cursor.createStandard(glfw.Cursor.Shape.not_allowed) orelse return error.FailedToCreateCursor;
 }
 
-pub fn deinit() void {}
+pub fn deinit() void {
+    for (cursors) |cursor| {
+        cursor.destroy();
+    }
+}
 
 pub fn begin() !void {
     const io: *imgui.ImGuiIO = @ptrCast(*imgui.ImGuiIO, imgui.igGetIO());
@@ -35,22 +53,48 @@ pub fn begin() !void {
     io.DeltaTime = if (@intToFloat(f32, current_time - time) > 0) @intToFloat(f32, current_time - time) else @as(f32, 1) / @as(f32, 60);
 
     time = current_time;
+
+    updateMouseCursor();
 }
 
 pub fn end() void {}
 
-fn mouseButtonCallback(current_window: glfw.Window, button: glfw.MouseButton, action: glfw.Action, mods: glfw.Mods) void {
-    // if (bd->PrevUserCallbackMousebutton != NULL && window == bd->Window)
-    // bd->PrevUserCallbackMousebutton(window, button, action, mods);
+fn updateMouseCursor() void {
+    const io = @ptrCast(*imgui.ImGuiIO, imgui.igGetIO());
 
-    // ImGui_ImplGlfw_UpdateKeyModifiers(mods);
+    if (io.ConfigFlags & imgui.ImGuiConfigFlags_NoMouseCursorChange == 1 or window.window.getInputMode(.cursor) == @enumToInt(glfw.Window.InputModeCursor.disabled)) {
+        return;
+    }
 
-    _ = current_window;
-    _ = mods;
+    const imgui_cursor = @intCast(usize, imgui.igGetMouseCursor());
 
+    if (imgui_cursor == imgui.ImGuiMouseCursor_None or io.MouseDrawCursor) {
+        window.window.setInputMode(.cursor, .hidden);
+    } else {
+        window.window.setCursor(cursors[imgui_cursor]);
+        window.window.setInputMode(.cursor, .normal);
+    }
+}
+
+fn mouseButtonCallback(_: glfw.Window, button: glfw.MouseButton, action: glfw.Action, mods: glfw.Mods) void {
     const io = imgui.igGetIO();
 
+    imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Ctrl, mods.control);
+    imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Shift, mods.shift);
+    imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Alt, mods.alt);
+    imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Super, mods.super);
+
     imgui.ImGuiIO_AddMouseButtonEvent(io, @enumToInt(button), action == .press);
+}
+
+fn charCallback(_: glfw.Window, codepoint: u21) void {
+    const io = imgui.igGetIO();
+
+    var bytes: [32]u8 = [1]u8{0} ** 32;
+
+    _ = std.unicode.utf8Encode(codepoint, &bytes) catch unreachable;
+
+    imgui.ImGuiIO_AddInputCharactersUTF8(io, &bytes);
 }
 
 fn keyCallback(_: glfw.Window, key: glfw.Key, scancode: i32, action: glfw.Action, mods: glfw.Mods) void {
@@ -74,6 +118,12 @@ fn cursorPosCallback(_: glfw.Window, xpos: f64, ypos: f64) void {
     const io = imgui.igGetIO();
 
     imgui.ImGuiIO_AddMousePosEvent(io, @floatCast(f32, xpos), @floatCast(f32, ypos));
+}
+
+fn focusedCallback(_: glfw.Window, focused: bool) void {
+    const io = imgui.igGetIO();
+
+    imgui.ImGuiIO_AddFocusEvent(io, focused);
 }
 
 fn glfwToImGuiKey(key: glfw.Key) c_uint {

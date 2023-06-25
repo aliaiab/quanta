@@ -702,22 +702,31 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
         }
     }
 
-    const required_components = std.meta.Tuple(required_component_slice);
-    const excluded_component = std.meta.Tuple(excluded_component_slice);
-
-    _ = required_components;
-    _ = excluded_component;
-
     return struct {
         component_store: *const ComponentStore,
         archetype_index: ArchetypeIndex,
         chunk_index: ChunkIndex,
+
+        chunk_entities: [*][*]Entity,
+        chunk_components: ChunkComponents,
+        chunk_entity_counts: [*]*u16,
+        chunk_pointers: [*]*anyopaque,
+        chunk_count: u16,
+        chunk_capacity: u16,
+        chunk_pointer_capacity: u16,
 
         pub fn init(component_store: *const ComponentStore) @This() {
             var self = @This(){
                 .component_store = component_store,
                 .archetype_index = 1,
                 .chunk_index = 0,
+                .chunk_entities = undefined,
+                .chunk_components = undefined,
+                .chunk_entity_counts = undefined,
+                .chunk_count = 0,
+                .chunk_capacity = 0,
+                .chunk_pointer_capacity = 0,
+                .chunk_pointers = undefined,
             };
 
             return self;
@@ -752,6 +761,92 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
                 .is_tuple = false,
             } });
         };
+
+        pub const ChunkComponents = block: {
+            comptime var fields: [required_component_slice.len]std.builtin.Type.StructField = undefined;
+
+            for (required_component_slice, 0..) |component_type, i| {
+                fields[i] = .{
+                    .name = componentName(component_type),
+                    .type = [*][*]component_type,
+                    .default_value = null,
+                    .is_comptime = false,
+                    .alignment = @alignOf([*][*]component_type),
+                };
+            }
+
+            break :block @Type(.{ .Struct = .{
+                .layout = .Auto,
+                .backing_integer = null,
+                .fields = &fields,
+                .decls = &.{},
+                .is_tuple = false,
+            } });
+        };
+
+        pub fn invalidate(self: *@This()) !void {
+            var chunk_count: usize = 0;
+            var chunk_pointer_count: usize = 0;
+
+            const component_type_description = self.component_store.component_index.get(componentId(required_component_slice[0]));
+
+            if (component_type_description == null) return;
+
+            const archetypes: *std.AutoArrayHashMapUnmanaged(ArchetypeIndex, ArchetypeRecord) = &component_type_description.?.archetypes;
+
+            for (archetypes.keys()) |archetype_index| {
+                if (!(self.component_store.archetypeHasAllComponents(self.archetype_index, required_component_slice[1..]) and
+                    !self.component_store.archetypeHasAnyComponents(self.archetype_index, excluded_component_slice) and
+                    self.component_store.archetypes.items[self.archetype_index].chunks.items.len > 0))
+                {
+                    continue;
+                }
+
+                const archetype = &self.component_store.archetypes.items[archetype_index];
+
+                chunk_count += archetype.chunks.items.len;
+
+                for (archetype.chunks.items) |chunk| {
+                    chunk_pointer_count += chunk.row_count * (1 + required_component_slice.len);
+                }
+            }
+
+            self.chunk_count = chunk_count;
+
+            if (self.chunk_count > self.chunk_capacity) {
+                self.chunk_entity_counts = try self.component_store.allocator.realloc(self.chunk_entity_counts[self.chunk_capacity], self.chunk_count);
+                self.chunk_entities = try self.component_store.allocator.realloc(self.chunk_entities[self.chunk_capacity], self.chunk_count);
+                self.chunk_capacity = self.chunk_count;
+            }
+
+            if (chunk_pointer_count > self.chunk_pointer_capacity) {
+                self.chunk_pointers = try self.component_store.allocator.realloc(self.chunk_pointers[self.chunk_pointer_capacity], chunk_pointer_count);
+                self.chunk_pointer_capacity = chunk_pointer_count;
+            }
+
+            var query_chunk_index: usize = 0;
+
+            for (archetypes.keys(), archetypes.values()) |archetype_index, record| {
+                if (!(self.component_store.archetypeHasAllComponents(self.archetype_index, required_component_slice[1..]) and
+                    !self.component_store.archetypeHasAnyComponents(self.archetype_index, excluded_component_slice) and
+                    self.component_store.archetypes.items[self.archetype_index].chunks.items.len > 0))
+                {
+                    continue;
+                }
+
+                defer query_chunk_index += 1;
+
+                const archetype: *Archetype = &self.component_store.archetypes.items[archetype_index];
+
+                for (archetype.chunks.items) |chunk| {
+                    const column: *ChunkColumn = &chunk.columns[record.column];
+
+                    inline for (component_fetches) |component_type| {
+                        @field(self.chunk_components, componentName(component_type))[query_chunk_index] = chunk.getComponents(component_type, column.offset);
+                    }
+                }
+            }
+        }
 
         fn nextArchetype(self: *@This()) ?ArchetypeIndex {
             if (self.archetype_index >= self.component_store.archetypes.items.len) {
@@ -1246,7 +1341,7 @@ fn archetypeGetOrAllocateChunk(
     const archetype: *Archetype = &self.archetypes.items[archetype_index];
 
     if (archetype.chunks.items.len == 0) {
-        const chunk_index = try self.archetypeAllocateChunk(archetype_index, .@"512b");
+        const chunk_index = try self.archetypeAllocateChunk(archetype_index, .@"4kb");
 
         archetype.next_free_chunk_index = @intCast(ChunkIndex, chunk_index);
 
@@ -1260,7 +1355,7 @@ fn archetypeGetOrAllocateChunk(
     const free_row_count = next_free_chunk.max_row_count - next_free_chunk.row_count;
 
     if (free_row_count == 0) {
-        const chunk_index = try self.archetypeAllocateChunk(archetype_index, .@"512b");
+        const chunk_index = try self.archetypeAllocateChunk(archetype_index, .@"4kb");
 
         archetype.next_free_chunk_index = @intCast(ChunkIndex, chunk_index);
 

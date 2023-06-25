@@ -58,7 +58,7 @@ pub fn entitySelector(
 
         var light_query = ecs_scene.query(.{
             quanta.components.Position,
-            quanta.components.PointLight,
+            // quanta.components.PointLight,
         }, .{});
 
         const camera_view = camera.getView();
@@ -111,7 +111,7 @@ pub fn entitySelector(
 pub fn entityViewer(
     ecs_scene: *ComponentStore,
     commands: *CommandBuffer,
-    selected_entity: ?ecs.ComponentStore.Entity,
+    selected_entities: *std.ArrayList(Entity),
 ) void {
     defer widgets.end();
 
@@ -124,7 +124,15 @@ pub fn entityViewer(
             _ = imgui.igSetDragDropPayload("Entity Drag Drop", &entity, @sizeOf(@TypeOf(entity)), imgui.ImGuiCond_None);
         }
 
-        if (widgets.treeNodePush("{}", .{entity}, entity == selected_entity)) {
+        var selected: bool = false;
+
+        for (selected_entities.items) |selected_entity| {
+            if (entity == selected_entity) {
+                selected = true;
+            }
+        }
+
+        if (widgets.treeNodePush("{}", .{entity}, selected)) {
             defer widgets.treeNodePop();
 
             if (widgets.button("Clone")) {

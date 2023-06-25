@@ -692,8 +692,8 @@ pub fn update() !quanta.app.UpdateResult {
                 const rotation = decomposed.r.extractEulerAngles().data;
 
                 const position_change = position - @Vector(3, f32){ entity_position.x, entity_position.y, entity_position.z };
-                const scale_change = if (entity_scale != null) @Vector(3, f32){ entity_scale.?.x, entity_scale.?.y, entity_scale.?.z } - scale else @Vector(3, f32){ 0, 0, 0 };
-                const rotation_change = if (entity_rotation != null) @Vector(3, f32){ entity_rotation.?.x, entity_rotation.?.y, entity_rotation.?.z } - rotation else @Vector(3, f32){ 0, 0, 0 };
+                const scale_change = if (entity_scale != null) scale - @Vector(3, f32){ entity_scale.?.x, entity_scale.?.y, entity_scale.?.z } else @Vector(3, f32){ 0, 0, 0 };
+                const rotation_change = if (entity_rotation != null) rotation - @Vector(3, f32){ entity_rotation.?.x, entity_rotation.?.y, entity_rotation.?.z } else @Vector(3, f32){ 0, 0, 0 };
 
                 for (state.selected_entities.items) |selected_entity| {
                     const selected_position = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.Position);
@@ -730,13 +730,33 @@ pub fn update() !quanta.app.UpdateResult {
                         const bounding_min = mesh_box.min;
                         const bounding_max = mesh_box.max;
 
-                        //wrong matrix tho
-                        widgets.drawBoundingBox(camera_view_projection, manip_matrix, bounding_min, bounding_max);
+                        var matrix = zalgebra.Mat4.identity();
+
+                        matrix = matrix.mul(zalgebra.Mat4.fromTranslate(.{ .data = .{ selected_position.?.x, selected_position.?.y, selected_position.?.z } }));
+
+                        if (selected_rotation != null) {
+                            matrix = matrix.mul(zalgebra.Mat4.fromEulerAngles(.{ .data = .{ selected_rotation.?.x, selected_rotation.?.y, selected_rotation.?.z } }));
+
+                            operation.rotate_x = true;
+                            operation.rotate_y = true;
+                            operation.rotate_z = true;
+                            operation.rotate_screen = true;
+                        }
+
+                        if (selected_scale != null) {
+                            matrix = matrix.mul(zalgebra.Mat4.fromScale(.{ .data = .{ selected_scale.?.x, selected_scale.?.y, selected_scale.?.z } }));
+
+                            operation.scale_x = true;
+                            operation.scale_y = true;
+                            operation.scale_z = true;
+                        }
+
+                        widgets.drawBoundingBox(camera_view_projection, matrix, bounding_min, bounding_max);
                     }
                 }
             }
 
-            entity_editor.entityViewer(&state.ecs_scene, &state.entity_debugger_commands, state.selected_entity);
+            entity_editor.entityViewer(&state.ecs_scene, &state.entity_debugger_commands, &state.selected_entities);
             entity_editor.chunkViewer(&state.ecs_scene);
             quanta.imgui.log.viewer("Log");
 
@@ -749,7 +769,7 @@ pub fn update() !quanta.app.UpdateResult {
             const camera_projection = state.camera.getProjectionNonInverse();
             const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
 
-            var query = state.ecs_scene.query(.{ quanta_components.Position, quanta_components.PointLight }, .{});
+            var query = state.ecs_scene.query(.{quanta_components.Position}, .{});
 
             while (query.nextBlock()) |block| {
                 for (block.Position) |position| {
