@@ -388,7 +388,11 @@ pub fn update() !quanta.app.UpdateResult {
 
         if (state.camera_enable) {
             const sensitivity = 0.1;
-            const camera_speed = @splat(3, @as(f32, 30)) * @splat(3, state.delta_time / 1000);
+            var camera_speed = @splat(3, @as(f32, 30)) * @splat(3, state.delta_time / 1000);
+
+            if (window.window.getKey(.left_control) == .press) {
+                camera_speed *= @splat(3, @as(f32, 2));
+            }
 
             state.yaw += x_offset * sensitivity;
             state.pitch += y_offset * sensitivity;
@@ -411,6 +415,12 @@ pub fn update() !quanta.app.UpdateResult {
                 state.camera_position -= zalgebra.Vec3.norm(zalgebra.Vec3.cross(.{ .data = state.camera_front }, .{ .data = state.camera_up })).mul(.{ .data = camera_speed }).data;
             } else if (window.window.getKey(.d) == .press) {
                 state.camera_position += zalgebra.Vec3.norm(zalgebra.Vec3.cross(.{ .data = state.camera_front }, .{ .data = state.camera_up })).mul(.{ .data = camera_speed }).data;
+            }
+
+            if (window.window.getKey(.space) == .press) {
+                state.camera_position[1] += camera_speed[1];
+            } else if (window.window.getKey(.left_shift) == .press) {
+                state.camera_position[1] -= camera_speed[1];
             }
         }
 
@@ -677,7 +687,7 @@ pub fn update() !quanta.app.UpdateResult {
                     @ptrCast([*]const f32, &camera_view),
                     @ptrCast([*]const f32, &camera_projection),
                     operation,
-                    .world,
+                    imguizmo.Mode.world,
                     @ptrCast([*]f32, &manip_matrix.data),
                     null,
                     null,
