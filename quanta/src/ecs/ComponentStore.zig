@@ -248,7 +248,11 @@ const EntityMap = struct {
     next_entity_index: u32,
     next_entity_generation: u16,
 
-    pub fn addEntity(self: EntityMap, allocator: std.mem.Allocator) !Entity {
+    pub fn deinit(self: *EntityMap, allocator: std.mem.Allocator) void {
+        self.entity_descriptions.deinit(allocator);
+    }
+
+    pub fn addEntity(self: *EntityMap, allocator: std.mem.Allocator) !Entity {
         var entity = EntityData{
             .index = self.next_entity_index,
             .generation = self.next_entity_generation,
@@ -257,7 +261,7 @@ const EntityMap = struct {
 
         try self.entity_descriptions.append(allocator, .{
             .archetype_index = 0,
-            .row_index = 0,
+            .row = .{},
         });
 
         self.next_entity_index += 1;
@@ -265,37 +269,42 @@ const EntityMap = struct {
         return entity.toHandle();
     }
 
-    pub fn removeEntity(self: EntityMap, entity: Entity) void {
+    pub fn removeEntity(self: *EntityMap, entity: Entity) void {
         //We can't do a swap remove (as of now) as it would invalidate
         //The swapped entity description
         // _ = self.entity_index.swapRemove(entity);
 
-        _ = entity;
+        self.get(entity).?.archetype_index = std.math.maxInt(ArchetypeIndex);
+        self.get(entity).?.row = .{};
 
         self.next_entity_generation +%= 1;
     }
 
-    ///Returns null if the entity doesn't exist
-    pub fn get(self: EntityMap, entity: Entity) ?*EntityDescription {
-        var entity_data = EntityData.fromHandle(entity);
+    pub fn contains(self: *EntityMap, entity: Entity) bool {
+        const entity_data = EntityData.fromHandle(entity);
 
-        if (entity_data.index >= self.entity_descriptions.len) {
+        return entity_data.index < self.entity_descriptions.len and self.entity_descriptions.uncheckedAt(entity_data.index).archetype_index != std.math.maxInt(ArchetypeIndex);
+    }
+
+    ///Returns null if the entity doesn't exist
+    pub fn get(self: *EntityMap, entity: Entity) ?*EntityDescription {
+        const entity_data = EntityData.fromHandle(entity);
+
+        if (!self.contains(entity)) {
             return null;
         }
 
-        return self.entity_descriptions.at(entity_data.index);
+        return self.entity_descriptions.uncheckedAt(entity_data.index);
     }
 };
 
 allocator: std.mem.Allocator,
 archetypes: std.ArrayListUnmanaged(Archetype),
 chunk_pool: ChunkPool,
-entity_index: std.AutoArrayHashMapUnmanaged(Entity, EntityDescription),
+entity_map: EntityMap,
 component_index: std.AutoArrayHashMapUnmanaged(ComponentId, ComponentTypeDescription),
 resource_index: std.AutoArrayHashMapUnmanaged(ComponentId, ResourceDescription),
 resource_data: std.ArrayListUnmanaged(u8),
-next_entity_index: u32,
-next_entity_generation: u16,
 
 pub const ResourceDescription = struct {
     offset: u32,
@@ -306,11 +315,13 @@ pub fn init(allocator: std.mem.Allocator) !ComponentStore {
     var self = ComponentStore{
         .allocator = allocator,
         .archetypes = .{},
-        .entity_index = .{},
+        .entity_map = .{
+            .entity_descriptions = .{},
+            .next_entity_index = 0,
+            .next_entity_generation = 0,
+        },
         .component_index = .{},
         .chunk_pool = try ChunkPool.init(allocator, 4),
-        .next_entity_index = 0,
-        .next_entity_generation = 0,
         .resource_index = .{},
         .resource_data = .{},
     };
@@ -344,7 +355,7 @@ pub fn deinit(self: *ComponentStore) void {
 
     self.archetypes.deinit(self.allocator);
     self.chunk_pool.deinit(self.allocator);
-    self.entity_index.deinit(self.allocator);
+    self.entity_map.deinit(self.allocator);
     self.component_index.deinit(self.allocator);
 
     self.* = undefined;
@@ -370,40 +381,27 @@ pub fn getResource(self: ComponentStore, comptime T: type) *T {
     return @ptrCast(*T, @alignCast(@alignOf(T), pointer));
 }
 
-pub fn getEntities(self: ComponentStore) []const Entity {
-    return self.entity_index.keys();
-}
-
 ///Creates a new entity handle adds components to it.
 ///The returned entity handle is guaranteed to be new and unique
 pub fn entityCreate(self: *ComponentStore, components: anytype) !Entity {
-    var entity = EntityData{
-        .index = self.next_entity_index,
-        .generation = self.next_entity_generation,
-        .flags = .{},
-    };
-
-    try self.entity_index.put(self.allocator, entity.toHandle(), .{
-        .archetype_index = 0,
-        .row = .{},
-    });
-
-    self.next_entity_index += 1;
+    const entity = try self.entity_map.addEntity(self.allocator);
 
     if (std.meta.fields(@TypeOf(components)).len > 0) {
-        try self.entityAddComponents(entity.toHandle(), components);
+        try self.entityAddComponents(entity, components);
     }
 
-    return entity.toHandle();
+    return entity;
 }
 
 ///Removes all components on an entity and invalidates the entity handle
 pub fn entityDestroy(self: *ComponentStore, entity: Entity) void {
     self.entityClear(entity);
 
-    _ = self.entity_index.swapRemove(entity);
+    // _ = self.entity_index.swapRemove(entity);
 
-    self.next_entity_generation +%= 1;
+    self.entity_map.removeEntity(entity);
+
+    // self.next_entity_generation +%= 1;
 }
 
 ///Creates a new entity with identical components to entity
@@ -411,8 +409,8 @@ pub fn entityClone(self: *ComponentStore, src_entity: Entity) !Entity {
     const dst_entity = try self.entityCreate(.{});
     errdefer self.entityDestroy(dst_entity);
 
-    const src_entity_desc = self.entity_index.getPtr(src_entity) orelse unreachable;
-    const dest_entity_desc = self.entity_index.getPtr(dst_entity) orelse unreachable;
+    const src_entity_desc = self.entity_map.get(src_entity) orelse unreachable;
+    const dest_entity_desc = self.entity_map.get(dst_entity) orelse unreachable;
 
     const row = try self.archetypeAddRow(src_entity_desc.archetype_index, dst_entity);
 
@@ -430,7 +428,7 @@ pub fn entityClone(self: *ComponentStore, src_entity: Entity) !Entity {
 
 ///Removes all components on an entity, returning it to the empty state
 pub fn entityClear(self: *ComponentStore, entity: Entity) void {
-    const entity_description = self.entity_index.getPtr(entity).?;
+    const entity_description = self.entity_map.get(entity).?;
 
     self.archetypeRemoveRow(entity_description.archetype_index, entity_description.row);
 
@@ -451,7 +449,7 @@ pub fn entityAddComponent(
 
     const component_type = componentType(T);
 
-    const entity_description = self.entity_index.getPtr(entity).?;
+    const entity_description = self.entity_map.get(entity).?;
 
     const source_archetype_index = entity_description.archetype_index;
 
@@ -499,7 +497,7 @@ pub fn entityRemoveComponentId(
     entity: Entity,
     component_id: ComponentId,
 ) !void {
-    const entity_description = self.entity_index.getPtr(entity).?;
+    const entity_description = self.entity_map.get(entity).?;
 
     const source_archetype_index = entity_description.archetype_index;
 
@@ -536,7 +534,7 @@ pub fn entityGetComponent(
 ) ?*T {
     const component_id = componentId(T);
 
-    const entity_description = self.entity_index.get(entity) orelse return null;
+    const entity_description = self.entity_map.get(entity) orelse return null;
     const entity_archetype: *const Archetype = &self.archetypes.items[entity_description.archetype_index];
     const entity_chunk: *const Chunk = &entity_archetype.chunks.items[entity_description.row.chunk_index];
 
@@ -556,7 +554,7 @@ pub fn entityExists(
     self: *ComponentStore,
     entity: Entity,
 ) bool {
-    return self.entity_index.contains(entity);
+    return self.entity_map.contains(entity);
 }
 
 ///Returns true if the entity has no components
@@ -564,7 +562,7 @@ pub fn entityIsEmpty(
     self: *ComponentStore,
     entity: Entity,
 ) bool {
-    const entity_description = self.entity_index.get(entity).?;
+    const entity_description = self.entity_map.get(entity).?;
 
     return entity_description.archetype_index == 0;
 }
@@ -577,7 +575,7 @@ pub fn entityHasComponent(
 ) bool {
     const component_id = componentId(T);
 
-    const entity_description = self.entity_index.get(entity).?;
+    const entity_description = self.entity_map.get(entity).?;
 
     const component_archetypes = self.component_index.get(component_id) orelse return false;
 
@@ -604,7 +602,7 @@ pub fn entityCount(
     self: *ComponentStore,
     entity: Entity,
 ) usize {
-    const entity_data = self.entity_index.get(entity).?;
+    const entity_data = self.entity_map.get(entity).?;
 
     const archetype = &self.archetypes.items[entity_data.archetype_index];
 
@@ -617,8 +615,8 @@ pub fn entitiesAreIsomers(
     entity_a: Entity,
     entity_b: Entity,
 ) bool {
-    const entity_a_data = self.entity_index.get(entity_a).?;
-    const entity_b_data = self.entity_index.get(entity_b).?;
+    const entity_a_data = self.entity_map.get(entity_a).?;
+    const entity_b_data = self.entity_map.get(entity_b).?;
 
     return entity_a_data.archetype_index == entity_b_data.archetype_index;
 }
@@ -628,7 +626,7 @@ pub fn entityGetComponentTypes(
     self: *ComponentStore,
     entity: Entity,
 ) []const *const reflect.Type {
-    const entity_data = self.entity_index.get(entity).?;
+    const entity_data = self.entity_map.get(entity).?;
 
     const archetype: *Archetype = &self.archetypes.items[entity_data.archetype_index];
 
@@ -640,7 +638,7 @@ pub fn entityGetComponentPtr(
     entity: Entity,
     component_id: ComponentId,
 ) *anyopaque {
-    const entity_description = self.entity_index.get(entity).?;
+    const entity_description = self.entity_map.get(entity).?;
     const entity_archetype: *const Archetype = &self.archetypes.items[entity_description.archetype_index];
     const entity_chunk: *const Chunk = &entity_archetype.chunks.items[entity_description.row.chunk_index];
 
@@ -1406,7 +1404,7 @@ fn archetypeAddRow(
 
     entities[entities.len - 1] = entity;
 
-    const entity_description = self.entity_index.getPtr(entity).?;
+    const entity_description = self.entity_map.get(entity).?;
 
     const row = RowLocation{
         .chunk_index = chunk_index,
@@ -1459,7 +1457,7 @@ fn archetypeRemoveRow(
 
     std.mem.swap(Entity, &entities[row.row_index], &entities[entities.len - 1]);
 
-    const entity_to_update_description = self.entity_index.getPtr(entity_to_update) orelse return;
+    const entity_to_update_description = self.entity_map.get(entity_to_update) orelse return;
 
     entity_to_update_description.row = row;
 
@@ -1524,12 +1522,14 @@ fn archetypeMoveRow(
     var destination_chunk: *Chunk = &destination_archetype.chunks.items[destination_row.chunk_index];
 
     const minimum_length = std.math.min(source_chunk.columns.len, destination_chunk.columns.len);
+    const maximum_length = std.math.max(source_chunk.columns.len, destination_chunk.columns.len);
+    _ = maximum_length;
 
     for (0..minimum_length) |i| {
         var source_column = &source_chunk.columns[i];
         var destination_column = &destination_chunk.columns[i];
 
-        const src_id = source_archetype.component_ids.items[i];
+        var src_id = source_archetype.component_ids.items[i];
         var dst_id = destination_archetype.component_ids.items[i];
 
         if (src_id != dst_id) {
@@ -1543,8 +1543,25 @@ fn archetypeMoveRow(
                     break;
                 }
             }
+        }
 
-            continue;
+        if (src_id != dst_id) {
+            for (source_chunk.columns[0..], 0..) |*new_source_column, j| {
+                const new_src_id = source_archetype.component_ids.items[j];
+
+                if (dst_id == new_src_id) {
+                    src_id = new_src_id;
+                    source_column = new_source_column;
+
+                    break;
+                }
+            }
+        }
+
+        //not entirely sure what's happening here, if this is called as part of the removeComponent
+        //procedure then this makes sense, but I don't know why it's causing corrupted component data
+        if (src_id != dst_id) {
+            std.debug.assert(false);
         }
 
         std.debug.assert(src_id == dst_id);
@@ -1574,7 +1591,7 @@ fn archetypeMoveRow(
 
     std.mem.swap(Entity, &entities[source_row.row_index], &entities[entities.len - 1]);
 
-    const entity_to_update_description = self.entity_index.getPtr(entity_to_update).?;
+    const entity_to_update_description = self.entity_map.get(entity_to_update).?;
 
     entity_to_update_description.row = source_row;
 
@@ -1593,7 +1610,7 @@ fn archetypeHasAllComponents(
     comptime components: anytype,
 ) bool {
     if (components.len == 0) {
-        return false;
+        return true;
     }
 
     inline for (components) |Component| {

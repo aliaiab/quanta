@@ -117,203 +117,207 @@ pub fn entityViewer(
 
     if (!widgets.begin("Entity Debugger")) return;
 
-    for (ecs_scene.getEntities()) |entity| {
-        if (imgui.igBeginDragDropSource(imgui.ImGuiDragDropFlags_SourceAllowNullID)) {
-            defer imgui.igEndDragDropSource();
+    var query = ecs_scene.query(.{}, .{});
 
-            _ = imgui.igSetDragDropPayload("Entity Drag Drop", &entity, @sizeOf(@TypeOf(entity)), imgui.ImGuiCond_None);
-        }
+    while (query.nextBlock()) |block| {
+        for (block.entities) |entity| {
+            if (imgui.igBeginDragDropSource(imgui.ImGuiDragDropFlags_SourceAllowNullID)) {
+                defer imgui.igEndDragDropSource();
 
-        var selected: bool = false;
-
-        for (selected_entities.items) |selected_entity| {
-            if (entity == selected_entity) {
-                selected = true;
-            }
-        }
-
-        if (widgets.treeNodePush("{}", .{entity}, selected)) {
-            defer widgets.treeNodePop();
-
-            if (widgets.button("Clone")) {
-                commands.entityClone(entity);
+                _ = imgui.igSetDragDropPayload("Entity Drag Drop", &entity, @sizeOf(@TypeOf(entity)), imgui.ImGuiCond_None);
             }
 
-            imgui.igSameLine(0, 10);
+            var selected: bool = false;
 
-            if (widgets.button("Clear")) {
-                commands.entityClear(entity);
+            for (selected_entities.items) |selected_entity| {
+                if (entity == selected_entity) {
+                    selected = true;
+                }
             }
 
-            imgui.igSameLine(0, 10);
+            if (widgets.treeNodePush("{}", .{entity}, selected)) {
+                defer widgets.treeNodePop();
 
-            if (widgets.button("Destroy")) {
-                commands.entityDestroy(entity);
-            }
+                if (widgets.button("Clone")) {
+                    commands.entityClone(entity);
+                }
 
-            for (ecs_scene.entityGetComponentTypes(entity)) |component_type_info| {
-                imgui.igSeparator();
+                imgui.igSameLine(0, 10);
 
-                if (widgets.collapsingHeader("{s}", .{component_type_info.name()})) {
-                    var header_min: imgui.ImVec2 = undefined;
-                    var header_max: imgui.ImVec2 = undefined;
+                if (widgets.button("Clear")) {
+                    commands.entityClear(entity);
+                }
 
-                    imgui.igGetItemRectMin(&header_min);
-                    imgui.igGetItemRectMin(&header_max);
+                imgui.igSameLine(0, 10);
 
-                    imgui.igPushID_Str(component_type_info.name().ptr);
-                    defer imgui.igPopID();
+                if (widgets.button("Destroy")) {
+                    commands.entityDestroy(entity);
+                }
 
-                    if (widgets.button("Remove Component")) {
-                        commands.addCommand(.{ .remove_component = .{
-                            .entity = entity,
-                            .component_id = component_type_info,
-                        } });
-                    }
+                for (ecs_scene.entityGetComponentTypes(entity)) |component_type_info| {
+                    imgui.igSeparator();
 
-                    if (component_type_info == quanta.reflect.Type.info(ComponentStore.Entity)) {
-                        const ptr_to_entity = @ptrCast(*ComponentStore.Entity, @alignCast(@alignOf(ComponentStore.Entity), ecs_scene.entityGetComponentPtr(entity, component_type_info)));
+                    if (widgets.collapsingHeader("{s}", .{component_type_info.name()})) {
+                        var header_min: imgui.ImVec2 = undefined;
+                        var header_max: imgui.ImVec2 = undefined;
 
-                        if (imgui.igBeginDragDropTarget()) {
-                            defer imgui.igEndDragDropTarget();
+                        imgui.igGetItemRectMin(&header_min);
+                        imgui.igGetItemRectMin(&header_max);
 
-                            const payload = imgui.igAcceptDragDropPayload("Entity Drag Drop", imgui.ImGuiDragDropFlags_AcceptBeforeDelivery);
+                        imgui.igPushID_Str(component_type_info.name().ptr);
+                        defer imgui.igPopID();
 
-                            if (!payload.*.Preview) {
-                                const dragged_entity = @ptrCast(*ComponentStore.Entity, @alignCast(@alignOf(ComponentStore.Entity), payload.*.Data.?));
-
-                                ptr_to_entity.* = dragged_entity.*;
-                            }
+                        if (widgets.button("Remove Component")) {
+                            commands.addCommand(.{ .remove_component = .{
+                                .entity = entity,
+                                .component_id = component_type_info,
+                            } });
                         }
 
-                        if (ecs_scene.entityExists(ptr_to_entity.*)) {
-                            if (imgui.igSmallButton("x")) {
-                                ptr_to_entity.* = ComponentStore.Entity.nil;
+                        if (component_type_info == quanta.reflect.Type.info(ComponentStore.Entity)) {
+                            const ptr_to_entity = @ptrCast(*ComponentStore.Entity, @alignCast(@alignOf(ComponentStore.Entity), ecs_scene.entityGetComponentPtr(entity, component_type_info)));
+
+                            if (imgui.igBeginDragDropTarget()) {
+                                defer imgui.igEndDragDropTarget();
+
+                                const payload = imgui.igAcceptDragDropPayload("Entity Drag Drop", imgui.ImGuiDragDropFlags_AcceptBeforeDelivery);
+
+                                if (!payload.*.Preview) {
+                                    const dragged_entity = @ptrCast(*ComponentStore.Entity, @alignCast(@alignOf(ComponentStore.Entity), payload.*.Data.?));
+
+                                    ptr_to_entity.* = dragged_entity.*;
+                                }
                             }
 
-                            imgui.igSameLine(0, 5);
-                        }
+                            if (ecs_scene.entityExists(ptr_to_entity.*)) {
+                                if (imgui.igSmallButton("x")) {
+                                    ptr_to_entity.* = ComponentStore.Entity.nil;
+                                }
 
-                        if (ecs_scene.entityExists(ptr_to_entity.*)) {
-                            widgets.textFormat("{}", .{ptr_to_entity.*});
+                                imgui.igSameLine(0, 5);
+                            }
+
+                            if (ecs_scene.entityExists(ptr_to_entity.*)) {
+                                widgets.textFormat("{}", .{ptr_to_entity.*});
+                            } else {
+                                widgets.text("null");
+                            }
                         } else {
-                            widgets.text("null");
-                        }
-                    } else {
-                        //Find meta data related to this editor
-                        const edit_info = component_type_info.*.getDecl("editor");
+                            //Find meta data related to this editor
+                            const edit_info = component_type_info.*.getDecl("editor");
 
-                        switch (component_type_info.*) {
-                            .Struct => |struct_info| {
-                                for (struct_info.fields) |field| {
-                                    const field_editor_info = if (edit_info == null) null else edit_info.?.type.getStructField(field.name);
+                            switch (component_type_info.*) {
+                                .Struct => |struct_info| {
+                                    for (struct_info.fields) |field| {
+                                        const field_editor_info = if (edit_info == null) null else edit_info.?.type.getStructField(field.name);
 
-                                    switch (field.type.*) {
-                                        .Bool => {
-                                            const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
-                                            const ptr_to_field = @ptrCast([*]u8, ptr_to_struct) + field.offset;
+                                        switch (field.type.*) {
+                                            .Bool => {
+                                                const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
+                                                const ptr_to_field = @ptrCast([*]u8, ptr_to_struct) + field.offset;
 
-                                            const ptr_to_bool = @ptrCast(*bool, ptr_to_field);
+                                                const ptr_to_bool = @ptrCast(*bool, ptr_to_field);
 
-                                            _ = imgui.igCheckbox(field.name.ptr, ptr_to_bool);
-                                        },
-                                        .Int => unreachable,
-                                        .Float => {
-                                            const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
+                                                _ = imgui.igCheckbox(field.name.ptr, ptr_to_bool);
+                                            },
+                                            .Int => unreachable,
+                                            .Float => {
+                                                const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
 
-                                            const ptr_to_field = @ptrCast([*]u8, ptr_to_struct) + field.offset;
+                                                const ptr_to_field = @ptrCast([*]u8, ptr_to_struct) + field.offset;
 
-                                            const ptr_to_float: *f32 = @ptrCast(*f32, @alignCast(@alignOf(f32), ptr_to_field));
+                                                const ptr_to_float: *f32 = @ptrCast(*f32, @alignCast(@alignOf(f32), ptr_to_field));
 
-                                            widgets.dragFloat(field.name, ptr_to_float);
-                                        },
-                                        .Array => |array_info| {
-                                            const ptr_to_array = @ptrCast([*]u8, ecs_scene.entityGetComponentPtr(entity, component_type_info)) + field.offset;
+                                                widgets.dragFloat(field.name, ptr_to_float);
+                                            },
+                                            .Array => |array_info| {
+                                                const ptr_to_array = @ptrCast([*]u8, ecs_scene.entityGetComponentPtr(entity, component_type_info)) + field.offset;
 
-                                            switch (array_info.len) {
-                                                1 => unreachable,
-                                                2 => unreachable,
-                                                3 => {
-                                                    const array_ptr_f32 = @ptrCast(*f32, @alignCast(@alignOf(f32), ptr_to_array));
+                                                switch (array_info.len) {
+                                                    1 => unreachable,
+                                                    2 => unreachable,
+                                                    3 => {
+                                                        const array_ptr_f32 = @ptrCast(*f32, @alignCast(@alignOf(f32), ptr_to_array));
 
-                                                    if (field_editor_info == null) {
-                                                        _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.f32_min, std.math.f32_max, null, 0);
+                                                        if (field_editor_info == null) {
+                                                            _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.f32_min, std.math.f32_max, null, 0);
 
-                                                        continue;
-                                                    }
+                                                            continue;
+                                                        }
 
-                                                    widgets.textFormat("{any}", .{field_editor_info});
+                                                        widgets.textFormat("{any}", .{field_editor_info});
 
-                                                    const edit_type_field = field_editor_info.?.type.getStructField("edit_type");
+                                                        const edit_type_field = field_editor_info.?.type.getStructField("edit_type");
 
-                                                    const edit_type_ptr = quanta.reflect.Type.getStructFieldValue([]const u8, edit_info.?.value, edit_type_field.?);
+                                                        const edit_type_ptr = quanta.reflect.Type.getStructFieldValue([]const u8, edit_info.?.value, edit_type_field.?);
 
-                                                    widgets.textFormat("edit_type = {s}", .{edit_type_ptr.*});
+                                                        widgets.textFormat("edit_type = {s}", .{edit_type_ptr.*});
 
-                                                    if (std.mem.eql(u8, edit_type_ptr.*, "color")) {
-                                                        _ = imgui.igColorEdit3(field.name.ptr, array_ptr_f32, 0);
-                                                    } else {
-                                                        _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.f32_min, std.math.f32_max, null, 0);
-                                                    }
-                                                },
-                                                else => unreachable,
-                                            }
-                                        },
-                                        else => {
-                                            widgets.textFormat("{s} = {*}", .{ field.name, ecs_scene.entityGetComponentPtr(entity, component_type_info) });
-                                        },
+                                                        if (std.mem.eql(u8, edit_type_ptr.*, "color")) {
+                                                            _ = imgui.igColorEdit3(field.name.ptr, array_ptr_f32, 0);
+                                                        } else {
+                                                            _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.f32_min, std.math.f32_max, null, 0);
+                                                        }
+                                                    },
+                                                    else => unreachable,
+                                                }
+                                            },
+                                            else => {
+                                                widgets.textFormat("{s} = {*}", .{ field.name, ecs_scene.entityGetComponentPtr(entity, component_type_info) });
+                                            },
+                                        }
                                     }
-                                }
-                            },
-                            .Enum => |enum_info| {
-                                const ptr_to_enum = @ptrCast([*]u8, ecs_scene.entityGetComponentPtr(entity, component_type_info));
+                                },
+                                .Enum => |enum_info| {
+                                    const ptr_to_enum = @ptrCast([*]u8, ecs_scene.entityGetComponentPtr(entity, component_type_info));
 
-                                var items: [256][*c]const u8 = undefined;
+                                    var items: [256][*c]const u8 = undefined;
 
-                                for (enum_info.fields, 0..) |field, i| {
-                                    items[i] = field.name.ptr;
-                                }
-
-                                var current_item: c_int = @intCast(c_int, ptr_to_enum[0]);
-
-                                if (imgui.igCombo_Str_arr("value", &current_item, &items, @intCast(c_int, enum_info.fields.len), 0)) {
-                                    ptr_to_enum[0] = @intCast(u8, current_item);
-                                }
-                            },
-                            .Union => |union_info| {
-                                const ptr_to_enum = @ptrCast([*]u8, ecs_scene.entityGetComponentPtr(entity, component_type_info)) + union_info.tag_offset;
-
-                                var items: [256][*c]const u8 = undefined;
-
-                                for (union_info.fields, 0..) |field, i| {
-                                    items[i] = field.name.ptr;
-
-                                    widgets.textFormat("{s}", .{field.name});
-                                }
-
-                                var current_item: c_int = @intCast(c_int, ptr_to_enum[0]);
-
-                                if (imgui.igCombo_Str_arr("value", &current_item, &items, @intCast(c_int, union_info.fields.len), 0)) {
-                                    ptr_to_enum[0] = @intCast(u8, current_item);
-                                }
-
-                                for (union_info.fields, 0..) |field, i| {
-                                    if (i != @intCast(usize, current_item)) {
-                                        // continue;
+                                    for (enum_info.fields, 0..) |field, i| {
+                                        items[i] = field.name.ptr;
                                     }
 
-                                    widgets.textFormat("{s}", .{field.name});
+                                    var current_item: c_int = @intCast(c_int, ptr_to_enum[0]);
 
-                                    switch (field.type.*) {
-                                        .Int => |int_info| {
-                                            widgets.textFormat("{}", .{int_info});
-                                        },
-                                        .Void => {},
-                                        else => {},
+                                    if (imgui.igCombo_Str_arr("value", &current_item, &items, @intCast(c_int, enum_info.fields.len), 0)) {
+                                        ptr_to_enum[0] = @intCast(u8, current_item);
                                     }
-                                }
-                            },
-                            else => {},
+                                },
+                                .Union => |union_info| {
+                                    const ptr_to_enum = @ptrCast([*]u8, ecs_scene.entityGetComponentPtr(entity, component_type_info)) + union_info.tag_offset;
+
+                                    var items: [256][*c]const u8 = undefined;
+
+                                    for (union_info.fields, 0..) |field, i| {
+                                        items[i] = field.name.ptr;
+
+                                        widgets.textFormat("{s}", .{field.name});
+                                    }
+
+                                    var current_item: c_int = @intCast(c_int, ptr_to_enum[0]);
+
+                                    if (imgui.igCombo_Str_arr("value", &current_item, &items, @intCast(c_int, union_info.fields.len), 0)) {
+                                        ptr_to_enum[0] = @intCast(u8, current_item);
+                                    }
+
+                                    for (union_info.fields, 0..) |field, i| {
+                                        if (i != @intCast(usize, current_item)) {
+                                            // continue;
+                                        }
+
+                                        widgets.textFormat("{s}", .{field.name});
+
+                                        switch (field.type.*) {
+                                            .Int => |int_info| {
+                                                widgets.textFormat("{}", .{int_info});
+                                            },
+                                            .Void => {},
+                                            else => {},
+                                        }
+                                    }
+                                },
+                                else => {},
+                            }
                         }
                     }
                 }
