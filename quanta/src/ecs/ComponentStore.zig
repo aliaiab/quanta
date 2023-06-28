@@ -1533,7 +1533,7 @@ fn archetypeMoveRow(
         var dst_id = destination_archetype.component_ids.items[i];
 
         if (src_id != dst_id) {
-            for (destination_chunk.columns[i..], 0..) |*new_destination_column, j| {
+            for (destination_chunk.columns[0..], 0..) |*new_destination_column, j| {
                 const new_dst_id = destination_archetype.component_ids.items[j];
 
                 if (src_id == new_dst_id) {
