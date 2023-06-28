@@ -883,17 +883,15 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             var archetype_index: ArchetypeIndex = self.nextArchetype() orelse return null;
             var archetype: *const Archetype = &self.component_store.archetypes.items[archetype_index];
 
+            if (self.chunk_index >= archetype.chunks.items.len) {
+                return null;
+            }
+
             var chunk = &archetype.chunks.items[self.chunk_index];
 
-            while (chunk.data == null or chunk.row_count == 0) {
+            if (chunk.data == null or chunk.row_count == 0) {
                 self.chunk_index += 1;
-
-                if (self.chunk_index >= archetype.chunks.items.len) {
-                    archetype_index = self.nextArchetype() orelse return null;
-                    archetype = &self.component_store.archetypes.items[archetype_index];
-                }
-
-                chunk = &archetype.chunks.items[self.chunk_index];
+                return self.nextBlock();
             }
 
             var block: Block = undefined;

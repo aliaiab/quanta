@@ -279,12 +279,12 @@ pub fn init() !void {
     });
 
     const entity_a = try state.ecs_scene.entityCreate(.{
+        quanta_components.Position{ .x = 0, .y = -2, .z = 0 },
+        quanta_components.Velocity{ .x = 0, .y = 1, .z = 0 },
         quanta_components.Force{ .x = 2, .y = 9.81, .z = 0 },
         quanta_components.Mass{ .value = 10 },
-        quanta_components.RendererMesh{ .mesh = state.test_scene_meshes[0], .material = state.test_scene_materials[0] },
-        quanta_components.Velocity{ .x = 0, .y = 1, .z = 0 },
-        quanta_components.Position{ .x = 0, .y = -2, .z = 0 },
         quanta_components.TerminalVelocity{ .x = 0, .y = 0.01, .z = 0 },
+        quanta_components.RendererMesh{ .mesh = state.test_scene_meshes[0], .material = state.test_scene_materials[0] },
     });
 
     std.debug.assert(state.ecs_scene.entitiesAreIsomers(entity_a, entity_b));
