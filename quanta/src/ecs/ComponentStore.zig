@@ -244,12 +244,48 @@ pub const ComponentTypeDescription = struct {
 ///Defines a unique mapping of entiy ids to storage locations
 ///Allows random access of stable entity ids
 const EntityMap = struct {
-    entity_descriptions: std.SegmentedList(EntityDescription, 0),
-    next_entity_index: u32,
-    next_entity_generation: u16,
+    ///Number of entities per entity description chunk
+    pub const chunk_size: usize = 1024;
+
+    chunks: std.ArrayListUnmanaged(*[chunk_size]EntityDescription) = .{},
+    entity_count: u32 = 0,
+    next_entity_index: u32 = 0,
+    next_entity_generation: u16 = 0,
 
     pub fn deinit(self: *EntityMap, allocator: std.mem.Allocator) void {
-        self.entity_descriptions.deinit(allocator);
+        for (self.chunks.items) |chunk| {
+            allocator.destroy(chunk);
+        }
+
+        self.chunks.deinit(allocator);
+    }
+
+    pub fn createChunk(self: *EntityMap, allocator: std.mem.Allocator) !*[chunk_size]EntityDescription {
+        const chunk = try allocator.create([chunk_size]EntityDescription);
+        errdefer allocator.destroy(chunk);
+
+        try self.chunks.append(allocator, chunk);
+
+        return chunk;
+    }
+
+    pub fn getFreeChunk(self: *EntityMap, allocator: std.mem.Allocator) !*[chunk_size]EntityDescription {
+        const chunk_index = self.entity_count / chunk_size;
+
+        if (chunk_index >= self.chunks.items.len) {
+            _ = try self.createChunk(allocator);
+        }
+
+        return self.chunks.items[chunk_index];
+    }
+
+    pub fn mapEntity(self: *EntityMap, allocator: std.mem.Allocator, entity: Entity) !*EntityDescription {
+        self.entity_count += 1;
+
+        const chunk = try self.getFreeChunk(allocator);
+        _ = chunk;
+
+        return self.getUnchecked(entity);
     }
 
     pub fn addEntity(self: *EntityMap, allocator: std.mem.Allocator) !Entity {
@@ -259,10 +295,10 @@ const EntityMap = struct {
             .flags = .{},
         };
 
-        try self.entity_descriptions.append(allocator, .{
-            .archetype_index = 0,
-            .row = .{},
-        });
+        const description = try self.mapEntity(allocator, entity.toHandle());
+
+        description.archetype_index = 0;
+        description.row = .{};
 
         self.next_entity_index += 1;
 
@@ -271,11 +307,9 @@ const EntityMap = struct {
 
     pub fn removeEntity(self: *EntityMap, entity: Entity) void {
         //We can't do a swap remove (as of now) as it would invalidate
-        //The swapped entity description
-        // _ = self.entity_index.swapRemove(entity);
 
-        self.get(entity).?.archetype_index = std.math.maxInt(ArchetypeIndex);
-        self.get(entity).?.row = .{};
+        self.getUnchecked(entity).archetype_index = std.math.maxInt(ArchetypeIndex);
+        self.getUnchecked(entity).row = .{};
 
         self.next_entity_generation +%= 1;
     }
@@ -283,18 +317,33 @@ const EntityMap = struct {
     pub fn contains(self: *EntityMap, entity: Entity) bool {
         const entity_data = EntityData.fromHandle(entity);
 
-        return entity_data.index < self.entity_descriptions.len and self.entity_descriptions.uncheckedAt(entity_data.index).archetype_index != std.math.maxInt(ArchetypeIndex);
+        return entity_data.index < self.entity_count and
+            self.getUnchecked(entity).archetype_index != std.math.maxInt(ArchetypeIndex);
     }
 
     ///Returns null if the entity doesn't exist
     pub fn get(self: *EntityMap, entity: Entity) ?*EntityDescription {
-        const entity_data = EntityData.fromHandle(entity);
-
         if (!self.contains(entity)) {
             return null;
         }
 
-        return self.entity_descriptions.uncheckedAt(entity_data.index);
+        return self.getUnchecked(entity);
+    }
+
+    pub fn getUnchecked(self: *EntityMap, entity: Entity) *EntityDescription {
+        @setRuntimeSafety(false);
+
+        const entity_data = EntityData.fromHandle(entity);
+
+        const index = entity_data.index;
+
+        const chunk_index = index / chunk_size;
+
+        const offset = index - (chunk_index * chunk_size);
+
+        const chunk = self.chunks.items[chunk_index];
+
+        return &chunk[offset];
     }
 };
 
@@ -315,11 +364,7 @@ pub fn init(allocator: std.mem.Allocator) !ComponentStore {
     var self = ComponentStore{
         .allocator = allocator,
         .archetypes = .{},
-        .entity_map = .{
-            .entity_descriptions = .{},
-            .next_entity_index = 0,
-            .next_entity_generation = 0,
-        },
+        .entity_map = .{},
         .component_index = .{},
         .chunk_pool = try ChunkPool.init(allocator, 4),
         .resource_index = .{},
@@ -397,11 +442,7 @@ pub fn entityCreate(self: *ComponentStore, components: anytype) !Entity {
 pub fn entityDestroy(self: *ComponentStore, entity: Entity) void {
     self.entityClear(entity);
 
-    // _ = self.entity_index.swapRemove(entity);
-
     self.entity_map.removeEntity(entity);
-
-    // self.next_entity_generation +%= 1;
 }
 
 ///Creates a new entity with identical components to entity
