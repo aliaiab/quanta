@@ -12,9 +12,10 @@ pub fn build(builder: *std.build.Builder) !void {
     comptime {
         const current_zig_version = builtin.zig_version;
 
-        const min_zig_version = std.SemanticVersion.parse("0.11.0-dev.2266+49e33a2f2") catch unreachable;
+        const min_zig_version = std.SemanticVersion.parse("0.11.0-dev.3890+43c98dc11") catch unreachable;
+        const order = current_zig_version.order(min_zig_version);
 
-        if (current_zig_version.order(min_zig_version) == .lt) {
+        if (!(order == .eq or order == .gt)) {
             @compileError(std.fmt.comptimePrint("Your Zig version v{} does not meet the minimum build requirement of v{}", .{ current_zig_version, min_zig_version }));
         }
     }
@@ -37,7 +38,7 @@ pub fn build(builder: *std.build.Builder) !void {
             .optimize = mode,
         });
 
-        exe.install();
+        builder.installArtifact(exe);
 
         exe.addModule("quanta", quanta_module);
         try quanta_build.link(builder, exe, "");
@@ -66,7 +67,7 @@ pub fn build(builder: *std.build.Builder) !void {
             .optimize = mode,
         });
 
-        exe.install();
+        builder.installArtifact(exe);
 
         exe.addModule("quanta", quanta_module);
         try quanta_build.link(builder, exe, "");

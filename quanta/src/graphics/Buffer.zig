@@ -24,8 +24,8 @@ pub fn initData(comptime T: type, data: []const T, usage: Usage) !Buffer {
     if (usage == .staging) {
         const use_host_memory = false;
 
-        if (use_host_memory and std.mem.isAligned(@ptrToInt(data.ptr), 0b1000)) {
-            var buffer = try initDataHostMemory(.staging, @ptrCast([*]const u8, data.ptr)[0 .. data.len * @sizeOf(T)]);
+        if (use_host_memory and std.mem.isAligned(@intFromPtr(data.ptr), 0b1000)) {
+            var buffer = try initDataHostMemory(.staging, @as([*]const u8, @ptrCast(data.ptr))[0 .. data.len * @sizeOf(T)]);
 
             return buffer;
         } else {
@@ -35,7 +35,9 @@ pub fn initData(comptime T: type, data: []const T, usage: Usage) !Buffer {
             const mapped = try buffer.map(T);
             defer buffer.unmap();
 
-            @memcpy(@ptrCast([*]u8, mapped.ptr), @ptrCast([*]const u8, data.ptr), buffer.size);
+            @memcpy(mapped, data);
+
+            // @memcpy(@as([*]u8, @ptrCast(mapped.ptr)), @as([*]const u8, @ptrCast(data.ptr)), buffer.size);
 
             return buffer;
         }
@@ -121,7 +123,7 @@ pub fn init(size: usize, usage: Usage) !Buffer {
 }
 
 fn initDataHostMemory(usage: Usage, host_memory: []const u8) !Buffer {
-    std.debug.assert(@ptrToInt(host_memory.ptr) % 0b1000 == 0);
+    std.debug.assert(@intFromPtr(host_memory.ptr) % 0b1000 == 0);
 
     var self = Buffer{
         .handle = .null_handle,

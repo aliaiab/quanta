@@ -47,7 +47,7 @@ pub const Header = extern struct {
     map_revision: u32,
 
     pub const lump_count = 64;
-    pub const identifier = @bitCast(u32, @as([4]u8, "VBSP".*));
+    pub const identifier = @as(u32, @bitCast(@as([4]u8, "VBSP".*)));
 };
 
 comptime {
@@ -180,7 +180,7 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !ImportResult {
     };
 
     var read_head: usize = 0;
-    const header = @ptrCast(*const Header, @alignCast(@alignOf(Header), data.ptr)).*;
+    const header = @as(*const Header, @ptrCast(@alignCast(data.ptr))).*;
     read_head += @sizeOf(Header);
 
     if (header.ident != Header.identifier) {
@@ -192,24 +192,24 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !ImportResult {
     log.info("header_version {}", .{header.version});
     log.info("header_revision {}", .{header.map_revision});
 
-    log.info("brushes lump: {}", .{header.lumps[@enumToInt(LumpType.brushes)]});
-    log.info("entities lump: {}", .{header.lumps[@enumToInt(LumpType.entities)]});
-    log.info("pak_file lump: {}", .{header.lumps[@enumToInt(LumpType.pak_file)]});
-    log.info("vertexes lump: {}", .{header.lumps[@enumToInt(LumpType.vertexes)]});
-    log.info("surfedges lump: {}", .{header.lumps[@enumToInt(LumpType.surfedges)]});
+    log.info("brushes lump: {}", .{header.lumps[@intFromEnum(LumpType.brushes)]});
+    log.info("entities lump: {}", .{header.lumps[@intFromEnum(LumpType.entities)]});
+    log.info("pak_file lump: {}", .{header.lumps[@intFromEnum(LumpType.pak_file)]});
+    log.info("vertexes lump: {}", .{header.lumps[@intFromEnum(LumpType.vertexes)]});
+    log.info("surfedges lump: {}", .{header.lumps[@intFromEnum(LumpType.surfedges)]});
 
-    const vertexes_offset = @intCast(usize, header.lumps[@enumToInt(LumpType.vertexes)].fileofs);
-    const vertexes_length = header.lumps[@enumToInt(LumpType.vertexes)].filelen / @sizeOf(Vertex);
-    const vertexes = @ptrCast([*]const Vertex, @alignCast(@alignOf(Vertex), data.ptr + vertexes_offset))[0..vertexes_length];
+    const vertexes_offset = @as(usize, @intCast(header.lumps[@intFromEnum(LumpType.vertexes)].fileofs));
+    const vertexes_length = header.lumps[@intFromEnum(LumpType.vertexes)].filelen / @sizeOf(Vertex);
+    const vertexes = @as([*]const Vertex, @ptrCast(@alignCast(data.ptr + vertexes_offset)))[0..vertexes_length];
 
     log.info("vertexes.len = {}", .{vertexes.len});
     log.info("vertexes[0] = {}", .{vertexes[0]});
     log.info("vertexes[1] = {}", .{vertexes[1]});
     log.info("vertexes[2] = {}", .{vertexes[2]});
 
-    const edges_offset = @intCast(usize, header.lumps[@enumToInt(LumpType.edges)].fileofs);
-    const edges_length = header.lumps[@enumToInt(LumpType.edges)].filelen / @sizeOf(Edge);
-    const edges = @ptrCast([*]const Edge, @alignCast(@alignOf(Edge), data.ptr + edges_offset))[0..edges_length];
+    const edges_offset = @as(usize, @intCast(header.lumps[@intFromEnum(LumpType.edges)].fileofs));
+    const edges_length = header.lumps[@intFromEnum(LumpType.edges)].filelen / @sizeOf(Edge);
+    const edges = @as([*]const Edge, @ptrCast(@alignCast(data.ptr + edges_offset)))[0..edges_length];
 
     result.vertices = try allocator.alloc(Vertex, vertexes.len);
     errdefer allocator.free(result.vertices);
@@ -221,33 +221,33 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !ImportResult {
         vertex.z = -vertexes[i].y;
     }
 
-    const surfedges_offset = @intCast(usize, header.lumps[@enumToInt(LumpType.surfedges)].fileofs);
-    const surfedges_length = header.lumps[@enumToInt(LumpType.surfedges)].filelen / @sizeOf(i32);
-    const surfedges = @ptrCast([*]const i32, @alignCast(@alignOf(i32), data.ptr + surfedges_offset))[0..surfedges_length];
+    const surfedges_offset = @as(usize, @intCast(header.lumps[@intFromEnum(LumpType.surfedges)].fileofs));
+    const surfedges_length = header.lumps[@intFromEnum(LumpType.surfedges)].filelen / @sizeOf(i32);
+    const surfedges = @as([*]const i32, @ptrCast(@alignCast(data.ptr + surfedges_offset)))[0..surfedges_length];
 
-    const dispinfos_offset = @intCast(usize, header.lumps[@enumToInt(LumpType.dispinfo)].fileofs);
-    const dispinfos_length = header.lumps[@enumToInt(LumpType.dispinfo)].filelen / @sizeOf(DispInfo);
-    const dispinfos = @ptrCast([*]const DispInfo, @alignCast(@alignOf(DispInfo), data.ptr + dispinfos_offset))[0..dispinfos_length];
+    const dispinfos_offset = @as(usize, @intCast(header.lumps[@intFromEnum(LumpType.dispinfo)].fileofs));
+    const dispinfos_length = header.lumps[@intFromEnum(LumpType.dispinfo)].filelen / @sizeOf(DispInfo);
+    const dispinfos = @as([*]const DispInfo, @ptrCast(@alignCast(data.ptr + dispinfos_offset)))[0..dispinfos_length];
 
     log.info("surfedges.len = {}", .{surfedges.len});
 
     result.indices = try allocator.alloc(u16, surfedges.len * 2);
     errdefer allocator.free(result.indices);
 
-    const faces_offset = @intCast(usize, header.lumps[@enumToInt(LumpType.faces)].fileofs);
-    const faces_length = header.lumps[@enumToInt(LumpType.faces)].filelen / @sizeOf(Face);
-    const faces = @ptrCast([*]const Face, @alignCast(@alignOf(Face), data.ptr + faces_offset))[0..faces_length];
+    const faces_offset = @as(usize, @intCast(header.lumps[@intFromEnum(LumpType.faces)].fileofs));
+    const faces_length = header.lumps[@intFromEnum(LumpType.faces)].filelen / @sizeOf(Face);
+    const faces = @as([*]const Face, @ptrCast(@alignCast(data.ptr + faces_offset)))[0..faces_length];
 
-    const tex_infos_offset = @intCast(usize, header.lumps[@enumToInt(LumpType.tex_info)].fileofs);
-    const tex_infos_length = header.lumps[@enumToInt(LumpType.tex_info)].filelen / @sizeOf(TexInfo);
-    const tex_infos = @ptrCast([*]const TexInfo, @alignCast(@alignOf(TexInfo), data.ptr + tex_infos_offset))[0..tex_infos_length];
+    const tex_infos_offset = @as(usize, @intCast(header.lumps[@intFromEnum(LumpType.tex_info)].fileofs));
+    const tex_infos_length = header.lumps[@intFromEnum(LumpType.tex_info)].filelen / @sizeOf(TexInfo);
+    const tex_infos = @as([*]const TexInfo, @ptrCast(@alignCast(data.ptr + tex_infos_offset)))[0..tex_infos_length];
 
     var current_surfedge: usize = 0;
 
     var triangle_count: usize = 0;
 
     for (faces) |face| {
-        const tex_info: TexInfo = tex_infos[@intCast(usize, face.texinfo)];
+        const tex_info: TexInfo = tex_infos[@as(usize, @intCast(face.texinfo))];
 
         if (tex_info.flags.trigger or
             tex_info.flags.skip or
@@ -260,14 +260,14 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !ImportResult {
         }
 
         if (face.dispinfo < 0) {
-            triangle_count += @intCast(u32, face.numedges) - 2;
+            triangle_count += @as(u32, @intCast(face.numedges)) - 2;
         } else {
-            const size = @as(u32, 1) << @intCast(u5, dispinfos[@intCast(usize, face.dispinfo)].power);
+            const size = @as(u32, 1) << @as(u5, @intCast(dispinfos[@as(usize, @intCast(face.dispinfo))].power));
 
             triangle_count += size * size * 2;
         }
 
-        const face_surfedges: []const i32 = surfedges[@intCast(usize, face.firstedge) .. @intCast(usize, face.firstedge) + @intCast(usize, face.numedges)];
+        const face_surfedges: []const i32 = surfedges[@as(usize, @intCast(face.firstedge)) .. @as(usize, @intCast(face.firstedge)) + @as(usize, @intCast(face.numedges))];
 
         for (face_surfedges, 0..) |surf_edge, i| {
             const edge_index = std.math.absCast(surf_edge);
@@ -312,7 +312,12 @@ pub fn convertToGltfImport(allocator: std.mem.Allocator, import_result: ImportRe
     gltf_import_data.vertex_positions = try allocator.alloc([3]f32, import_result.vertices.len);
     errdefer allocator.free(gltf_import_data.vertex_positions);
 
-    @memcpy(@ptrCast([*]u8, gltf_import_data.vertex_positions.ptr), @ptrCast([*]const u8, import_result.vertices.ptr), import_result.vertices.len * @sizeOf([3]f32));
+    // @memcpy(gltf_import_data.vertex_positions, import_result.vertices);
+
+    @memcpy(
+        @as([*]u8, @ptrCast(gltf_import_data.vertex_positions.ptr))[0 .. import_result.vertices.len * @sizeOf([3]f32)],
+        @as([*]const u8, @ptrCast(import_result.vertices.ptr))[0 .. import_result.vertices.len * @sizeOf([3]f32)],
+    );
 
     gltf_import_data.indices = try allocator.alloc(u32, import_result.indices.len);
     errdefer allocator.free(gltf_import_data.indices);
@@ -347,9 +352,9 @@ pub fn convertToGltfImport(allocator: std.mem.Allocator, import_result: ImportRe
 
     gltf_import_data.sub_meshes[0] = .{
         .vertex_offset = 0,
-        .vertex_count = @intCast(u32, import_result.vertices.len),
+        .vertex_count = @as(u32, @intCast(import_result.vertices.len)),
         .index_offset = 0,
-        .index_count = @intCast(u32, import_result.indices.len),
+        .index_count = @as(u32, @intCast(import_result.indices.len)),
         .material_index = 0,
         .transform = .{
             .{ 1, 0, 0, 0 },
@@ -357,8 +362,8 @@ pub fn convertToGltfImport(allocator: std.mem.Allocator, import_result: ImportRe
             .{ 0, 0, 1, 0 },
             .{ 0, 0, 0, 1 },
         },
-        .bounding_min = .{ std.math.f32_min, std.math.f32_min, std.math.f32_min },
-        .bounding_max = .{ std.math.f32_max, std.math.f32_max, std.math.f32_max },
+        .bounding_min = .{ std.math.floatMin(f32), std.math.floatMin(f32), std.math.floatMin(f32) },
+        .bounding_max = .{ std.math.floatMax(f32), std.math.floatMax(f32), std.math.floatMax(f32) },
     };
 
     return gltf_import_data;

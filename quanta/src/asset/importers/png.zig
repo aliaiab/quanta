@@ -22,14 +22,14 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !Import {
     std.log.debug("pixel_format: {s}", .{@tagName(image.pixelFormat())});
 
     self.data = image.pixels.asBytes();
-    self.width = @intCast(u32, image.width);
-    self.height = @intCast(u32, image.height);
+    self.width = @as(u32, @intCast(image.width));
+    self.height = @as(u32, @intCast(image.height));
 
     self.data = try allocator.alloc(u8, 4 * image.width * image.height);
 
     if (image.pixelFormat() == .rgb24) {
         for (image.pixels.rgb24, 0..) |pixel, i| {
-            const write_pixel = @ptrCast(*img.color.Rgba32, self.data.ptr + (i * @sizeOf(img.color.Rgba32)));
+            const write_pixel = @as(*img.color.Rgba32, @ptrCast(self.data.ptr + (i * @sizeOf(img.color.Rgba32))));
 
             write_pixel.r = pixel.r;
             write_pixel.g = pixel.g;
@@ -79,7 +79,7 @@ pub fn importCubeFile(allocator: std.mem.Allocator, paths: [6][]const u8) !Impor
     var data_offset: usize = 0;
 
     for (file_imports) |file_import| {
-        @memcpy(import_data.data.ptr + data_offset, file_import.data.ptr, file_import.data.len);
+        @memcpy(import_data.data[data_offset .. data_offset + file_import.data.len], file_import.data);
 
         data_offset += file_import.data.len;
     }

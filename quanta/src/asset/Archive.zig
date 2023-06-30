@@ -30,45 +30,47 @@ pub const AssetDescription = struct {
 pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![]const u8 {
     var image_size: usize = @sizeOf(Header);
 
-    image_size = std.mem.alignForward(image_size, @alignOf(AssetHeader));
+    image_size = std.mem.alignForward(usize, image_size, @alignOf(AssetHeader));
     image_size += @sizeOf(AssetHeader) * assets.len;
 
     var source_content_size: usize = 0;
 
     for (assets) |asset| {
-        const aligned_size = std.mem.alignForward(source_content_size, asset.source_data_alignment);
+        const aligned_size = std.mem.alignForward(usize, source_content_size, asset.source_data_alignment);
 
         source_content_size = aligned_size + asset.source_data.len;
     }
 
     image_size += source_content_size;
 
-    const image = try allocator.alignedAlloc(u8, @alignOf(Header), image_size);
+    //Seems to be a 4 byte inconsistency somewhere....
+    const image = try allocator.alignedAlloc(u8, @alignOf(Header), image_size + 4);
     errdefer allocator.free(image);
 
-    std.mem.set(u8, image, 0xaa);
+    @memset(image, 0xaa);
 
     var image_offset: usize = 0;
 
-    const header = @ptrCast(*Header, @alignCast(@alignOf(Header), image.ptr));
+    const header = @as(*Header, @ptrCast(@alignCast(image.ptr)));
     image_offset += @sizeOf(Header);
-    image_offset = std.mem.alignForward(image_offset, @alignOf(AssetHeader));
+    image_offset = std.mem.alignForward(usize, image_offset, @alignOf(AssetHeader));
 
-    header.asset_count = @intCast(u32, assets.len);
+    header.asset_count = @as(u32, @intCast(assets.len));
 
     var current_content_offset: usize = image_offset + @sizeOf(AssetHeader) * assets.len;
 
     for (assets) |asset| {
-        const asset_header = @ptrCast(*AssetHeader, @alignCast(@alignOf(AssetHeader), image.ptr + image_offset));
+        const asset_header = @as(*AssetHeader, @ptrCast(@alignCast(image.ptr + image_offset)));
 
-        current_content_offset = std.mem.alignForward(current_content_offset, asset.source_data_alignment);
+        current_content_offset = std.mem.alignForward(usize, current_content_offset, asset.source_data_alignment);
 
-        asset_header.source_data_size = @intCast(u32, asset.source_data.len);
-        asset_header.source_data_offset = @intCast(u32, current_content_offset);
-        asset_header.mapped_data_size = @intCast(u32, asset.mapped_data_size);
+        asset_header.source_data_size = @as(u32, @intCast(asset.source_data.len));
+        asset_header.source_data_offset = @as(u32, @intCast(current_content_offset));
+        asset_header.mapped_data_size = @as(u32, @intCast(asset.mapped_data_size));
         asset_header.mapped_data_alignment = 1;
 
-        @memcpy(image.ptr + asset_header.source_data_offset, asset.source_data.ptr, asset.source_data.len);
+        // @memcpy(image.ptr + asset_header.source_data_offset, asset.source_data.ptr, asset.source_data.len);
+        @memcpy(image[asset_header.source_data_offset .. asset_header.source_data_offset + asset.source_data.len], asset.source_data[0..]);
 
         current_content_offset += asset_header.source_data_size;
 
@@ -89,13 +91,13 @@ pub fn decode(allocator: std.mem.Allocator, image: []u8) !Archive {
 
     var image_offset: usize = 0;
 
-    const header = @ptrCast(*const Header, @alignCast(@alignOf(Header), image.ptr + image_offset)).*;
+    const header = @as(*const Header, @ptrCast(@alignCast(image.ptr + image_offset))).*;
 
     image_offset += @sizeOf(Header);
 
-    image_offset = std.mem.alignForward(image_offset, @alignOf(AssetHeader));
+    image_offset = std.mem.alignForward(usize, image_offset, @alignOf(AssetHeader));
 
-    archive.assets = @ptrCast([*]AssetHeader, @alignCast(@alignOf(AssetHeader), image.ptr + image_offset))[0..header.asset_count];
+    archive.assets = @as([*]AssetHeader, @ptrCast(@alignCast(image.ptr + image_offset)))[0..header.asset_count];
 
     image_offset += @sizeOf(AssetHeader) * header.asset_count;
 
@@ -105,7 +107,7 @@ pub fn decode(allocator: std.mem.Allocator, image: []u8) !Archive {
 }
 
 pub fn getAssetData(self: Archive, asset: AssetDescriptor) []u8 {
-    const header = self.assets[@enumToInt(asset)];
+    const header = self.assets[@intFromEnum(asset)];
 
     return self.image[header.source_data_offset .. header.source_data_offset + header.source_data_size - @sizeOf(u32)];
 }

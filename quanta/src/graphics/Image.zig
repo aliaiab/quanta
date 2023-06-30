@@ -175,7 +175,7 @@ pub fn init(
                 .buffer_memory_barrier_count = 0,
                 .p_buffer_memory_barriers = undefined,
                 .image_memory_barrier_count = 1,
-                .p_image_memory_barriers = @ptrCast([*]const vk.ImageMemoryBarrier2, &vk.ImageMemoryBarrier2{
+                .p_image_memory_barriers = @as([*]const vk.ImageMemoryBarrier2, @ptrCast(&vk.ImageMemoryBarrier2{
                     .src_stage_mask = .{
                         .top_of_pipe_bit = true,
                     },
@@ -198,7 +198,7 @@ pub fn init(
                         .base_array_layer = 0,
                         .layer_count = vk.REMAINING_ARRAY_LAYERS,
                     },
-                }),
+                })),
             });
 
             command_buffer.end();

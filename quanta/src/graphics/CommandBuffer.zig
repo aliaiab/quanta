@@ -50,7 +50,7 @@ pub fn init(queue: Queue) !CommandBuffer {
         .command_pool = pool,
         .level = .primary,
         .command_buffer_count = 1,
-    }, @ptrCast([*]vk.CommandBuffer, &self.handle));
+    }, @as([*]vk.CommandBuffer, @ptrCast(&self.handle)));
 
     return self;
 }
@@ -65,7 +65,7 @@ pub fn deinit(self: *CommandBuffer) void {
     };
 
     defer self.wait_fence.deinit();
-    defer Context.self.vkd.freeCommandBuffers(Context.self.device, pool, 1, @ptrCast([*]vk.CommandBuffer, &self.handle));
+    defer Context.self.vkd.freeCommandBuffers(Context.self.device, pool, 1, @as([*]vk.CommandBuffer, @ptrCast(&self.handle)));
 }
 
 pub fn begin(self: CommandBuffer) !void {
@@ -222,7 +222,7 @@ pub fn imageBarrier(
         .buffer_memory_barrier_count = 0,
         .p_buffer_memory_barriers = undefined,
         .image_memory_barrier_count = 1,
-        .p_image_memory_barriers = @ptrCast([*]const vk.ImageMemoryBarrier2, &vk.ImageMemoryBarrier2{
+        .p_image_memory_barriers = @as([*]const vk.ImageMemoryBarrier2, @ptrCast(&vk.ImageMemoryBarrier2{
             .src_stage_mask = getVkPipelineStage(barrier.source_stage),
             .src_access_mask = getVkResourceAccess(barrier.source_access),
             .dst_stage_mask = getVkPipelineStage(barrier.destination_stage),
@@ -239,7 +239,7 @@ pub fn imageBarrier(
                 .base_array_layer = 0,
                 .layer_count = vk.REMAINING_ARRAY_LAYERS,
             },
-        }),
+        })),
     });
 }
 
@@ -367,7 +367,7 @@ pub fn beginRenderPass(self: CommandBuffer, offset_x: i32, offset_y: i32, width:
         .render_area = .{ .offset = .{ .x = offset_x, .y = offset_y }, .extent = .{ .width = width, .height = height } },
         .layer_count = 1,
         .view_mask = 0,
-        .color_attachment_count = @intCast(u32, color_attachments.len),
+        .color_attachment_count = @as(u32, @intCast(color_attachments.len)),
         .p_color_attachments = &color_attachment_infos,
         .p_depth_attachment = if (depth_attachment != null) &depth_attachment_info else null,
         .p_stencil_attachment = null,
@@ -383,13 +383,13 @@ pub fn setGraphicsPipeline(self: *CommandBuffer, pipeline: GraphicsPipeline) voi
 
     self.pipeline_layout = pipeline.layout;
 
-    Context.self.vkd.cmdBindDescriptorSets(self.handle, .graphics, pipeline.layout, 0, @intCast(u32, pipeline.descriptor_sets.len), pipeline.descriptor_sets.ptr, 0, undefined);
+    Context.self.vkd.cmdBindDescriptorSets(self.handle, .graphics, pipeline.layout, 0, @as(u32, @intCast(pipeline.descriptor_sets.len)), pipeline.descriptor_sets.ptr, 0, undefined);
 
     self.is_graphics_pipeline = true;
 }
 
 pub fn setVertexBuffer(self: CommandBuffer, buffer: Buffer) void {
-    Context.self.vkd.cmdBindVertexBuffers(self.handle, 0, 1, @ptrCast([*]const vk.Buffer, &buffer.handle), @ptrCast([*]const u64, &@as(u64, 0)));
+    Context.self.vkd.cmdBindVertexBuffers(self.handle, 0, 1, @as([*]const vk.Buffer, @ptrCast(&buffer.handle)), @as([*]const u64, @ptrCast(&@as(u64, 0))));
 }
 
 pub fn setPushData(self: CommandBuffer, comptime T: type, data: T) void {
@@ -399,18 +399,18 @@ pub fn setPushData(self: CommandBuffer, comptime T: type, data: T) void {
 }
 
 pub fn setViewport(self: CommandBuffer, x: f32, y: f32, width: f32, height: f32, min_depth: f32, max_depth: f32) void {
-    Context.self.vkd.cmdSetViewport(self.handle, 0, 1, @ptrCast([*]const vk.Viewport, &.{
+    Context.self.vkd.cmdSetViewport(self.handle, 0, 1, @as([*]const vk.Viewport, @ptrCast(&.{
         .x = x,
         .y = y,
         .width = width,
         .height = height,
         .min_depth = min_depth,
         .max_depth = max_depth,
-    }));
+    })));
 }
 
 pub fn setScissor(self: CommandBuffer, x: u32, y: u32, width: u32, height: u32) void {
-    Context.self.vkd.cmdSetScissor(self.handle, 0, 1, @ptrCast([*]const vk.Rect2D, &.{ .offset = .{ .x = x, .y = y }, .extent = .{ .width = width, .height = height } }));
+    Context.self.vkd.cmdSetScissor(self.handle, 0, 1, @as([*]const vk.Rect2D, @ptrCast(&.{ .offset = .{ .x = x, .y = y }, .extent = .{ .width = width, .height = height } })));
 }
 
 pub const IndexType = enum {
@@ -440,7 +440,7 @@ pub fn copyBuffer(
         .size = @min(source_size, destination_size),
     };
 
-    Context.self.vkd.cmdCopyBuffer(self.handle, source.handle, destination.handle, 1, @ptrCast([*]const vk.BufferCopy, &copy_region));
+    Context.self.vkd.cmdCopyBuffer(self.handle, source.handle, destination.handle, 1, @as([*]const vk.BufferCopy, @ptrCast(&copy_region)));
 }
 
 pub fn updateBuffer(self: CommandBuffer, destination: Buffer, offset: usize, comptime T: type, data: []const T) void {
@@ -526,7 +526,7 @@ pub fn drawIndirect(
         self.handle,
         draw_buffer.handle,
         draw_buffer_offset,
-        @truncate(u32, draw_count),
+        @as(u32, @truncate(draw_count)),
         @sizeOf(DrawIndirectCommand),
     );
 }
@@ -549,7 +549,7 @@ pub fn drawIndexedIndirect(
         self.handle,
         draw_buffer.handle,
         draw_buffer_offset,
-        @truncate(u32, draw_count),
+        @as(u32, @truncate(draw_count)),
         @sizeOf(DrawIndexedIndirectCommand),
     );
 }
@@ -569,8 +569,8 @@ pub fn drawIndexedIndirectCount(
         draw_buffer_offset,
         count_buffer.handle,
         count_buffer_offset,
-        @truncate(u32, max_draw_count),
-        @intCast(u32, draw_buffer_stride),
+        @as(u32, @truncate(max_draw_count)),
+        @as(u32, @intCast(draw_buffer_stride)),
     );
 }
 
@@ -582,7 +582,7 @@ pub fn setComputePipeline(self: *CommandBuffer, pipeline: ComputePipeline) void 
     self.local_size_y = pipeline.local_size_y;
     self.local_size_z = pipeline.local_size_z;
 
-    Context.self.vkd.cmdBindDescriptorSets(self.handle, .compute, pipeline.layout, 0, @intCast(u32, pipeline.descriptor_sets.len), pipeline.descriptor_sets.ptr, 0, undefined);
+    Context.self.vkd.cmdBindDescriptorSets(self.handle, .compute, pipeline.layout, 0, @as(u32, @intCast(pipeline.descriptor_sets.len)), pipeline.descriptor_sets.ptr, 0, undefined);
 
     self.is_graphics_pipeline = false;
 }

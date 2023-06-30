@@ -43,7 +43,7 @@ textures: std.ArrayListUnmanaged(Texture) = .{},
 pub const TextureHandle = enum(u32) { null = 0, _ };
 
 pub fn createTexture(data: []const u8, width: u32, height: u32) !TextureHandle {
-    const handle = @intToEnum(TextureHandle, @intCast(u32, self.textures.items.len + 1));
+    const handle = @as(TextureHandle, @enumFromInt(@as(u32, @intCast(self.textures.items.len + 1))));
 
     var image = try graphics.Image.initData(.@"2d", data, width, height, 1, 1, .r8g8b8a8_srgb, .shader_read_only_optimal, .{
         .transfer_dst_bit = true,
@@ -59,7 +59,7 @@ pub fn createTexture(data: []const u8, width: u32, height: u32) !TextureHandle {
         .sampler = sampler,
     });
 
-    self.mesh_pipeline.setDescriptorImageSampler(1, @enumToInt(handle) - 1, image, sampler);
+    self.mesh_pipeline.setDescriptorImageSampler(1, @intFromEnum(handle) - 1, image, sampler);
 
     return handle;
 }
@@ -90,8 +90,8 @@ pub fn init(allocator: std.mem.Allocator, swapchain: graphics.Swapchain) !void {
         allocator,
         .{
             .color_attachment_formats = &.{swapchain.surface_format.format},
-            .vertex_shader_binary = @alignCast(4, @embedFile("renderer_gui_mesh_vert.spv")),
-            .fragment_shader_binary = @alignCast(4, @embedFile("renderer_gui_mesh_frag.spv")),
+            .vertex_shader_binary = @alignCast(@embedFile("renderer_gui_mesh_vert.spv")),
+            .fragment_shader_binary = @alignCast(@embedFile("renderer_gui_mesh_frag.spv")),
             .depth_state = .{
                 .write_enabled = false,
                 .test_enabled = false,
@@ -139,7 +139,7 @@ pub fn init(allocator: std.mem.Allocator, swapchain: graphics.Swapchain) !void {
 }
 
 fn initImGui() !void {
-    const io: *imgui.ImGuiIO = @ptrCast(*imgui.ImGuiIO, imgui.igGetIO());
+    const io: *imgui.ImGuiIO = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
     var pixel_pointer: [*c]u8 = undefined;
     var width: c_int = 0;
@@ -148,9 +148,9 @@ fn initImGui() !void {
 
     imgui.ImFontAtlas_GetTexDataAsRGBA32(io.Fonts, &pixel_pointer, &width, &height, &out_bytes_per_pixel);
 
-    const font_texture = try createTexture(pixel_pointer[0 .. @intCast(u32, width) * @intCast(u32, height) * @sizeOf(u32)], @intCast(u32, width), @intCast(u32, height));
+    const font_texture = try createTexture(pixel_pointer[0 .. @as(u32, @intCast(width)) * @as(u32, @intCast(height)) * @sizeOf(u32)], @as(u32, @intCast(width)), @as(u32, @intCast(height)));
 
-    io.Fonts.*.TexID = @intToPtr(*anyopaque, @enumToInt(font_texture));
+    io.Fonts.*.TexID = @as(*anyopaque, @ptrFromInt(@intFromEnum(font_texture)));
 }
 
 fn deinitImGui() void {}
@@ -221,19 +221,14 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
                 const staging_vertices = try self.vertices_staging_buffer.map(imgui.ImDrawVert);
                 const staging_indices = try self.indices_staging_buffer.map(u16);
 
-                while (command_list_index < @intCast(usize, draw_data.CmdListsCount)) : (command_list_index += 1) {
+                while (command_list_index < @as(usize, @intCast(draw_data.CmdListsCount))) : (command_list_index += 1) {
                     const command_list: *imgui.ImDrawList = draw_data.CmdLists[command_list_index];
 
-                    const vertices: []imgui.ImDrawVert = command_list.VtxBuffer.Data[0..@intCast(usize, command_list.VtxBuffer.Size)];
-                    const indices: []u16 = command_list.IdxBuffer.Data[0..@intCast(usize, command_list.IdxBuffer.Size)];
+                    const vertices: []imgui.ImDrawVert = command_list.VtxBuffer.Data[0..@as(usize, @intCast(command_list.VtxBuffer.Size))];
+                    const indices: []u16 = command_list.IdxBuffer.Data[0..@as(usize, @intCast(command_list.IdxBuffer.Size))];
 
-                    @memcpy(@ptrCast([*]u8, staging_vertices.ptr + vertex_offset), @ptrCast([*]u8, vertices.ptr), vertices.len * @sizeOf(imgui.ImDrawVert));
-
-                    @memcpy(@ptrCast([*]u8, staging_indices.ptr + index_offset), @ptrCast([*]u8, indices.ptr), indices.len * @sizeOf(u16));
-
-                    //Would use this code, but not sure if it generates a good memcpy
-                    // std.mem.copy(imgui.ImDrawVert, staging_vertices[vertex_offset..vertex_offset + vertices.len], vertices);
-                    // std.mem.copy(u16, staging_indices[index_offset..index_offset + indices.len], indices);
+                    @memcpy(staging_vertices[vertex_offset .. vertex_offset + vertices.len], vertices);
+                    @memcpy(staging_indices[index_offset .. index_offset + indices.len], indices);
 
                     vertex_offset += vertices.len;
                     index_offset += indices.len;
@@ -285,7 +280,7 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
             defer self.command_buffer.endRenderPass();
 
             self.command_buffer.setGraphicsPipeline(self.mesh_pipeline);
-            self.command_buffer.setViewport(0, @intToFloat(f32, window.getHeight()), @intToFloat(f32, window.getWidth()), -@intToFloat(f32, window.getHeight()), 0, 1);
+            self.command_buffer.setViewport(0, @as(f32, @floatFromInt(window.getHeight())), @as(f32, @floatFromInt(window.getWidth())), -@as(f32, @floatFromInt(window.getHeight())), 0, 1);
             self.command_buffer.setScissor(0, 0, window.getWidth(), window.getHeight());
 
             // const projection = zalgebra.orthographic(0, @intToFloat(f32, window.getWidth()), 0, @intToFloat(f32, window.getHeight()), 0, 1);
@@ -296,8 +291,8 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
                 .{ 0.0, 0.0, -1.0, 0.0 },
                 .{ -1.0, 1.0, 0.0, 1.0 },
             };
-            ortho[0][0] /= @intToFloat(f32, window.getWidth());
-            ortho[1][1] /= @intToFloat(f32, window.getHeight());
+            ortho[0][0] /= @as(f32, @floatFromInt(window.getWidth()));
+            ortho[1][1] /= @as(f32, @floatFromInt(window.getHeight()));
 
             self.command_buffer.setIndexBuffer(self.indices_buffer, .u16);
 
@@ -307,25 +302,25 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
                 var vertex_offset: usize = 0;
                 var index_offset: usize = 0;
 
-                while (command_list_index < @intCast(usize, draw_data.CmdListsCount)) : (command_list_index += 1) {
+                while (command_list_index < @as(usize, @intCast(draw_data.CmdListsCount))) : (command_list_index += 1) {
                     const command_list: *imgui.ImDrawList = draw_data.CmdLists[command_list_index];
 
-                    const vertices: []imgui.ImDrawVert = command_list.VtxBuffer.Data[0..@intCast(usize, command_list.VtxBuffer.Size)];
-                    const indices: []u16 = command_list.IdxBuffer.Data[0..@intCast(usize, command_list.IdxBuffer.Size)];
+                    const vertices: []imgui.ImDrawVert = command_list.VtxBuffer.Data[0..@as(usize, @intCast(command_list.VtxBuffer.Size))];
+                    const indices: []u16 = command_list.IdxBuffer.Data[0..@as(usize, @intCast(command_list.IdxBuffer.Size))];
 
                     var command_index: usize = 0;
 
-                    while (command_index < @intCast(usize, command_list.CmdBuffer.Size)) : (command_index += 1) {
+                    while (command_index < @as(usize, @intCast(command_list.CmdBuffer.Size))) : (command_index += 1) {
                         const command: imgui.ImDrawCmd = command_list.CmdBuffer.Data[command_index];
 
                         self.command_buffer.setPushData(MeshPipelinePushData, .{
                             .projection = ortho,
-                            .texture_index = @intCast(u32, @ptrToInt(command.TextureId)),
+                            .texture_index = @as(u32, @intCast(@intFromPtr(command.TextureId))),
                         });
 
-                        self.command_buffer.setScissor(@floatToInt(u32, @max(command.ClipRect.x, 0)), @floatToInt(u32, @max(command.ClipRect.y, 0)), @floatToInt(u32, @min(command.ClipRect.z, @intToFloat(f32, window.getWidth()))) - @floatToInt(u32, @max(command.ClipRect.x, 0)), @floatToInt(u32, @min(command.ClipRect.w, @intToFloat(f32, window.getHeight()))) - @floatToInt(u32, @max(command.ClipRect.y, 0)));
+                        self.command_buffer.setScissor(@as(u32, @intFromFloat(@max(command.ClipRect.x, 0))), @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))), @as(u32, @intFromFloat(@min(command.ClipRect.z, @as(f32, @floatFromInt(window.getWidth()))))) - @as(u32, @intFromFloat(@max(command.ClipRect.x, 0))), @as(u32, @intFromFloat(@min(command.ClipRect.w, @as(f32, @floatFromInt(window.getHeight()))))) - @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))));
 
-                        self.command_buffer.drawIndexed(command.ElemCount, 1, @intCast(u32, index_offset) + command.IdxOffset, @intCast(i32, vertex_offset) + @intCast(i32, command.VtxOffset), 0);
+                        self.command_buffer.drawIndexed(command.ElemCount, 1, @as(u32, @intCast(index_offset)) + command.IdxOffset, @as(i32, @intCast(vertex_offset)) + @as(i32, @intCast(command.VtxOffset)), 0);
                     }
 
                     vertex_offset += vertices.len;

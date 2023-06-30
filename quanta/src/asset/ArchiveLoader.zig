@@ -20,7 +20,7 @@ pub fn init(
 
     var offset = try self.file.read(std.mem.asBytes(&header));
 
-    offset = std.mem.alignForward(offset, @alignOf(Archive.AssetHeader));
+    offset = std.mem.alignForward(usize, offset, @alignOf(Archive.AssetHeader));
 
     try self.file.seekTo(offset);
 

@@ -23,7 +23,7 @@ pub fn deinit(self: *Fence) void {
 }
 
 pub fn wait(self: Fence) void {
-    _ = Context.self.vkd.waitForFences(Context.self.device, 1, @ptrCast([*]const vk.Fence, &self.handle), vk.TRUE, std.math.maxInt(u64)) catch unreachable;
+    _ = Context.self.vkd.waitForFences(Context.self.device, 1, @as([*]const vk.Fence, @ptrCast(&self.handle)), vk.TRUE, std.math.maxInt(u64)) catch unreachable;
 }
 
 ///Returns true if the fence is signaled, otherwise it returns false
@@ -34,5 +34,5 @@ pub fn getStatus(self: Fence) bool {
 }
 
 pub fn reset(self: Fence) void {
-    Context.self.vkd.resetFences(Context.self.device, 1, @ptrCast([*]const vk.Fence, &self.handle)) catch unreachable;
+    Context.self.vkd.resetFences(Context.self.device, 1, @as([*]const vk.Fence, @ptrCast(&self.handle))) catch unreachable;
 }

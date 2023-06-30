@@ -50,5 +50,5 @@ pub fn getMouseDown(button: glfw.MouseButton) bool {
 pub fn getMousePos() [2]f32 {
     const pos = window.getCursorPos();
 
-    return .{ @floatCast(f32, pos.xpos), @floatCast(f32, pos.ypos) };
+    return .{ @as(f32, @floatCast(pos.xpos)), @as(f32, @floatCast(pos.ypos)) };
 }

@@ -8,7 +8,7 @@ var time: i64 = 0;
 var cursors: [imgui.ImGuiMouseCursor_COUNT]glfw.Cursor = undefined;
 
 pub fn init() !void {
-    const io: *imgui.ImGuiIO = @ptrCast(*imgui.ImGuiIO, imgui.igGetIO());
+    const io: *imgui.ImGuiIO = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
     io.ConfigFlags |= imgui.ImGuiConfigFlags_DockingEnable;
 
@@ -37,10 +37,10 @@ pub fn deinit() void {
 }
 
 pub fn begin() !void {
-    const io: *imgui.ImGuiIO = @ptrCast(*imgui.ImGuiIO, imgui.igGetIO());
+    const io: *imgui.ImGuiIO = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
-    const width = @intToFloat(f32, window.getWidth());
-    const height = @intToFloat(f32, window.getHeight());
+    const width = @as(f32, @floatFromInt(window.getWidth()));
+    const height = @as(f32, @floatFromInt(window.getHeight()));
 
     io.DisplaySize = imgui.ImVec2{
         .x = width,
@@ -50,7 +50,7 @@ pub fn begin() !void {
 
     const current_time = std.time.timestamp();
 
-    io.DeltaTime = if (@intToFloat(f32, current_time - time) > 0) @intToFloat(f32, current_time - time) else @as(f32, 1) / @as(f32, 60);
+    io.DeltaTime = if (@as(f32, @floatFromInt(current_time - time)) > 0) @as(f32, @floatFromInt(current_time - time)) else @as(f32, 1) / @as(f32, 60);
 
     time = current_time;
 
@@ -60,13 +60,13 @@ pub fn begin() !void {
 pub fn end() void {}
 
 fn updateMouseCursor() void {
-    const io = @ptrCast(*imgui.ImGuiIO, imgui.igGetIO());
+    const io = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
-    if (io.ConfigFlags & imgui.ImGuiConfigFlags_NoMouseCursorChange == 1 or window.window.getInputMode(.cursor) == @enumToInt(glfw.Window.InputModeCursor.disabled)) {
+    if (io.ConfigFlags & imgui.ImGuiConfigFlags_NoMouseCursorChange == 1 or window.window.getInputMode(.cursor) == @intFromEnum(glfw.Window.InputModeCursor.disabled)) {
         return;
     }
 
-    const imgui_cursor = @intCast(usize, imgui.igGetMouseCursor());
+    const imgui_cursor = @as(usize, @intCast(imgui.igGetMouseCursor()));
 
     if (imgui_cursor == imgui.ImGuiMouseCursor_None or io.MouseDrawCursor) {
         window.window.setInputMode(.cursor, .hidden);
@@ -84,7 +84,7 @@ fn mouseButtonCallback(_: glfw.Window, button: glfw.MouseButton, action: glfw.Ac
     imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Alt, mods.alt);
     imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Super, mods.super);
 
-    imgui.ImGuiIO_AddMouseButtonEvent(io, @enumToInt(button), action == .press);
+    imgui.ImGuiIO_AddMouseButtonEvent(io, @intFromEnum(button), action == .press);
 }
 
 fn charCallback(_: glfw.Window, codepoint: u21) void {
@@ -111,13 +111,13 @@ fn keyCallback(_: glfw.Window, key: glfw.Key, scancode: i32, action: glfw.Action
 fn scrollCallback(_: glfw.Window, xoffset: f64, yoffset: f64) void {
     const io = imgui.igGetIO();
 
-    imgui.ImGuiIO_AddMouseWheelEvent(io, @floatCast(f32, xoffset), @floatCast(f32, yoffset));
+    imgui.ImGuiIO_AddMouseWheelEvent(io, @as(f32, @floatCast(xoffset)), @as(f32, @floatCast(yoffset)));
 }
 
 fn cursorPosCallback(_: glfw.Window, xpos: f64, ypos: f64) void {
     const io = imgui.igGetIO();
 
-    imgui.ImGuiIO_AddMousePosEvent(io, @floatCast(f32, xpos), @floatCast(f32, ypos));
+    imgui.ImGuiIO_AddMousePosEvent(io, @as(f32, @floatCast(xpos)), @as(f32, @floatCast(ypos)));
 }
 
 fn focusedCallback(_: glfw.Window, focused: bool) void {

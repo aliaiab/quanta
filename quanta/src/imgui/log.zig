@@ -41,7 +41,7 @@ pub fn viewer(name: [:0]const u8) void {
     _ = widgets.checkbox("debug", &show_debug);
     imgui.igSameLine(0, 10);
 
-    _ = imgui.igDragInt("Message count", @ptrCast(*c_int, &viewed_message_count), 1, 0, @intCast(c_int, messages.items.len), null, 0);
+    _ = imgui.igDragInt("Message count", @as(*c_int, @ptrCast(&viewed_message_count)), 1, 0, @as(c_int, @intCast(messages.items.len)), null, 0);
 
     imgui.igSeparator();
 
@@ -124,9 +124,9 @@ pub fn logMessage(
     try messages.append(std.heap.c_allocator, .{
         .level = message_level,
         .timestamp = std.time.timestamp(),
-        .scope = if (scope == .default) null else std.meta.tagName(scope),
-        .text_offset = @intCast(u32, text_offset),
-        .text_length = @intCast(u32, message_string.len),
+        .scope = if (scope == .default) null else @tagName(scope),
+        .text_offset = @as(u32, @intCast(text_offset)),
+        .text_length = @as(u32, @intCast(message_string.len)),
     });
 
     dirty = true;

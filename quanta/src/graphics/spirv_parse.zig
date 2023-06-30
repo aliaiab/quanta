@@ -61,8 +61,8 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
     while (word_index < shader_module_code.len) {
         const word = shader_module_code[word_index];
 
-        const instruction_opcode = @truncate(u16, word);
-        const instruction_word_count = @truncate(u16, word >> 16);
+        const instruction_opcode = @as(u16, @truncate(word));
+        const instruction_word_count = @as(u16, @truncate(word >> 16));
 
         const words = shader_module_code[word_index .. word_index + instruction_word_count];
 
@@ -70,7 +70,7 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
             spirv.SpvOpEntryPoint => {
                 std.log.info("Found shader entry point", .{});
 
-                const name_begin = @ptrCast([*:0]const u8, &words[3]);
+                const name_begin = @as([*:0]const u8, @ptrCast(&words[3]));
 
                 std.log.info("{c}", .{name_begin[1]});
 
@@ -174,7 +174,7 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
                 .binding = id.binding,
             };
 
-            result.resource_mask |= @as(u32, 1) << @intCast(u5, id.binding);
+            result.resource_mask |= @as(u32, 1) << @as(u5, @intCast(id.binding));
             result.resource_count += 1;
         }
     }

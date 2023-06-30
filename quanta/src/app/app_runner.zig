@@ -6,7 +6,7 @@ pub fn main() !void {
     log.info("Starting app...", .{});
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(!gpa.deinit());
+    defer std.debug.assert(gpa.deinit() != .leak);
 
     const app_lib_file_path = "lib/libexample_app.so";
 

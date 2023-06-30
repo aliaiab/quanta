@@ -10,10 +10,10 @@ const vk = graphics.vulkan;
 const zalgebra = @import("zalgebra");
 const options = @import("options");
 
-const depth_reduce_comp_spv = @alignCast(4, @embedFile("renderer_depth_reduce_comp.spv"));
+const depth_reduce_comp_spv: []align(4) const u8 = @alignCast(@embedFile("renderer_depth_reduce_comp.spv"));
 
-const depth_vert_spv = @alignCast(4, @embedFile("renderer_depth_vert.spv"));
-const depth_frag_spv = @alignCast(4, @embedFile("renderer_depth_frag.spv"));
+const depth_vert_spv: []align(4) const u8 = @alignCast(@embedFile("renderer_depth_vert.spv"));
+const depth_frag_spv: []align(4) const u8 = @alignCast(@embedFile("renderer_depth_frag.spv"));
 
 const SkyPipelinePushConstants = extern struct {
     view_projection: [4][4]f32,
@@ -188,15 +188,15 @@ fn initFrameImages(window_width: u32, window_height: u32) !void {
     errdefer self.allocator.free(self.depth_pyramid_levels);
 
     for (self.depth_pyramid_levels, 0..) |*pyramid_level, i| {
-        pyramid_level.* = try self.depth_pyramid.createView(@intCast(u32, i), 1);
+        pyramid_level.* = try self.depth_pyramid.createView(@as(u32, @intCast(i)), 1);
 
         if (i == 0) {
             self.depth_reduce_pipeline.setDescriptorImageSampler(1, 0, self.depth_image, self.depth_reduce_sampler);
         } else {
-            self.depth_reduce_pipeline.setDescriptorImageViewSampler(1, @intCast(u32, i), self.depth_pyramid_levels[i - 1], self.depth_reduce_sampler);
+            self.depth_reduce_pipeline.setDescriptorImageViewSampler(1, @as(u32, @intCast(i)), self.depth_pyramid_levels[i - 1], self.depth_reduce_sampler);
         }
 
-        self.depth_reduce_pipeline.setDescriptorImageView(0, @intCast(u32, i), self.depth_pyramid_levels[i]);
+        self.depth_reduce_pipeline.setDescriptorImageView(0, @as(u32, @intCast(i)), self.depth_pyramid_levels[i]);
     }
 
     errdefer for (self.depth_pyramid_levels) |*pyramid_level| {
@@ -285,10 +285,10 @@ pub fn init(allocator: std.mem.Allocator, swapchain: *graphics.Swapchain) !void 
     self.index_buffer = try graphics.Buffer.init(vertex_buffer_size, .index);
     errdefer self.index_buffer.deinit();
 
-    self.cull_pipeline = try graphics.ComputePipeline.init(self.allocator, @alignCast(4, @embedFile("renderer_pre_depth_cull_comp.spv")), .@"1d", null, DrawCullPushConstants);
+    self.cull_pipeline = try graphics.ComputePipeline.init(self.allocator, @alignCast(@embedFile("renderer_pre_depth_cull_comp.spv")), .@"1d", null, DrawCullPushConstants);
     errdefer self.cull_pipeline.deinit(self.allocator);
 
-    self.post_depth_cull_pipeline = try graphics.ComputePipeline.init(self.allocator, @alignCast(4, @embedFile("renderer_post_depth_cull_comp.spv")), .@"1d", null, PostDepthCullPushConstants);
+    self.post_depth_cull_pipeline = try graphics.ComputePipeline.init(self.allocator, @alignCast(@embedFile("renderer_post_depth_cull_comp.spv")), .@"1d", null, PostDepthCullPushConstants);
     errdefer self.post_depth_cull_pipeline.deinit(self.allocator);
 
     self.post_depth_cull_pipeline.setDescriptorBuffer(1, 0, self.mesh_buffer);
@@ -302,8 +302,8 @@ pub fn init(allocator: std.mem.Allocator, swapchain: *graphics.Swapchain) !void 
             // swapchain.surface_format.format,
             self.radiance_color_image.format},
             .depth_attachment_format = self.depth_image.format,
-            .vertex_shader_binary = @alignCast(4, @embedFile("renderer_tri_vert.spv")),
-            .fragment_shader_binary = @alignCast(4, @embedFile("renderer_tri_frag.spv")),
+            .vertex_shader_binary = @alignCast(@embedFile("renderer_tri_vert.spv")),
+            .fragment_shader_binary = @alignCast(@embedFile("renderer_tri_frag.spv")),
             .depth_state = .{
                 .write_enabled = false,
                 .test_enabled = true,
@@ -326,8 +326,8 @@ pub fn init(allocator: std.mem.Allocator, swapchain: *graphics.Swapchain) !void 
                 self.radiance_color_image.format,
             },
             .depth_attachment_format = self.depth_image.format,
-            .vertex_shader_binary = @alignCast(4, @embedFile("renderer_sky_vert.spv")),
-            .fragment_shader_binary = @alignCast(4, @embedFile("renderer_sky_frag.spv")),
+            .vertex_shader_binary = @alignCast(@embedFile("renderer_sky_vert.spv")),
+            .fragment_shader_binary = @alignCast(@embedFile("renderer_sky_frag.spv")),
             .depth_state = .{
                 .write_enabled = false,
                 .test_enabled = true,
@@ -387,7 +387,7 @@ pub fn init(allocator: std.mem.Allocator, swapchain: *graphics.Swapchain) !void 
     );
     errdefer self.shadow_pipeline.deinit(allocator);
 
-    self.color_resolve_pipeline = try graphics.ComputePipeline.init(allocator, @alignCast(4, @embedFile("renderer_color_resolve_comp.spv")), .@"2d", null, ColorResolvePushData);
+    self.color_resolve_pipeline = try graphics.ComputePipeline.init(allocator, @alignCast(@embedFile("renderer_color_resolve_comp.spv")), .@"2d", null, ColorResolvePushData);
     errdefer self.color_resolve_pipeline.deinit(self.allocator);
 
     self.materials_buffer = try graphics.Buffer.init(1024 * @sizeOf(Material), .storage);
@@ -493,7 +493,7 @@ pub const Camera = struct {
 
     ///Returns a non-inverse z projection matrix
     pub fn getProjectionNonInverse(camera: Camera) [4][4]f32 {
-        const aspect_ratio: f32 = @intToFloat(f32, window.getWidth()) / @intToFloat(f32, window.getHeight());
+        const aspect_ratio: f32 = @as(f32, @floatFromInt(window.getWidth())) / @as(f32, @floatFromInt(window.getHeight()));
         const near_plane: f32 = 0.01;
         const fov: f32 = camera.fov;
 
@@ -523,7 +523,7 @@ pub fn beginSceneRender(
     ambient_light: AmbientLight,
     primary_directional_light_index: u32,
 ) !void {
-    const scene_data: *Scene = &self.scenes.items[@enumToInt(scene)];
+    const scene_data: *Scene = &self.scenes.items[@intFromEnum(scene)];
 
     std.debug.assert(active_views.len == 1);
 
@@ -709,7 +709,7 @@ fn getFrustumCorners(view_projection: zalgebra.Mat4) [8][3]f32 {
             var z: u32 = 0;
 
             while (z < 2) : (z += 1) {
-                const point = inverse.mulByVec4(.{ .data = .{ 2 * @intToFloat(f32, x) - 1, 2 * @intToFloat(f32, y) - 1, 2 * @intToFloat(f32, z) - 1, 1 } });
+                const point = inverse.mulByVec4(.{ .data = .{ 2 * @as(f32, @floatFromInt(x)) - 1, 2 * @as(f32, @floatFromInt(y)) - 1, 2 * @as(f32, @floatFromInt(z)) - 1, 1 } });
 
                 points[i] = .{ point.data[0], point.data[1], point.data[2] };
                 points[i][0] /= point.data[3];
@@ -729,7 +729,7 @@ pub fn endSceneRender(scene: SceneHandle) void {
 }
 
 fn endRenderInternal(scene: SceneHandle) !void {
-    const scene_data: *Scene = &self.scenes.items[@enumToInt(scene)];
+    const scene_data: *Scene = &self.scenes.items[@intFromEnum(scene)];
 
     if (self.image_staging_fence.getStatus() == true) {
         self.material_data_changed = false;
@@ -765,7 +765,7 @@ fn endRenderInternal(scene: SceneHandle) !void {
     const image = self.swapchain.swap_images[image_index];
     const command_buffer = &self.command_buffers[image_index];
 
-    const aspect_ratio: f32 = @intToFloat(f32, window.getWidth()) / @intToFloat(f32, window.getHeight());
+    const aspect_ratio: f32 = @as(f32, @floatFromInt(window.getWidth())) / @as(f32, @floatFromInt(window.getHeight()));
     const near_plane: f32 = 0.01;
     const fov: f32 = self.camera.fov;
 
@@ -788,9 +788,9 @@ fn endRenderInternal(scene: SceneHandle) !void {
         shadow_view_frustrum_center[2] += corner[2];
     }
 
-    shadow_view_frustrum_center[0] /= @intToFloat(f32, view_frustum_corners.len);
-    shadow_view_frustrum_center[1] /= @intToFloat(f32, view_frustum_corners.len);
-    shadow_view_frustrum_center[2] /= @intToFloat(f32, view_frustum_corners.len);
+    shadow_view_frustrum_center[0] /= @as(f32, @floatFromInt(view_frustum_corners.len));
+    shadow_view_frustrum_center[1] /= @as(f32, @floatFromInt(view_frustum_corners.len));
+    shadow_view_frustrum_center[2] /= @as(f32, @floatFromInt(view_frustum_corners.len));
 
     const primary_directional_light = &scene_data.directional_lights[scene_data.primary_directional_light_index];
 
@@ -801,13 +801,13 @@ fn endRenderInternal(scene: SceneHandle) !void {
     var shadow_projection: zalgebra.Mat4 = undefined;
 
     {
-        var min_x: f32 = std.math.f32_max;
-        var min_y: f32 = std.math.f32_max;
-        var min_z: f32 = std.math.f32_max;
+        var min_x: f32 = std.math.floatMax(f32);
+        var min_y: f32 = std.math.floatMax(f32);
+        var min_z: f32 = std.math.floatMax(f32);
 
-        var max_x: f32 = std.math.f32_min;
-        var max_y: f32 = std.math.f32_min;
-        var max_z: f32 = std.math.f32_min;
+        var max_x: f32 = std.math.floatMin(f32);
+        var max_y: f32 = std.math.floatMin(f32);
+        var max_z: f32 = std.math.floatMin(f32);
 
         for (view_frustum_corners) |corner| {
             const corner_in_light_space = zalgebra.Mat4.mulByVec4(shadow_view, .{ .data = .{ corner[0], corner[1], corner[2], 1 } });
@@ -936,7 +936,7 @@ fn endRenderInternal(scene: SceneHandle) !void {
             });
             defer command_buffer.endRenderPass();
 
-            command_buffer.setViewport(0, @intToFloat(f32, self.shadow_image.width), @intToFloat(f32, self.shadow_image.width), -@intToFloat(f32, self.shadow_image.height), 0, 1);
+            command_buffer.setViewport(0, @as(f32, @floatFromInt(self.shadow_image.width)), @as(f32, @floatFromInt(self.shadow_image.width)), -@as(f32, @floatFromInt(self.shadow_image.height)), 0, 1);
             command_buffer.setScissor(0, 0, self.shadow_image.width, self.shadow_image.height);
             command_buffer.setGraphicsPipeline(self.shadow_pipeline);
             command_buffer.setIndexBuffer(self.index_buffer, .u32);
@@ -963,7 +963,7 @@ fn endRenderInternal(scene: SceneHandle) !void {
             });
             defer command_buffer.endRenderPass();
 
-            command_buffer.setViewport(0, @intToFloat(f32, window.getHeight()), @intToFloat(f32, window.getWidth()), -@intToFloat(f32, window.getHeight()), 0, 1);
+            command_buffer.setViewport(0, @as(f32, @floatFromInt(window.getHeight())), @as(f32, @floatFromInt(window.getWidth())), -@as(f32, @floatFromInt(window.getHeight())), 0, 1);
             command_buffer.setScissor(0, 0, window.getWidth(), window.getHeight());
             command_buffer.setGraphicsPipeline(self.depth_pipeline);
             command_buffer.setIndexBuffer(self.index_buffer, .u32);
@@ -1005,12 +1005,12 @@ fn endRenderInternal(scene: SceneHandle) !void {
             command_buffer.setComputePipeline(self.depth_reduce_pipeline);
 
             for (self.depth_pyramid_levels, 0..) |_, i| {
-                const pyramid_level_width: u32 = @max(1, self.depth_pyramid.width >> @intCast(u5, i));
-                const pyramid_level_height: u32 = @max(1, self.depth_pyramid.height >> @intCast(u5, i));
+                const pyramid_level_width: u32 = @max(1, self.depth_pyramid.width >> @as(u5, @intCast(i)));
+                const pyramid_level_height: u32 = @max(1, self.depth_pyramid.height >> @as(u5, @intCast(i)));
 
                 command_buffer.setPushData(DepthReducePushData, .{
-                    .image_size = .{ @intToFloat(f32, pyramid_level_width), @intToFloat(f32, pyramid_level_height) },
-                    .image_index = @intCast(u32, i),
+                    .image_size = .{ @as(f32, @floatFromInt(pyramid_level_width)), @as(f32, @floatFromInt(pyramid_level_height)) },
+                    .image_index = @as(u32, @intCast(i)),
                 });
                 command_buffer.computeDispatch(pyramid_level_width, pyramid_level_height, 1);
 
@@ -1105,7 +1105,7 @@ fn endRenderInternal(scene: SceneHandle) !void {
             });
             defer command_buffer.endRenderPass();
 
-            command_buffer.setViewport(0, @intToFloat(f32, window.getHeight()), @intToFloat(f32, window.getWidth()), -@intToFloat(f32, window.getHeight()), 0, 1);
+            command_buffer.setViewport(0, @as(f32, @floatFromInt(window.getHeight())), @as(f32, @floatFromInt(window.getWidth())), -@as(f32, @floatFromInt(window.getHeight())), 0, 1);
             command_buffer.setScissor(0, 0, window.getWidth(), window.getHeight());
 
             command_buffer.setGraphicsPipeline(self.color_pipeline);
@@ -1293,7 +1293,7 @@ pub fn createScene(
 ) !SceneHandle {
     std.debug.assert(max_view_count == 1);
 
-    const handle = @intToEnum(SceneHandle, @intCast(u32, self.scenes.items.len));
+    const handle = @as(SceneHandle, @enumFromInt(@as(u32, @intCast(self.scenes.items.len))));
 
     var scene: Scene = undefined;
 
@@ -1336,8 +1336,8 @@ pub fn createScene(
 
     scene.material_indices = try scene.material_indices_buffer.map(u32);
 
-    scene.mesh_draw_volume_min = .{ std.math.f32_max, std.math.f32_max, std.math.f32_max };
-    scene.mesh_draw_volume_max = .{ std.math.f32_min, std.math.f32_min, std.math.f32_min };
+    scene.mesh_draw_volume_min = .{ std.math.floatMax(f32), std.math.floatMax(f32), std.math.floatMax(f32) };
+    scene.mesh_draw_volume_max = .{ std.math.floatMin(f32), std.math.floatMin(f32), std.math.floatMin(f32) };
 
     scene.environment_enabled = environment_data != null and environment_width != null and environment_width != null;
     scene.environment_image = if (scene.environment_enabled) try graphics.Image.initData(.cube, environment_data.?, environment_width.?, environment_height.?, 6, 1, .r8g8b8a8_srgb, .shader_read_only_optimal, .{
@@ -1405,7 +1405,7 @@ pub fn createScene(
 }
 
 pub fn destroyScene(scene: SceneHandle) void {
-    var scene_data = &self.scenes.items[@enumToInt(scene)];
+    var scene_data = &self.scenes.items[@intFromEnum(scene)];
 
     defer scene_data.uniforms_buffer.deinit();
     defer scene_data.draw_indirect_buffer.deinit();
@@ -1431,12 +1431,12 @@ pub fn sceneAddMesh(
     material: MaterialHandle,
     transform: zalgebra.Mat4x4(f32),
 ) !void {
-    const scene_data: *Scene = &self.scenes.items[@enumToInt(scene)];
+    const scene_data: *Scene = &self.scenes.items[@intFromEnum(scene)];
 
     const draw_offset = scene_data.static_draw_offset + scene_data.static_draw_count;
 
     scene_data.input_draws[draw_offset] = .{
-        .mesh_index = @enumToInt(mesh),
+        .mesh_index = @intFromEnum(mesh),
     };
 
     scene_data.transforms[draw_offset] = .{
@@ -1446,9 +1446,9 @@ pub fn sceneAddMesh(
         transform.data[3][0..3].*,
     };
 
-    scene_data.material_indices[draw_offset] = @enumToInt(material);
+    scene_data.material_indices[draw_offset] = @intFromEnum(material);
 
-    const mesh_data: Mesh = self.meshes.items[@enumToInt(mesh)];
+    const mesh_data: Mesh = self.meshes.items[@intFromEnum(mesh)];
 
     const bounding_min = [3]f32{
         mesh_data.bounding_box_center[0] - mesh_data.bounding_box_extents[0],
@@ -1487,10 +1487,10 @@ pub fn scenePushMesh(
     material: MaterialHandle,
     transform: zalgebra.Mat4x4(f32),
 ) void {
-    const scene_data: *Scene = &self.scenes.items[@enumToInt(scene)];
+    const scene_data: *Scene = &self.scenes.items[@intFromEnum(scene)];
 
     scene_data.input_draws[scene_data.static_draw_count + scene_data.dynamic_draw_count] = .{
-        .mesh_index = @enumToInt(mesh),
+        .mesh_index = @intFromEnum(mesh),
     };
 
     scene_data.transforms[scene_data.static_draw_count + scene_data.dynamic_draw_count] = .{
@@ -1500,7 +1500,7 @@ pub fn scenePushMesh(
         transform.data[3][0..3].*,
     };
 
-    scene_data.material_indices[scene_data.static_draw_count + scene_data.dynamic_draw_count] = @enumToInt(material);
+    scene_data.material_indices[scene_data.static_draw_count + scene_data.dynamic_draw_count] = @intFromEnum(material);
 
     scene_data.dynamic_draw_count += 1;
 }
@@ -1513,7 +1513,7 @@ pub const PointLight = extern struct {
 
 ///Pushes a dynamic point light into the scene
 pub fn scenePushPointLight(scene: SceneHandle, point_light: PointLight) void {
-    const scene_data: *Scene = &self.scenes.items[@enumToInt(scene)];
+    const scene_data: *Scene = &self.scenes.items[@intFromEnum(scene)];
 
     const index = scene_data.point_light_count;
 
@@ -1524,7 +1524,7 @@ pub fn scenePushPointLight(scene: SceneHandle, point_light: PointLight) void {
 
 ///Pushes a dynamic directional light into the scene
 pub fn scenePushDirectionalLight(scene: SceneHandle, directional_light: DirectionalLight) void {
-    const scene_data: *Scene = &self.scenes.items[@enumToInt(scene)];
+    const scene_data: *Scene = &self.scenes.items[@intFromEnum(scene)];
 
     const index = scene_data.directional_light_count;
 
@@ -1556,14 +1556,14 @@ pub fn createMesh(
     bounding_box_min: @Vector(3, f32),
     bounding_box_max: @Vector(3, f32),
 ) !MeshHandle {
-    const mesh_handle = @intCast(u32, self.meshes.items.len);
+    const mesh_handle = @as(u32, @intCast(self.meshes.items.len));
 
-    const lod_offset = @intCast(u32, self.mesh_lods.items.len);
+    const lod_offset = @as(u32, @intCast(self.mesh_lods.items.len));
     const lod_count = 1;
 
     try self.mesh_lods.append(self.allocator, .{
-        .index_offset = @intCast(u32, self.index_offset),
-        .index_count = @intCast(u32, indices.len),
+        .index_offset = @as(u32, @intCast(self.index_offset)),
+        .index_count = @as(u32, @intCast(indices.len)),
     });
 
     try self.mesh_bounding_boxes.append(self.allocator, .{ .min = bounding_box_min, .max = bounding_box_max });
@@ -1576,8 +1576,8 @@ pub fn createMesh(
     };
 
     try self.meshes.append(self.allocator, .{
-        .vertex_offset = @intCast(u32, self.vertex_position_offset),
-        .vertex_count = @intCast(u32, vertices.len),
+        .vertex_offset = @as(u32, @intCast(self.vertex_position_offset)),
+        .vertex_count = @as(u32, @intCast(vertices.len)),
         .lod_offset = lod_offset,
         .lod_count = lod_count,
         .bounding_box_center = bounding_box_center,
@@ -1605,11 +1605,11 @@ pub fn createMesh(
 
     self.mesh_data_changed = true;
 
-    return @intToEnum(MeshHandle, mesh_handle);
+    return @as(MeshHandle, @enumFromInt(mesh_handle));
 }
 
 pub fn getMeshBox(mesh_handle: MeshHandle) struct { min: @Vector(3, f32), max: @Vector(3, f32) } {
-    const bounding_box = self.mesh_bounding_boxes.items[@enumToInt(mesh_handle)];
+    const bounding_box = self.mesh_bounding_boxes.items[@intFromEnum(mesh_handle)];
 
     return .{ .min = bounding_box.min, .max = bounding_box.max };
 }
@@ -1633,17 +1633,17 @@ fn packUnorm4x8(v: [4]f32) u32 {
         w: u8,
     };
 
-    const x = @floatToInt(u8, v[0] * @intToFloat(f32, std.math.maxInt(u8)));
-    const y = @floatToInt(u8, v[1] * @intToFloat(f32, std.math.maxInt(u8)));
-    const z = @floatToInt(u8, v[2] * @intToFloat(f32, std.math.maxInt(u8)));
-    const w = @floatToInt(u8, v[3] * @intToFloat(f32, std.math.maxInt(u8)));
+    const x = @as(u8, @intFromFloat(v[0] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
+    const y = @as(u8, @intFromFloat(v[1] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
+    const z = @as(u8, @intFromFloat(v[2] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
+    const w = @as(u8, @intFromFloat(v[3] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
 
-    return @bitCast(u32, Unorm4x8{
+    return @as(u32, @bitCast(Unorm4x8{
         .x = x,
         .y = y,
         .z = z,
         .w = w,
-    });
+    }));
 }
 
 pub const TextureHandle = enum(u32) { _ };
@@ -1653,7 +1653,7 @@ pub fn createTexture(
     width: u32,
     height: u32,
 ) !TextureHandle {
-    const texture_handle = @intCast(u32, self.texture_images.items.len) + 1;
+    const texture_handle = @as(u32, @intCast(self.texture_images.items.len)) + 1;
 
     var image = try Image.init(.@"2d", width, height, 1, 1, .r8g8b8a8_srgb, .shader_read_only_optimal, .{
         .transfer_dst_bit = true,
@@ -1679,7 +1679,7 @@ pub fn createTexture(
 
     self.color_pipeline.setDescriptorImageSampler(6, texture_handle, image, sampler);
 
-    return @intToEnum(TextureHandle, texture_handle);
+    return @as(TextureHandle, @enumFromInt(texture_handle));
 }
 
 pub fn createMaterial(
@@ -1690,10 +1690,10 @@ pub fn createMaterial(
     roughness_texture: ?TextureHandle,
     roughness: f32,
 ) !MaterialHandle {
-    const material_handle = @intCast(u32, self.materials.items.len);
-    const albedo_handle = if (albedo_texture != null) @enumToInt(albedo_texture.?) else 0;
-    const metalness_handle = if (metalness_texture != null) @enumToInt(metalness_texture.?) else 0;
-    const roughness_handle = if (roughness_texture != null) @enumToInt(roughness_texture.?) else 0;
+    const material_handle = @as(u32, @intCast(self.materials.items.len));
+    const albedo_handle = if (albedo_texture != null) @intFromEnum(albedo_texture.?) else 0;
+    const metalness_handle = if (metalness_texture != null) @intFromEnum(metalness_texture.?) else 0;
+    const roughness_handle = if (roughness_texture != null) @intFromEnum(roughness_texture.?) else 0;
 
     std.log.debug("Created material {}", .{material_handle});
 
@@ -1708,7 +1708,7 @@ pub fn createMaterial(
 
     self.material_data_changed = true;
 
-    return @intToEnum(MaterialHandle, material_handle);
+    return @as(MaterialHandle, @enumFromInt(material_handle));
 }
 
 pub const Vertex = extern struct {

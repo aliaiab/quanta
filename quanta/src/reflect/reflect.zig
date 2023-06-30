@@ -176,7 +176,7 @@ pub const Type = union(enum) {
                     .alignment = @alignOf(T),
                     .layout = union_info.layout,
                     .tag_type = if (union_info.tag_type != null) info(union_info.tag_type.?) else null,
-                    .tag_offset = @intCast(u32, data_end),
+                    .tag_offset = @as(u32, @intCast(data_end)),
                     .fields = &fields,
                     .decls = &.{},
                 } };
@@ -319,9 +319,9 @@ pub const Type = union(enum) {
     }
 
     pub fn getStructFieldValue(comptime T: type, value: *const anyopaque, field: StructField) *const T {
-        const value_pointer = @ptrCast([*]const u8, value) + field.offset;
+        const value_pointer = @as([*]const u8, @ptrCast(value)) + field.offset;
 
-        return @ptrCast(*const T, @alignCast(@alignOf(T), value_pointer));
+        return @as(*const T, @ptrCast(@alignCast(value_pointer)));
     }
 
     pub fn format(

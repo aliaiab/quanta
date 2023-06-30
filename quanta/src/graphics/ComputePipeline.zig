@@ -25,7 +25,7 @@ pub const DispatchType = enum {
 };
 
 fn closestPowerOfTwo(x: f32) u32 {
-    const v = @floatToInt(u32, @round(x));
+    const v = @as(u32, @intFromFloat(@round(x)));
 
     var r: u32 = 1;
 
@@ -46,7 +46,7 @@ pub fn init(
 
     var shader_parse_result: spirv_parse.ShaderParseResult = std.mem.zeroes(spirv_parse.ShaderParseResult);
 
-    try spirv_parse.parseShaderModule(&shader_parse_result, allocator, @ptrCast([*]const u32, shader_code.ptr)[0 .. shader_code.len / @sizeOf(u32)]);
+    try spirv_parse.parseShaderModule(&shader_parse_result, allocator, @as([*]const u32, @ptrCast(shader_code.ptr))[0 .. shader_code.len / @sizeOf(u32)]);
 
     //This should be close to optimal for most work loads, but not all
     //This isn't a silver bullet, just a very sensible default
@@ -113,13 +113,13 @@ pub fn init(
 
     const descriptor_set_layout_infos = [1]vk.DescriptorSetLayoutCreateInfo{.{
         .p_next = &vk.DescriptorSetLayoutBindingFlagsCreateInfo{
-            .binding_count = @intCast(u32, descriptor_set_layout_binding_flags.len),
+            .binding_count = @as(u32, @intCast(descriptor_set_layout_binding_flags.len)),
             .p_binding_flags = descriptor_set_layout_binding_flags.ptr,
         },
         .flags = .{
             .update_after_bind_pool_bit = true,
         },
-        .binding_count = @intCast(u32, descriptor_set_layout_bindings.len),
+        .binding_count = @as(u32, @intCast(descriptor_set_layout_bindings.len)),
         .p_bindings = descriptor_set_layout_bindings.ptr,
     }};
 
@@ -142,20 +142,20 @@ pub fn init(
             .update_after_bind_bit = true,
         },
         .max_sets = 1,
-        .pool_size_count = @intCast(u32, descriptor_pool_sizes.len),
+        .pool_size_count = @as(u32, @intCast(descriptor_pool_sizes.len)),
         .p_pool_sizes = descriptor_pool_sizes.ptr,
     }, &Context.self.allocation_callbacks);
     errdefer Context.self.vkd.destroyDescriptorPool(Context.self.device, self.descriptor_pool, &Context.self.allocation_callbacks);
 
     try Context.self.vkd.allocateDescriptorSets(Context.self.device, &.{
         .descriptor_pool = self.descriptor_pool,
-        .descriptor_set_count = @intCast(u32, self.descriptor_set_layouts.len),
+        .descriptor_set_count = @as(u32, @intCast(self.descriptor_set_layouts.len)),
         .p_set_layouts = self.descriptor_set_layouts.ptr,
     }, self.descriptor_sets.ptr);
 
     self.layout = try Context.self.vkd.createPipelineLayout(Context.self.device, &.{
         .flags = .{},
-        .set_layout_count = @intCast(u32, self.descriptor_set_layouts.len),
+        .set_layout_count = @as(u32, @intCast(self.descriptor_set_layouts.len)),
         .p_set_layouts = self.descriptor_set_layouts.ptr,
         .push_constant_range_count = if (PushDataType != null) 1 else 0,
         .p_push_constant_ranges = &[_]vk.PushConstantRange{
@@ -173,7 +173,7 @@ pub fn init(
     self.compute_shader_module = try Context.self.vkd.createShaderModule(Context.self.device, &.{
         .flags = .{},
         .code_size = shader_code.len,
-        .p_code = @ptrCast([*]const u32, shader_code.ptr),
+        .p_code = @as([*]const u32, @ptrCast(shader_code.ptr)),
     }, &Context.self.allocation_callbacks);
     errdefer Context.self.vkd.destroyShaderModule(Context.self.device, self.compute_shader_module, &Context.self.allocation_callbacks);
 
@@ -206,13 +206,13 @@ pub fn init(
                     },
                 },
                 .data_size = @sizeOf(u32) * 3,
-                .p_data = @ptrCast(*const anyopaque, &[_]u32{ self.local_size_x, self.local_size_y, self.local_size_z }),
+                .p_data = @as(*const anyopaque, @ptrCast(&[_]u32{ self.local_size_x, self.local_size_y, self.local_size_z })),
             },
         },
         .layout = self.layout,
         .base_pipeline_handle = .null_handle,
         .base_pipeline_index = 0,
-    }}, &Context.self.allocation_callbacks, @ptrCast([*]vk.Pipeline, &self.handle));
+    }}, &Context.self.allocation_callbacks, @as([*]vk.Pipeline, @ptrCast(&self.handle)));
     errdefer Context.self.vkd.destroyPipeline(Context.self.device, self.handle, &Context.self.allocation_callbacks);
 
     return self;

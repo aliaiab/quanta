@@ -191,11 +191,11 @@ pub fn init(
 
     var shader_parse_result: spirv_parse.ShaderParseResult = std.mem.zeroes(spirv_parse.ShaderParseResult);
 
-    try spirv_parse.parseShaderModule(&shader_parse_result, allocator, @ptrCast([*]const u32, options.vertex_shader_binary.ptr)[0 .. options.vertex_shader_binary.len / @sizeOf(u32)]);
+    try spirv_parse.parseShaderModule(&shader_parse_result, allocator, @as([*]const u32, @ptrCast(options.vertex_shader_binary.ptr))[0 .. options.vertex_shader_binary.len / @sizeOf(u32)]);
 
     const vertex_shader_entry_point = shader_parse_result.entry_point;
 
-    try spirv_parse.parseShaderModule(&shader_parse_result, allocator, @ptrCast([*]const u32, options.fragment_shader_binary.ptr)[0 .. options.fragment_shader_binary.len / @sizeOf(u32)]);
+    try spirv_parse.parseShaderModule(&shader_parse_result, allocator, @as([*]const u32, @ptrCast(options.fragment_shader_binary.ptr))[0 .. options.fragment_shader_binary.len / @sizeOf(u32)]);
 
     const fragment_shader_entry_point = shader_parse_result.entry_point;
 
@@ -246,13 +246,13 @@ pub fn init(
 
     const descriptor_set_layout_infos = [1]vk.DescriptorSetLayoutCreateInfo{.{
         .p_next = &vk.DescriptorSetLayoutBindingFlagsCreateInfo{
-            .binding_count = @intCast(u32, descriptor_set_layout_binding_flags.len),
+            .binding_count = @as(u32, @intCast(descriptor_set_layout_binding_flags.len)),
             .p_binding_flags = descriptor_set_layout_binding_flags.ptr,
         },
         .flags = .{
             .update_after_bind_pool_bit = true,
         },
-        .binding_count = @intCast(u32, descriptor_set_layout_bindings.len),
+        .binding_count = @as(u32, @intCast(descriptor_set_layout_bindings.len)),
         .p_bindings = descriptor_set_layout_bindings.ptr,
     }};
 
@@ -277,7 +277,7 @@ pub fn init(
             .update_after_bind_bit = true,
         },
         .max_sets = 1,
-        .pool_size_count = @intCast(u32, descriptor_pool_sizes.len),
+        .pool_size_count = @as(u32, @intCast(descriptor_pool_sizes.len)),
         .p_pool_sizes = descriptor_pool_sizes.ptr,
     }, &Context.self.allocation_callbacks);
     errdefer Context.self.vkd.destroyDescriptorPool(Context.self.device, self.descriptor_pool, &Context.self.allocation_callbacks);
@@ -292,14 +292,14 @@ pub fn init(
 
     try Context.self.vkd.allocateDescriptorSets(Context.self.device, &.{
         .descriptor_pool = self.descriptor_pool,
-        .descriptor_set_count = @intCast(u32, self.descriptor_set_layouts.len),
+        .descriptor_set_count = @as(u32, @intCast(self.descriptor_set_layouts.len)),
         .p_set_layouts = self.descriptor_set_layouts.ptr,
     }, self.descriptor_sets.ptr);
-    errdefer Context.self.vkd.freeDescriptorSets(Context.self.device, self.descriptor_pool, @intCast(u32, self.descriptor_sets.len), self.descriptor_sets.ptr) catch unreachable;
+    errdefer Context.self.vkd.freeDescriptorSets(Context.self.device, self.descriptor_pool, @as(u32, @intCast(self.descriptor_sets.len)), self.descriptor_sets.ptr) catch unreachable;
 
     self.layout = try Context.self.vkd.createPipelineLayout(Context.self.device, &.{
         .flags = .{},
-        .set_layout_count = @intCast(u32, self.descriptor_set_layouts.len),
+        .set_layout_count = @as(u32, @intCast(self.descriptor_set_layouts.len)),
         .p_set_layouts = self.descriptor_set_layouts.ptr,
         .push_constant_range_count = if (PushDataType != null) 1 else 0,
         .p_push_constant_ranges = &[_]vk.PushConstantRange{
@@ -318,14 +318,14 @@ pub fn init(
     self.vertex_shader = try Context.self.vkd.createShaderModule(Context.self.device, &.{
         .flags = .{},
         .code_size = options.vertex_shader_binary.len,
-        .p_code = @ptrCast([*]const u32, options.vertex_shader_binary.ptr),
+        .p_code = @as([*]const u32, @ptrCast(options.vertex_shader_binary.ptr)),
     }, &Context.self.allocation_callbacks);
     errdefer Context.self.vkd.destroyShaderModule(Context.self.device, self.vertex_shader, &Context.self.allocation_callbacks);
 
     self.fragment_shader = try Context.self.vkd.createShaderModule(Context.self.device, &.{
         .flags = .{},
         .code_size = options.fragment_shader_binary.len,
-        .p_code = @ptrCast([*]const u32, options.fragment_shader_binary.ptr),
+        .p_code = @as([*]const u32, @ptrCast(options.fragment_shader_binary.ptr)),
     }, &Context.self.allocation_callbacks);
     errdefer Context.self.vkd.destroyShaderModule(Context.self.device, self.fragment_shader, &Context.self.allocation_callbacks);
 
@@ -364,7 +364,7 @@ pub fn init(
     _ = try Context.self.vkd.createGraphicsPipelines(Context.self.device, Context.self.pipeline_cache, 1, &[_]vk.GraphicsPipelineCreateInfo{.{
         .p_next = &vk.PipelineRenderingCreateInfo{
             .view_mask = 0,
-            .color_attachment_count = @intCast(u32, options.color_attachment_formats.len),
+            .color_attachment_count = @as(u32, @intCast(options.color_attachment_formats.len)),
             .p_color_attachment_formats = options.color_attachment_formats.ptr,
             .depth_attachment_format = options.depth_attachment_format orelse .undefined,
             .stencil_attachment_format = options.stencil_attachment_format orelse .undefined,
@@ -374,9 +374,9 @@ pub fn init(
         .p_stages = &shader_stage_infos,
         .p_vertex_input_state = &.{
             .flags = .{},
-            .vertex_binding_description_count = if (VertexType != null) @intCast(u32, vertex_binding_descriptions.len) else 0,
+            .vertex_binding_description_count = if (VertexType != null) @as(u32, @intCast(vertex_binding_descriptions.len)) else 0,
             .p_vertex_binding_descriptions = &vertex_binding_descriptions,
-            .vertex_attribute_description_count = if (VertexType != null) @intCast(u32, vertex_attribute_descriptions.len) else 0,
+            .vertex_attribute_description_count = if (VertexType != null) @as(u32, @intCast(vertex_attribute_descriptions.len)) else 0,
             .p_vertex_attribute_descriptions = &vertex_attribute_descriptions,
         },
         .p_input_assembly_state = &.{
@@ -430,8 +430,8 @@ pub fn init(
         },
         .p_depth_stencil_state = &.{
             .flags = .{},
-            .depth_test_enable = @boolToInt(options.depth_state.test_enabled),
-            .depth_write_enable = @boolToInt(options.depth_state.write_enabled),
+            .depth_test_enable = @intFromBool(options.depth_state.test_enabled),
+            .depth_write_enable = @intFromBool(options.depth_state.write_enabled),
             .depth_compare_op = @as(vk.CompareOp, switch (options.depth_state.compare_op) {
                 .less => .less,
                 .less_or_equal => .less_or_equal,
@@ -458,7 +458,7 @@ pub fn init(
                     .b_bit = true,
                     .a_bit = true,
                 },
-                .blend_enable = @boolToInt(options.blend_state.blend_enabled),
+                .blend_enable = @intFromBool(options.blend_state.blend_enabled),
                 .src_color_blend_factor = .src_alpha,
                 .dst_color_blend_factor = .one_minus_src_alpha,
                 .color_blend_op = .add,
@@ -478,7 +478,7 @@ pub fn init(
         .subpass = 0,
         .base_pipeline_handle = .null_handle,
         .base_pipeline_index = 0,
-    }}, &Context.self.allocation_callbacks, @ptrCast([*]vk.Pipeline, &self.handle));
+    }}, &Context.self.allocation_callbacks, @as([*]vk.Pipeline, @ptrCast(&self.handle)));
 
     return self;
 }

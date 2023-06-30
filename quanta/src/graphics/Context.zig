@@ -8,7 +8,7 @@ const log = @import("../log.zig").log;
 
 pub const enable_khronos_validation = builtin.mode == .Debug;
 pub const enable_debug_messenger = enable_khronos_validation;
-pub const vulkan_version = std.builtin.Version{
+pub const vulkan_version = std.SemanticVersion{
     .major = 1,
     .minor = 3,
     .patch = 0,
@@ -164,43 +164,44 @@ fn debugUtilsMessengerCallback(message_severity: vk.DebugUtilsMessageSeverityFla
 fn vulkanAllocate(user_data: ?*anyopaque, size: usize, alignment: usize, _: vk.SystemAllocationScope) callconv(vk.vulkan_call_conv) ?*anyopaque {
     _ = user_data;
 
-    const memory = (self.allocator.rawAlloc(size + @sizeOf(usize), @intCast(u8, alignment), @returnAddress()) orelse
+    const memory = (self.allocator.rawAlloc(size + @sizeOf(usize), @as(u8, @intCast(alignment)), @returnAddress()) orelse
         {
         @panic("Allocation failed!");
     })[0 .. size + @sizeOf(usize)];
 
-    @ptrCast(*usize, @alignCast(@alignOf(usize), memory.ptr)).* = size;
+    @as(*usize, @ptrCast(@alignCast(memory.ptr))).* = size;
 
     return memory.ptr + @sizeOf(usize);
 }
 
 fn vulkanReallocate(user_data: ?*anyopaque, original: ?*anyopaque, size: usize, alignment: usize, _: vk.SystemAllocationScope) callconv(vk.vulkan_call_conv) ?*anyopaque {
-    const original_pointer = @ptrCast([*]u8, original.?) - @sizeOf(usize);
-    const old_size = @ptrCast(*usize, @alignCast(@alignOf(usize), original_pointer)).*;
+    const original_pointer = @as([*]u8, @ptrCast(original.?)) - @sizeOf(usize);
+    const old_size = @as(*usize, @ptrCast(@alignCast(original_pointer))).*;
 
     const memory = original_pointer[0 .. old_size + @sizeOf(usize)];
 
     if (size > old_size) {
-        const memory_ptr = self.allocator.rawAlloc(size + @sizeOf(usize), @intCast(u8, alignment), @returnAddress()) orelse {
+        const memory_ptr = self.allocator.rawAlloc(size + @sizeOf(usize), @as(u8, @intCast(alignment)), @returnAddress()) orelse {
             @panic("Allocation failed!");
         };
 
-        @ptrCast(*usize, @alignCast(@alignOf(usize), memory_ptr)).* = size;
+        @as(*usize, @ptrCast(@alignCast(memory_ptr))).* = size;
 
         const allocation_ptr = memory_ptr + @sizeOf(usize);
 
-        @memcpy(allocation_ptr, original_pointer + @sizeOf(usize), old_size);
+        // @memcpy(allocation_ptr, original_pointer + @sizeOf(usize), old_size);
+        @memcpy(allocation_ptr[0..old_size], memory[@sizeOf(usize) .. @sizeOf(usize) + old_size]);
 
         vulkanFree(user_data, original);
 
         return allocation_ptr;
     } else {
-        if (!self.allocator.rawResize(memory, @intCast(u8, alignment), size, @returnAddress())) {
+        if (!self.allocator.rawResize(memory, @as(u8, @intCast(alignment)), size, @returnAddress())) {
             @panic("Allocation failed!");
         }
     }
 
-    @ptrCast(*usize, @alignCast(@alignOf(usize), memory.ptr)).* = size;
+    @as(*usize, @ptrCast(@alignCast(memory.ptr))).* = size;
 
     return memory.ptr + @sizeOf(usize);
 }
@@ -210,10 +211,13 @@ fn vulkanFree(user_data: ?*anyopaque, memory: ?*anyopaque) callconv(vk.vulkan_ca
 
     _ = user_data;
 
-    const pointer = @ptrCast([*]u8, memory.?) - @sizeOf(usize);
-    const size = @ptrCast(*usize, @alignCast(@alignOf(usize), pointer)).*;
+    const pointer = @as([*]u8, @ptrCast(memory.?)) - @sizeOf(usize);
+    const size = @as(*usize, @ptrCast(@alignCast(pointer))).*;
+    //TODO: This is VERY dodgy, and we *might* have to store alignment in the allocation
+    const alignment = 256;
 
-    self.allocator.free(pointer[0 .. size + @sizeOf(usize)]);
+    // self.allocator.free(pointer[0 .. size + @sizeOf(usize)]);
+    self.allocator.rawFree(pointer[0 .. size + @sizeOf(usize)], std.math.log2(alignment), @returnAddress());
 }
 
 pub var self: Context = undefined;
@@ -331,7 +335,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
         log.info("Available Layers:", .{});
 
         for (layer_properties) |layer_property| {
-            const sentinel_index = std.mem.indexOfSentinel(u8, 0, @ptrCast([*:0]const u8, &layer_property.layer_name));
+            const sentinel_index = std.mem.indexOfSentinel(u8, 0, @as([*:0]const u8, @ptrCast(&layer_property.layer_name)));
 
             log.info("  {s}", .{layer_property.layer_name[0..sentinel_index]});
         }
@@ -339,7 +343,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
         inline for (requested_layers) |layer| {
             const found = block: for (layer_properties) |layer_property| {
                 const first_sentinel_index = std.mem.indexOfSentinel(u8, 0, layer);
-                const second_sentinel_index = std.mem.indexOfSentinel(u8, 0, @ptrCast([*:0]const u8, &layer_property.layer_name));
+                const second_sentinel_index = std.mem.indexOfSentinel(u8, 0, @as([*:0]const u8, @ptrCast(&layer_property.layer_name)));
 
                 const sentinel_index = @min(first_sentinel_index, second_sentinel_index);
 
@@ -370,7 +374,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
     self.instance = try self.vkb.createInstance(&.{
         .p_next = if (enable_khronos_validation)
             &vk.ValidationFeaturesEXT{
-                .enabled_validation_feature_count = @intCast(u32, validation_features.len),
+                .enabled_validation_feature_count = @as(u32, @intCast(validation_features.len)),
                 .p_enabled_validation_features = &validation_features,
                 .disabled_validation_feature_count = 0,
                 .p_disabled_validation_features = undefined,
@@ -390,9 +394,9 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
             .p_application_name = null,
             .p_engine_name = null,
         },
-        .enabled_layer_count = @intCast(u32, layers.len),
+        .enabled_layer_count = @as(u32, @intCast(layers.len)),
         .pp_enabled_layer_names = requested_layers.ptr,
-        .enabled_extension_count = @intCast(u32, instance_extentions.len),
+        .enabled_extension_count = @as(u32, @intCast(instance_extentions.len)),
         .pp_enabled_extension_names = instance_extentions.ptr,
     }, &self.allocation_callbacks);
 
@@ -412,7 +416,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
 
     errdefer if (enable_debug_messenger) self.vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, &self.allocation_callbacks);
 
-    _ = glfw.createWindowSurface(self.instance, window.window, @ptrCast(?*vk.AllocationCallbacks, &self.allocation_callbacks), &self.surface);
+    _ = glfw.createWindowSurface(self.instance, window.window, @as(?*vk.AllocationCallbacks, @ptrCast(&self.allocation_callbacks)), &self.surface);
     errdefer self.vki.destroySurfaceKHR(self.instance, self.surface, &self.allocation_callbacks);
 
     var device_extensions_buffer: [std.meta.fields(RequiredExtensions).len + std.meta.fields(OptionalExtensions).len][*:0]const u8 = undefined;
@@ -551,11 +555,11 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
 
             for (queue_families, 0..) |queue_family, queue_family_index| {
                 if (queue_family.queue_flags.graphics_bit) {
-                    self.graphics_family_index = @intCast(u32, queue_family_index);
+                    self.graphics_family_index = @as(u32, @intCast(queue_family_index));
                 }
 
                 if (queue_family.queue_flags.compute_bit) {
-                    self.compute_family_index = @intCast(u32, queue_family_index);
+                    self.compute_family_index = @as(u32, @intCast(queue_family_index));
                 }
 
                 //TODO: If a dedicated transfer queue doesn't exist, assign it to a non dedicated one such as compute or graphics
@@ -565,13 +569,13 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
                     !queue_family.queue_flags.compute_bit and
                     !queue_family.queue_flags.graphics_bit)
                 {
-                    self.transfer_family_index = @intCast(u32, queue_family_index);
+                    self.transfer_family_index = @as(u32, @intCast(queue_family_index));
                 }
 
-                const surface_supported = try self.vki.getPhysicalDeviceSurfaceSupportKHR(physical_device, @intCast(u32, queue_family_index), self.surface);
+                const surface_supported = try self.vki.getPhysicalDeviceSurfaceSupportKHR(physical_device, @as(u32, @intCast(queue_family_index)), self.surface);
 
                 if (surface_supported == vk.TRUE) {
-                    self.present_family_index = @intCast(u32, queue_family_index);
+                    self.present_family_index = @as(u32, @intCast(queue_family_index));
                 }
             }
 
@@ -674,19 +678,19 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
                 .flags = .{},
                 .queue_family_index = self.graphics_family_index.?,
                 .queue_count = 1,
-                .p_queue_priorities = @ptrCast([*]const f32, &@as(f32, 1.0)),
+                .p_queue_priorities = @as([*]const f32, @ptrCast(&@as(f32, 1.0))),
             },
             .{
                 .flags = .{},
                 .queue_family_index = self.compute_family_index.?,
                 .queue_count = 1,
-                .p_queue_priorities = @ptrCast([*]const f32, &@as(f32, 1.0)),
+                .p_queue_priorities = @as([*]const f32, @ptrCast(&@as(f32, 1.0))),
             },
             .{
                 .flags = .{},
                 .queue_family_index = self.transfer_family_index.?,
                 .queue_count = 1,
-                .p_queue_priorities = @ptrCast([*]const f32, &@as(f32, 1.0)),
+                .p_queue_priorities = @as([*]const f32, @ptrCast(&@as(f32, 1.0))),
             },
         };
 
@@ -737,9 +741,9 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
             .p_next = &physical_device_features,
             .flags = .{},
             .p_queue_create_infos = &queue_create_infos,
-            .queue_create_info_count = @intCast(u32, queue_create_infos.len),
+            .queue_create_info_count = @as(u32, @intCast(queue_create_infos.len)),
             .p_enabled_features = null,
-            .enabled_extension_count = @intCast(u32, device_extension_count),
+            .enabled_extension_count = @as(u32, @intCast(device_extension_count)),
             .pp_enabled_extension_names = device_extentions.ptr,
             .enabled_layer_count = 0,
             .pp_enabled_layer_names = undefined,
@@ -814,7 +818,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
     errdefer self.allocator.free(self.initial_memory_budgets);
 
     for (self.initial_memory_budgets, 0..) |*budget, i| {
-        budget.* = getMemoryHeapBudget(@intCast(u32, i));
+        budget.* = getMemoryHeapBudget(@as(u32, @intCast(i)));
 
         std.log.info("Budget[{}] = {}", .{ i, budget.* });
     }
@@ -862,7 +866,7 @@ pub fn imageMemoryBarrier(
         .buffer_memory_barrier_count = 0,
         .p_buffer_memory_barriers = undefined,
         .image_memory_barrier_count = 1,
-        .p_image_memory_barriers = @ptrCast([*]const vk.ImageMemoryBarrier2, &vk.ImageMemoryBarrier2{
+        .p_image_memory_barriers = @as([*]const vk.ImageMemoryBarrier2, @ptrCast(&vk.ImageMemoryBarrier2{
             .src_stage_mask = src_stage,
             .dst_stage_mask = dst_stage,
             .src_access_mask = src_access,
@@ -879,7 +883,7 @@ pub fn imageMemoryBarrier(
                 .base_array_layer = 0,
                 .layer_count = vk.REMAINING_ARRAY_LAYERS,
             },
-        }),
+        })),
     });
 }
 
@@ -896,7 +900,7 @@ pub fn getMemoryType(requirements: vk.MemoryRequirements, properties: vk.MemoryP
         const has_properties = memory_type.property_flags.contains(properties);
 
         if (has_properties and
-            ((@as(u32, 1) << @intCast(u5, memory_type_index)) & requirements.memory_type_bits) != 0)
+            ((@as(u32, 1) << @as(u5, @intCast(memory_type_index))) & requirements.memory_type_bits) != 0)
         {
             return .{ .index = memory_type_index, .heap_index = memory_type.heap_index };
         }
@@ -908,7 +912,7 @@ pub fn getMemoryType(requirements: vk.MemoryRequirements, properties: vk.MemoryP
 pub fn getMemoryTypeIndexHostPointer(host_pointer: [*]const u8, properties: vk.MemoryPropertyFlags) !u32 {
     var host_pointer_properties: vk.MemoryHostPointerPropertiesEXT = .{ .memory_type_bits = 0 };
 
-    try self.vkd.getMemoryHostPointerPropertiesEXT(self.device, .{ .host_allocation_bit_ext = true }, @intToPtr(*anyopaque, @ptrToInt(host_pointer)), &host_pointer_properties);
+    try self.vkd.getMemoryHostPointerPropertiesEXT(self.device, .{ .host_allocation_bit_ext = true }, @as(*anyopaque, @ptrFromInt(@intFromPtr(host_pointer))), &host_pointer_properties);
 
     var memory_type_index: u32 = 0;
 
@@ -917,7 +921,7 @@ pub fn getMemoryTypeIndexHostPointer(host_pointer: [*]const u8, properties: vk.M
         const has_properties = memory_type.property_flags.contains(properties);
 
         if (has_properties and
-            ((@as(u32, 1) << @intCast(u5, @bitCast(u32, memory_type_index))) & @bitCast(u32, host_pointer_properties.memory_type_bits)) != 0)
+            ((@as(u32, 1) << @as(u5, @intCast(@as(u32, @bitCast(memory_type_index))))) & @as(u32, @bitCast(host_pointer_properties.memory_type_bits))) != 0)
         {
             return memory_type_index;
         }
@@ -972,7 +976,7 @@ pub fn deviceAllocateHostMemory(
     properties: vk.MemoryPropertyFlags,
     host_memory: []const u8,
 ) !vk.DeviceMemory {
-    const host_pointer = @intToPtr(*anyopaque, @ptrToInt(host_memory.ptr));
+    const host_pointer = @as(*anyopaque, @ptrFromInt(@intFromPtr(host_memory.ptr)));
 
     return try self.vkd.allocateMemory(self.device, &.{
         .p_next = &vk.ImportMemoryHostPointerInfoEXT{
@@ -1029,7 +1033,7 @@ pub fn devicePageAllocate(
     properties: vk.MemoryPropertyFlags,
     dedicated_info: ?vk.MemoryDedicatedAllocateInfo,
 ) !DevicePageHandle {
-    const handle = @intToEnum(DevicePageHandle, @intCast(u32, self.pages.items.len));
+    const handle = @as(DevicePageHandle, @enumFromInt(@as(u32, @intCast(self.pages.items.len))));
 
     const requirements = vk.MemoryRequirements{ .size = size, .alignment = alignment, .memory_type_bits = memory_type_bits };
     const memory_type = try getMemoryType(requirements, properties);
@@ -1040,7 +1044,7 @@ pub fn devicePageAllocate(
     var page_memory_offset: usize = 0;
 
     for (memories.items, 0..) |*memory, i| {
-        const next_offset = std.mem.alignForward(memory.next_offset, alignment);
+        const next_offset = std.mem.alignForward(usize, memory.next_offset, alignment);
 
         const new_next_offset = next_offset + size;
         const suitable = new_next_offset <= memory.size;
@@ -1051,7 +1055,7 @@ pub fn devicePageAllocate(
 
         log.info("SUITABLE = {}", .{suitable});
 
-        page_memory_index = @intCast(u32, i);
+        page_memory_index = @as(u32, @intCast(i));
         page_memory_offset = next_offset;
 
         memory.next_offset = new_next_offset;
@@ -1071,7 +1075,7 @@ pub fn devicePageAllocate(
         // const initial_memory_size = if (memory_type.heap_index == 0 and dedicated_info == null) @max(minimum_memory_size, (alignment + size)) else size;
         const initial_memory_size = size;
 
-        page_memory_index = @intCast(u32, memories.items.len);
+        page_memory_index = @as(u32, @intCast(memories.items.len));
 
         const page_memory = try deviceAllocateWithMemoryType(initial_memory_size, memory_type, dedicated_info);
         errdefer deviceFree(page_memory);
@@ -1112,19 +1116,19 @@ pub fn devicePageFree(page: DevicePageHandle) void {
 }
 
 pub fn devicePageGetMemory(page: DevicePageHandle) DevicePageMemory {
-    return self.pages.items[@enumToInt(page)];
+    return self.pages.items[@intFromEnum(page)];
 }
 
 pub fn devicePageMap(page: DevicePageHandle, comptime T: type, length: usize) ![]T {
     const page_memory = devicePageGetMemory(page);
     const memory = &self.memories_by_type[page_memory.heap_index].items[page_memory.memory_index];
 
-    var data = @ptrCast(?[*]T, @alignCast(@alignOf(T), memory.mapped_address));
+    var data = @as(?[*]T, @ptrCast(@alignCast(memory.mapped_address)));
 
     if (memory.map_count == 0) {
-        data = @ptrCast(?[*]T, @alignCast(@alignOf(T), try Context.self.vkd.mapMemory(Context.self.device, memory.handle, 0, memory.size, .{})));
+        data = @as(?[*]T, @ptrCast(@alignCast(try Context.self.vkd.mapMemory(Context.self.device, memory.handle, 0, memory.size, .{}))));
 
-        memory.mapped_address = @ptrCast([*]u8, data);
+        memory.mapped_address = @as([*]u8, @ptrCast(data));
     }
 
     data.? = data.? + page_memory.offset;
@@ -1228,7 +1232,7 @@ pub fn getPipelineCacheData() ![]const u8 {
 
     data = try self.allocator.alloc(u8, data.len);
 
-    _ = try self.vkd.getPipelineCacheData(self.device, self.pipeline_cache, &data.len, @ptrCast(*anyopaque, data.ptr));
+    _ = try self.vkd.getPipelineCacheData(self.device, self.pipeline_cache, &data.len, @as(*anyopaque, @ptrCast(data.ptr)));
 
     return data;
 }

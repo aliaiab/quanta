@@ -158,8 +158,8 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import 
             const vertex_start = model_vertices.items.len;
             const index_start = model_indices.items.len;
 
-            var bounding_min: @Vector(3, f32) = .{ std.math.f32_max, std.math.f32_max, std.math.f32_max };
-            var bounding_max: @Vector(3, f32) = .{ std.math.f32_min, std.math.f32_min, std.math.f32_min };
+            var bounding_min: @Vector(3, f32) = .{ std.math.floatMax(f32), std.math.floatMax(f32), std.math.floatMax(f32) };
+            var bounding_max: @Vector(3, f32) = .{ std.math.floatMin(f32), std.math.floatMin(f32), std.math.floatMin(f32) };
 
             var vertex_count: usize = 0;
 
@@ -182,9 +182,9 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import 
                         const buffer_view = gltf.data.buffer_views.items[accessor.buffer_view.?];
                         const buffer_data = buffer_file_datas[buffer_view.buffer];
 
-                        vertex_count = @intCast(usize, accessor.count);
+                        vertex_count = @as(usize, @intCast(accessor.count));
 
-                        try positions.ensureTotalCapacity(@intCast(usize, accessor.count));
+                        try positions.ensureTotalCapacity(@as(usize, @intCast(accessor.count)));
 
                         gltf.getDataFromBufferView(f32, &positions, accessor, buffer_data);
                     },
@@ -193,7 +193,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import 
                         const buffer_view = gltf.data.buffer_views.items[accessor.buffer_view.?];
                         const buffer_data = buffer_file_datas[buffer_view.buffer];
 
-                        try normals.ensureTotalCapacity(@intCast(usize, accessor.count));
+                        try normals.ensureTotalCapacity(@as(usize, @intCast(accessor.count)));
 
                         gltf.getDataFromBufferView(f32, &normals, accessor, buffer_data);
                     },
@@ -203,7 +203,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import 
                         const buffer_view = gltf.data.buffer_views.items[accessor.buffer_view.?];
                         const buffer_data = buffer_file_datas[buffer_view.buffer];
 
-                        try texture_coordinates.ensureTotalCapacity(@intCast(usize, accessor.count));
+                        try texture_coordinates.ensureTotalCapacity(@as(usize, @intCast(accessor.count)));
 
                         gltf.getDataFromBufferView(f32, &texture_coordinates, accessor, buffer_data);
                     },
@@ -212,7 +212,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import 
                         const buffer_view = gltf.data.buffer_views.items[accessor.buffer_view.?];
                         const buffer_data = buffer_file_datas[buffer_view.buffer];
 
-                        try colors.ensureTotalCapacity(@intCast(usize, accessor.count));
+                        try colors.ensureTotalCapacity(@as(usize, @intCast(accessor.count)));
 
                         std.debug.assert(accessor.component_type == .float);
 
@@ -311,7 +311,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import 
                 if (has_albedo_texture) {
                     const albedo_texture = gltf.data.textures.items[pbr.base_color_texture.?.index];
 
-                    albedo_index = @intCast(u32, albedo_texture.source.?) + 1;
+                    albedo_index = @as(u32, @intCast(albedo_texture.source.?)) + 1;
                 }
 
                 var roughness_index: ?u32 = null;
@@ -319,10 +319,10 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import 
                 if (has_roughness_texture) {
                     const roughness_texture = gltf.data.textures.items[pbr.metallic_roughness_texture.?.index];
 
-                    roughness_index = @intCast(u32, roughness_texture.source.?) + 1;
+                    roughness_index = @as(u32, @intCast(roughness_texture.source.?)) + 1;
                 }
 
-                material_index = @intCast(u32, materials.items.len);
+                material_index = @as(u32, @intCast(materials.items.len));
 
                 std.log.info("Material {any}", .{pbr});
 
@@ -337,10 +337,10 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import 
             }
 
             try sub_meshes.append(.{
-                .vertex_offset = @intCast(u32, vertex_start),
-                .vertex_count = @intCast(u32, model_vertices.items.len - vertex_start),
-                .index_offset = @intCast(u32, index_start),
-                .index_count = @intCast(u32, model_indices.items.len - index_start),
+                .vertex_offset = @as(u32, @intCast(vertex_start)),
+                .vertex_count = @as(u32, @intCast(model_vertices.items.len - vertex_start)),
+                .index_offset = @as(u32, @intCast(index_start)),
+                .index_count = @as(u32, @intCast(model_indices.items.len - index_start)),
                 .material_index = material_index,
                 .transform = transform_matrix,
                 .bounding_min = bounding_min,
@@ -406,22 +406,22 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8 {
     // size = std.mem.alignForward(size, @alignOf(ImportBinHeader));
     size += @sizeOf(ImportBinHeader);
 
-    size = std.mem.alignForward(size, @alignOf([3]f32));
+    size = std.mem.alignForward(usize, size, @alignOf([3]f32));
     size += @sizeOf([3]f32) * import_data.vertex_positions.len;
 
-    size = std.mem.alignForward(size, @alignOf(Renderer3D.Vertex));
+    size = std.mem.alignForward(usize, size, @alignOf(Renderer3D.Vertex));
     size += @sizeOf(Renderer3D.Vertex) * import_data.vertices.len;
 
-    size = std.mem.alignForward(size, @alignOf(u32));
+    size = std.mem.alignForward(usize, size, @alignOf(u32));
     size += @sizeOf(u32) * import_data.indices.len;
 
-    size = std.mem.alignForward(size, @alignOf(Import.SubMesh));
+    size = std.mem.alignForward(usize, size, @alignOf(Import.SubMesh));
     size += @sizeOf(Import.SubMesh) * import_data.sub_meshes.len;
 
-    size = std.mem.alignForward(size, @alignOf(Import.Material));
+    size = std.mem.alignForward(usize, size, @alignOf(Import.Material));
     size += @sizeOf(Import.Material) * import_data.materials.len;
 
-    size = std.mem.alignForward(size, @alignOf(ImportBinTexture));
+    size = std.mem.alignForward(usize, size, @alignOf(ImportBinTexture));
     size += @sizeOf(ImportBinTexture) * import_data.textures.len;
 
     var texture_data_size: usize = 0;
@@ -432,7 +432,7 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8 {
 
     size += texture_data_size;
 
-    size = std.mem.alignForward(size, @alignOf(Renderer3D.PointLight));
+    size = std.mem.alignForward(usize, size, @alignOf(Renderer3D.PointLight));
     size += @sizeOf(Renderer3D.PointLight) * import_data.point_lights.len;
 
     const data = try allocator.alloc(u8, size);
@@ -443,12 +443,12 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8 {
 
     const header = try fba.create(ImportBinHeader);
 
-    header.vertex_count = @intCast(u32, import_data.vertices.len);
-    header.index_count = @intCast(u32, import_data.indices.len);
-    header.sub_mesh_count = @intCast(u32, import_data.sub_meshes.len);
-    header.material_count = @intCast(u32, import_data.materials.len);
-    header.texture_count = @intCast(u32, import_data.textures.len);
-    header.point_light_count = @intCast(u32, import_data.point_lights.len);
+    header.vertex_count = @as(u32, @intCast(import_data.vertices.len));
+    header.index_count = @as(u32, @intCast(import_data.indices.len));
+    header.sub_mesh_count = @as(u32, @intCast(import_data.sub_meshes.len));
+    header.material_count = @as(u32, @intCast(import_data.materials.len));
+    header.texture_count = @as(u32, @intCast(import_data.textures.len));
+    header.point_light_count = @as(u32, @intCast(import_data.point_lights.len));
 
     _ = try fba.dupe([3]f32, import_data.vertex_positions);
     _ = try fba.dupe(Renderer3D.Vertex, import_data.vertices);
@@ -462,7 +462,7 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8 {
         _ = try fba.dupe(u8, import_data.textures[i].data);
 
         texture.* = .{
-            .data_size = @intCast(u32, import_data.textures[i].data.len),
+            .data_size = @as(u32, @intCast(import_data.textures[i].data.len)),
             .width = import_data.textures[i].width,
             .height = import_data.textures[i].height,
         };
@@ -489,7 +489,7 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import {
 
     var offset: usize = 0;
 
-    const header = @ptrCast(*const ImportBinHeader, @alignCast(@alignOf(ImportBinHeader), data.ptr + offset));
+    const header = @as(*const ImportBinHeader, @ptrCast(@alignCast(data.ptr + offset)));
 
     std.log.info("header: {}", .{header});
 
@@ -497,37 +497,37 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import {
 
     const vertex_positions_offset = offset;
 
-    offset = std.mem.alignForward(offset, @alignOf([3]f32));
+    offset = std.mem.alignForward(usize, offset, @alignOf([3]f32));
     offset += @sizeOf([3]f32) * header.vertex_count;
 
     const vertices_offset = offset;
 
-    offset = std.mem.alignForward(offset, @alignOf(Renderer3D.Vertex));
+    offset = std.mem.alignForward(usize, offset, @alignOf(Renderer3D.Vertex));
     offset += @sizeOf(Renderer3D.Vertex) * header.vertex_count;
 
     const indices_offset = offset;
 
-    offset = std.mem.alignForward(offset, @alignOf(u32));
+    offset = std.mem.alignForward(usize, offset, @alignOf(u32));
     offset += @sizeOf(u32) * header.index_count;
 
     const sub_meshs_offset = offset;
 
-    offset = std.mem.alignForward(offset, @alignOf(Import.SubMesh));
+    offset = std.mem.alignForward(usize, offset, @alignOf(Import.SubMesh));
     offset += @sizeOf(Import.SubMesh) * header.sub_mesh_count;
 
-    offset = std.mem.alignForward(offset, @alignOf(Import.Material));
+    offset = std.mem.alignForward(usize, offset, @alignOf(Import.Material));
     const materials_offset = offset;
 
     offset += @sizeOf(Import.Material) * header.material_count;
 
-    offset = std.mem.alignForward(offset, @alignOf(ImportBinTexture));
+    offset = std.mem.alignForward(usize, offset, @alignOf(ImportBinTexture));
 
     const textures_offset = offset;
     offset += @sizeOf(ImportBinTexture) * header.texture_count;
 
     const texture_data_offset = offset;
 
-    const bin_textures = @ptrCast([*]ImportBinTexture, @alignCast(@alignOf(ImportBinTexture), data.ptr + textures_offset))[0..header.texture_count];
+    const bin_textures = @as([*]ImportBinTexture, @ptrCast(@alignCast(data.ptr + textures_offset)))[0..header.texture_count];
 
     import_data.textures = try allocator.alloc(Import.Texture, bin_textures.len);
     errdefer allocator.free(import_data.textures);
@@ -548,18 +548,18 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import {
         offset = current_texture_data_offset;
     }
 
-    offset = std.mem.alignForward(offset, @alignOf(Renderer3D.PointLight));
+    offset = std.mem.alignForward(usize, offset, @alignOf(Renderer3D.PointLight));
 
     const point_light_offset = offset;
 
     offset += @sizeOf(Renderer3D.PointLight) * header.point_light_count;
 
-    import_data.vertex_positions = @ptrCast([*][3]f32, @alignCast(@alignOf([3]f32), data.ptr + vertex_positions_offset))[0..header.vertex_count];
-    import_data.vertices = @ptrCast([*]Renderer3D.Vertex, @alignCast(@alignOf(Renderer3D.Vertex), data.ptr + vertices_offset))[0..header.vertex_count];
-    import_data.indices = @ptrCast([*]u32, @alignCast(@alignOf(u32), data.ptr + indices_offset))[0..header.index_count];
-    import_data.sub_meshes = @ptrCast([*]Import.SubMesh, @alignCast(@alignOf(Import.SubMesh), data.ptr + sub_meshs_offset))[0..header.sub_mesh_count];
-    import_data.materials = @ptrCast([*]Import.Material, @alignCast(@alignOf(Import.Material), data.ptr + materials_offset))[0..header.material_count];
-    import_data.point_lights = @ptrCast([*]Renderer3D.PointLight, @alignCast(@alignOf(Renderer3D.PointLight), data.ptr + point_light_offset))[0..header.point_light_count];
+    import_data.vertex_positions = @as([*][3]f32, @ptrCast(@alignCast(data.ptr + vertex_positions_offset)))[0..header.vertex_count];
+    import_data.vertices = @as([*]Renderer3D.Vertex, @ptrCast(@alignCast(data.ptr + vertices_offset)))[0..header.vertex_count];
+    import_data.indices = @as([*]u32, @ptrCast(@alignCast(data.ptr + indices_offset)))[0..header.index_count];
+    import_data.sub_meshes = @as([*]Import.SubMesh, @ptrCast(@alignCast(data.ptr + sub_meshs_offset)))[0..header.sub_mesh_count];
+    import_data.materials = @as([*]Import.Material, @ptrCast(@alignCast(data.ptr + materials_offset)))[0..header.material_count];
+    import_data.point_lights = @as([*]Renderer3D.PointLight, @ptrCast(@alignCast(data.ptr + point_light_offset)))[0..header.point_light_count];
 
     std.log.info("point_light_offset = {}", .{point_light_offset});
 
@@ -582,15 +582,15 @@ fn packUnorm4x8(v: [4]f32) u32 {
         w: u8,
     };
 
-    const x = @floatToInt(u8, v[0] * @intToFloat(f32, std.math.maxInt(u8)));
-    const y = @floatToInt(u8, v[1] * @intToFloat(f32, std.math.maxInt(u8)));
-    const z = @floatToInt(u8, v[2] * @intToFloat(f32, std.math.maxInt(u8)));
-    const w = @floatToInt(u8, v[3] * @intToFloat(f32, std.math.maxInt(u8)));
+    const x = @as(u8, @intFromFloat(v[0] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
+    const y = @as(u8, @intFromFloat(v[1] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
+    const z = @as(u8, @intFromFloat(v[2] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
+    const w = @as(u8, @intFromFloat(v[3] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
 
-    return @bitCast(u32, Unorm4x8{
+    return @as(u32, @bitCast(Unorm4x8{
         .x = x,
         .y = y,
         .z = z,
         .w = w,
-    });
+    }));
 }

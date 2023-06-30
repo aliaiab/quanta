@@ -11,7 +11,7 @@ step: Step,
 builder: *std.Build,
 name: []const u8,
 root_source_file: FileSource,
-version: ?std.builtin.Version,
+version: ?std.SemanticVersion,
 target: CrossTarget,
 optimize: std.builtin.Mode,
 mode: AppMode,
@@ -29,7 +29,7 @@ pub const AppMode = enum {
 pub const AppOptions = struct {
     name: []const u8,
     root_source_file: ?FileSource = null,
-    version: ?std.builtin.Version = null,
+    version: ?std.SemanticVersion = null,
     target: CrossTarget = .{},
     optimize: std.builtin.Mode = .Debug,
     mode: AppMode,
@@ -58,7 +58,8 @@ pub fn create(
     app_compile_step.dll_export_fns = true;
 
     app_compile_step.addModule("quanta", options.quanta_module);
-    app_compile_step.install();
+
+    builder.installArtifact(app_compile_step);
 
     const app_runner_compile_step = std.Build.CompileStep.create(builder, .{
         .name = options.name,
@@ -69,7 +70,7 @@ pub fn create(
         .version = options.version,
     });
 
-    app_runner_compile_step.install();
+    builder.installArtifact(app_runner_compile_step);
     app_runner_compile_step.linkLibC();
 
     self.* = .{

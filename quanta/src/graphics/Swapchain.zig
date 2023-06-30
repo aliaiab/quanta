@@ -33,7 +33,7 @@ pub fn initRecycle(allocator: std.mem.Allocator, extent: vk.Extent2D, old_handle
 
     var image_count = caps.min_image_count + 1;
     if (caps.max_image_count > 0) {
-        image_count = std.math.min(image_count, caps.max_image_count);
+        image_count = @min(image_count, caps.max_image_count);
     }
 
     const qfi = [_]u32{ Context.self.graphics_family_index.?, Context.self.present_family_index.? };
@@ -130,10 +130,10 @@ pub fn present(self: Swapchain) !void {
 
     _ = try Context.self.vkd.queuePresentKHR(Context.self.graphics_queue, &.{
         .wait_semaphore_count = 1,
-        .p_wait_semaphores = @ptrCast([*]const vk.Semaphore, &image.render_finished),
+        .p_wait_semaphores = @as([*]const vk.Semaphore, @ptrCast(&image.render_finished)),
         .swapchain_count = 1,
-        .p_swapchains = @ptrCast([*]const vk.SwapchainKHR, &self.handle),
-        .p_image_indices = @ptrCast([*]const u32, &image_index),
+        .p_swapchains = @as([*]const vk.SwapchainKHR, @ptrCast(&self.handle)),
+        .p_image_indices = @as([*]const u32, @ptrCast(&image_index)),
         .p_results = null,
     });
 }
@@ -202,7 +202,7 @@ pub const SwapImage = struct {
     }
 
     pub fn waitForFence(self: SwapImage) !void {
-        _ = try Context.self.vkd.waitForFences(Context.self.device, 1, @ptrCast([*]const vk.Fence, &self.frame_fence), vk.TRUE, std.math.maxInt(u64));
+        _ = try Context.self.vkd.waitForFences(Context.self.device, 1, @as([*]const vk.Fence, @ptrCast(&self.frame_fence)), vk.TRUE, std.math.maxInt(u64));
     }
 };
 

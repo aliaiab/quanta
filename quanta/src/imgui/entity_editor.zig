@@ -66,7 +66,7 @@ pub fn entitySelector(
         const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
 
         var found_entity: ?quanta.ecs.ComponentStore.Entity = null;
-        var found_entity_position: @Vector(3, f32) = .{ std.math.f32_max, std.math.f32_max, std.math.f32_max };
+        var found_entity_position: @Vector(3, f32) = .{ std.math.floatMax(f32), std.math.floatMax(f32), std.math.floatMax(f32) };
 
         while (light_query.nextBlock()) |block| {
             for (block.entities, block.Position) |entity, position| {
@@ -175,7 +175,7 @@ pub fn entityViewer(
                         }
 
                         if (component_type_info == quanta.reflect.Type.info(ComponentStore.Entity)) {
-                            const ptr_to_entity = @ptrCast(*ComponentStore.Entity, @alignCast(@alignOf(ComponentStore.Entity), ecs_scene.entityGetComponentPtr(entity, component_type_info)));
+                            const ptr_to_entity = @as(*ComponentStore.Entity, @ptrCast(@alignCast(ecs_scene.entityGetComponentPtr(entity, component_type_info))));
 
                             if (imgui.igBeginDragDropTarget()) {
                                 defer imgui.igEndDragDropTarget();
@@ -183,7 +183,7 @@ pub fn entityViewer(
                                 const payload = imgui.igAcceptDragDropPayload("Entity Drag Drop", imgui.ImGuiDragDropFlags_AcceptBeforeDelivery);
 
                                 if (!payload.*.Preview) {
-                                    const dragged_entity = @ptrCast(*ComponentStore.Entity, @alignCast(@alignOf(ComponentStore.Entity), payload.*.Data.?));
+                                    const dragged_entity = @as(*ComponentStore.Entity, @ptrCast(@alignCast(payload.*.Data.?)));
 
                                     ptr_to_entity.* = dragged_entity.*;
                                 }
@@ -214,9 +214,9 @@ pub fn entityViewer(
                                         switch (field.type.*) {
                                             .Bool => {
                                                 const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
-                                                const ptr_to_field = @ptrCast([*]u8, ptr_to_struct) + field.offset;
+                                                const ptr_to_field = @as([*]u8, @ptrCast(ptr_to_struct)) + field.offset;
 
-                                                const ptr_to_bool = @ptrCast(*bool, ptr_to_field);
+                                                const ptr_to_bool = @as(*bool, @ptrCast(ptr_to_field));
 
                                                 _ = imgui.igCheckbox(field.name.ptr, ptr_to_bool);
                                             },
@@ -224,23 +224,23 @@ pub fn entityViewer(
                                             .Float => {
                                                 const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
 
-                                                const ptr_to_field = @ptrCast([*]u8, ptr_to_struct) + field.offset;
+                                                const ptr_to_field = @as([*]u8, @ptrCast(ptr_to_struct)) + field.offset;
 
-                                                const ptr_to_float: *f32 = @ptrCast(*f32, @alignCast(@alignOf(f32), ptr_to_field));
+                                                const ptr_to_float: *f32 = @as(*f32, @ptrCast(@alignCast(ptr_to_field)));
 
                                                 widgets.dragFloat(field.name, ptr_to_float);
                                             },
                                             .Array => |array_info| {
-                                                const ptr_to_array = @ptrCast([*]u8, ecs_scene.entityGetComponentPtr(entity, component_type_info)) + field.offset;
+                                                const ptr_to_array = @as([*]u8, @ptrCast(ecs_scene.entityGetComponentPtr(entity, component_type_info))) + field.offset;
 
                                                 switch (array_info.len) {
                                                     1 => unreachable,
                                                     2 => unreachable,
                                                     3 => {
-                                                        const array_ptr_f32 = @ptrCast(*f32, @alignCast(@alignOf(f32), ptr_to_array));
+                                                        const array_ptr_f32 = @as(*f32, @ptrCast(@alignCast(ptr_to_array)));
 
                                                         if (field_editor_info == null) {
-                                                            _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.f32_min, std.math.f32_max, null, 0);
+                                                            _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.floatMin(f32), std.math.floatMax(f32), null, 0);
 
                                                             continue;
                                                         }
@@ -256,7 +256,7 @@ pub fn entityViewer(
                                                         if (std.mem.eql(u8, edit_type_ptr.*, "color")) {
                                                             _ = imgui.igColorEdit3(field.name.ptr, array_ptr_f32, 0);
                                                         } else {
-                                                            _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.f32_min, std.math.f32_max, null, 0);
+                                                            _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.floatMin(f32), std.math.floatMax(f32), null, 0);
                                                         }
                                                     },
                                                     else => unreachable,
@@ -269,7 +269,7 @@ pub fn entityViewer(
                                     }
                                 },
                                 .Enum => |enum_info| {
-                                    const ptr_to_enum = @ptrCast([*]u8, ecs_scene.entityGetComponentPtr(entity, component_type_info));
+                                    const ptr_to_enum = @as([*]u8, @ptrCast(ecs_scene.entityGetComponentPtr(entity, component_type_info)));
 
                                     var items: [256][*c]const u8 = undefined;
 
@@ -277,14 +277,14 @@ pub fn entityViewer(
                                         items[i] = field.name.ptr;
                                     }
 
-                                    var current_item: c_int = @intCast(c_int, ptr_to_enum[0]);
+                                    var current_item: c_int = @as(c_int, @intCast(ptr_to_enum[0]));
 
-                                    if (imgui.igCombo_Str_arr("value", &current_item, &items, @intCast(c_int, enum_info.fields.len), 0)) {
-                                        ptr_to_enum[0] = @intCast(u8, current_item);
+                                    if (imgui.igCombo_Str_arr("value", &current_item, &items, @as(c_int, @intCast(enum_info.fields.len)), 0)) {
+                                        ptr_to_enum[0] = @as(u8, @intCast(current_item));
                                     }
                                 },
                                 .Union => |union_info| {
-                                    const ptr_to_enum = @ptrCast([*]u8, ecs_scene.entityGetComponentPtr(entity, component_type_info)) + union_info.tag_offset;
+                                    const ptr_to_enum = @as([*]u8, @ptrCast(ecs_scene.entityGetComponentPtr(entity, component_type_info))) + union_info.tag_offset;
 
                                     var items: [256][*c]const u8 = undefined;
 
@@ -294,14 +294,14 @@ pub fn entityViewer(
                                         widgets.textFormat("{s}", .{field.name});
                                     }
 
-                                    var current_item: c_int = @intCast(c_int, ptr_to_enum[0]);
+                                    var current_item: c_int = @as(c_int, @intCast(ptr_to_enum[0]));
 
-                                    if (imgui.igCombo_Str_arr("value", &current_item, &items, @intCast(c_int, union_info.fields.len), 0)) {
-                                        ptr_to_enum[0] = @intCast(u8, current_item);
+                                    if (imgui.igCombo_Str_arr("value", &current_item, &items, @as(c_int, @intCast(union_info.fields.len)), 0)) {
+                                        ptr_to_enum[0] = @as(u8, @intCast(current_item));
                                     }
 
                                     for (union_info.fields, 0..) |field, i| {
-                                        if (i != @intCast(usize, current_item)) {
+                                        if (i != @as(usize, @intCast(current_item))) {
                                             // continue;
                                         }
 
@@ -349,7 +349,7 @@ pub fn chunkViewer(
         }
     }
 
-    widgets.textFormat("total entity utilization: {d:.1}%", .{(@intToFloat(f32, total_used_chunk_entity_count) / @intToFloat(f32, total_chunk_entity_count)) * 100.0});
+    widgets.textFormat("total entity utilization: {d:.1}%", .{(@as(f32, @floatFromInt(total_used_chunk_entity_count)) / @as(f32, @floatFromInt(total_chunk_entity_count))) * 100.0});
 
     const log_2_size = std.math.log2_int(usize, total_chunk_size);
 
@@ -374,10 +374,10 @@ pub fn chunkViewer(
             if (widgets.collapsingHeader("Chunk ({}):({})", .{ archetype_index, chunk_index })) {
                 widgets.textFormat("alignment: {}", .{quanta.ecs.ComponentStore.Chunk.alignment});
                 widgets.textFormat("size: {}", .{chunk.data.?.len});
-                widgets.textFormat("address: {x}", .{@ptrToInt(chunk.data.?.ptr)});
+                widgets.textFormat("address: {x}", .{@intFromPtr(chunk.data.?.ptr)});
                 widgets.textFormat("entity_count: {}", .{chunk.row_count});
                 widgets.textFormat("max_entity_count: {}", .{chunk.max_row_count});
-                widgets.textFormat("entity utilization: {d:.1}%", .{(@intToFloat(f32, chunk.row_count) / @intToFloat(f32, chunk.max_row_count)) * 100.0});
+                widgets.textFormat("entity utilization: {d:.1}%", .{(@as(f32, @floatFromInt(chunk.row_count)) / @as(f32, @floatFromInt(chunk.max_row_count))) * 100.0});
             }
         }
     }

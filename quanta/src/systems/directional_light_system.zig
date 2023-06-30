@@ -41,15 +41,15 @@ fn packUnorm4x8(v: [4]f32) u32 {
         w: u8,
     };
 
-    const x = @floatToInt(u8, v[0] * @intToFloat(f32, std.math.maxInt(u8)));
-    const y = @floatToInt(u8, v[1] * @intToFloat(f32, std.math.maxInt(u8)));
-    const z = @floatToInt(u8, v[2] * @intToFloat(f32, std.math.maxInt(u8)));
-    const w = @floatToInt(u8, v[3] * @intToFloat(f32, std.math.maxInt(u8)));
+    const x = @as(u8, @intFromFloat(v[0] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
+    const y = @as(u8, @intFromFloat(v[1] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
+    const z = @as(u8, @intFromFloat(v[2] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
+    const w = @as(u8, @intFromFloat(v[3] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
 
-    return @bitCast(u32, Unorm4x8{
+    return @as(u32, @bitCast(Unorm4x8{
         .x = x,
         .y = y,
         .z = z,
         .w = w,
-    });
+    }));
 }
