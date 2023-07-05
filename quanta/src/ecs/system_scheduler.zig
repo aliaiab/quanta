@@ -4,15 +4,29 @@ const CommandBuffer = @import("CommandBuffer.zig");
 
 pub const QueryIterator = ComponentStore.QueryIterator;
 
-pub const System = struct {
-    pub const depencencies = .{
-        //some other system
+pub const SystemInfo = struct {
+    system_dependencies: []const type = .{},
+    component_depencencies: []const type = .{},
+};
+
+///Indicates that a system is required to run in a loop
+pub const UpdateInfo = struct {
+    target_frequency: u32, //target updates per second
+    delta_time: f32, //change in time in seconds
+};
+
+pub const example_system = struct {
+    comptime {}
+
+    pub const sys: SystemInfo = .{
+        .system_dependencies = &.{u32},
+        .component_depencencies = &.{u32},
     };
 
     ///Each system has a run function
-    pub fn run(
+    pub fn update(
         command_buffer: *CommandBuffer,
-        query: QueryIterator(.{}, .{}),
+        query: *QueryIterator(.{}, .{}),
     ) void {
         _ = command_buffer;
         _ = query;
@@ -21,6 +35,8 @@ pub const System = struct {
 
 ///Register, schedule and run systems
 pub fn run(component_store: *ComponentStore, command_buffer: *CommandBuffer, comptime systems: anytype) !void {
+    _ = example_system;
+
     inline for (systems) |system| {
         const run_type_info = @typeInfo(@TypeOf(system.run)).Fn;
 

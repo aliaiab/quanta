@@ -241,6 +241,27 @@ pub const ComponentTypeDescription = struct {
     archetypes: std.AutoArrayHashMapUnmanaged(ArchetypeIndex, ArchetypeRecord) = .{},
 };
 
+pub const ChunkLocation = packed struct(u32) {
+    ///Index into the store's list of archetypes
+    archetype_index: u16,
+    ///Index into archetype's chunk list
+    chunk_index: u16,
+};
+
+///Data structure for tracking changes to the store
+pub const Changes = struct {
+    ///List of chunks that were added
+    added_chunks: std.ArrayListUnmanaged(ChunkLocation) = .{},
+    added_archetypes: bool = false,
+    removed_chunks: bool = false,
+
+    pub fn reset(self: *@This()) void {
+        self.added_chunks.clearRetainingCapacity();
+        self.added_archetypes = false;
+        self.removed_chunks = false;
+    }
+};
+
 ///Defines a unique mapping of entiy ids to storage locations
 ///Allows random access of stable entity ids
 const EntityMap = struct {
@@ -348,6 +369,7 @@ const EntityMap = struct {
 };
 
 allocator: std.mem.Allocator,
+changes: Changes,
 archetypes: std.ArrayListUnmanaged(Archetype),
 chunk_pool: ChunkPool,
 entity_map: EntityMap,
@@ -364,6 +386,7 @@ pub fn init(allocator: std.mem.Allocator) !ComponentStore {
     var self = ComponentStore{
         .allocator = allocator,
         .archetypes = .{},
+        .changes = .{},
         .entity_map = .{},
         .component_index = .{},
         .chunk_pool = try ChunkPool.init(allocator, 4),
@@ -402,8 +425,17 @@ pub fn deinit(self: *ComponentStore) void {
     self.chunk_pool.deinit(self.allocator);
     self.entity_map.deinit(self.allocator);
     self.component_index.deinit(self.allocator);
+    self.changes.added_chunks.deinit(self.allocator);
 
     self.* = undefined;
+}
+
+pub fn beginQueryWindow(self: *ComponentStore) void {
+    _ = self;
+}
+
+pub fn endQueryWindow(self: *ComponentStore) void {
+    self.changes.reset();
 }
 
 pub fn setResource(self: *ComponentStore, resource: anytype) void {
@@ -745,30 +777,23 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
         component_store: *const ComponentStore,
         archetype_index: ArchetypeIndex,
         chunk_index: ChunkIndex,
-
-        chunk_entities: [*][*]Entity,
-        chunk_components: ChunkComponents,
-        chunk_entity_counts: [*]*u16,
-        chunk_pointers: [*]*anyopaque,
-        chunk_count: u16,
-        chunk_capacity: u16,
-        chunk_pointer_capacity: u16,
+        blocks: std.ArrayListUnmanaged(CachedBlock),
 
         pub fn init(component_store: *const ComponentStore) @This() {
             var self = @This(){
                 .component_store = component_store,
                 .archetype_index = 1,
                 .chunk_index = 0,
-                .chunk_entities = undefined,
-                .chunk_components = undefined,
-                .chunk_entity_counts = undefined,
-                .chunk_count = 0,
-                .chunk_capacity = 0,
-                .chunk_pointer_capacity = 0,
-                .chunk_pointers = undefined,
+                .blocks = .{},
             };
 
+            // self.invalidate() catch unreachable;
+
             return self;
+        }
+
+        pub fn deinit(self: *@This()) void {
+            self.blocks.deinit(self.component_store.allocator);
         }
 
         pub const Block = block: {
@@ -801,16 +826,32 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             } });
         };
 
-        pub const ChunkComponents = block: {
-            comptime var fields: [required_component_slice.len]std.builtin.Type.StructField = undefined;
+        pub const CachedBlock = block: {
+            comptime var fields: [required_component_slice.len + 2]std.builtin.Type.StructField = undefined;
 
-            for (required_component_slice, 0..) |component_type, i| {
+            fields[0] = .{
+                .name = "entity_count",
+                .type = *const u16,
+                .default_value = null,
+                .is_comptime = false,
+                .alignment = @alignOf(*const u16),
+            };
+
+            fields[1] = .{
+                .name = "entities",
+                .type = [*]const Entity,
+                .default_value = null,
+                .is_comptime = false,
+                .alignment = @alignOf([*]const Entity),
+            };
+
+            for (required_component_slice, 2..) |component_type, i| {
                 fields[i] = .{
                     .name = componentName(component_type),
-                    .type = [*][*]component_type,
+                    .type = [*]component_type,
                     .default_value = null,
                     .is_comptime = false,
-                    .alignment = @alignOf([*][*]component_type),
+                    .alignment = @alignOf([*]component_type),
                 };
             }
 
@@ -823,66 +864,55 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             } });
         };
 
+        pub fn isInvalid(self: *@This()) bool {
+            if (!(self.component_store.changes.added_archetypes or
+                self.component_store.changes.added_chunks.items.len != 0 or
+                self.component_store.changes.removed_chunks))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
         pub fn invalidate(self: *@This()) !void {
-            var chunk_count: usize = 0;
-            var chunk_pointer_count: usize = 0;
+            if (!self.isInvalid()) return;
 
-            const component_type_description = self.component_store.component_index.get(componentId(required_component_slice[0]));
+            self.blocks.clearRetainingCapacity();
 
-            if (component_type_description == null) return;
+            if (required_component_slice.len == 0) {
+                return;
+            }
 
-            const archetypes: *std.AutoArrayHashMapUnmanaged(ArchetypeIndex, ArchetypeRecord) = &component_type_description.?.archetypes;
+            const component_type_desc: *ComponentTypeDescription = self.component_store.component_index.getPtr(componentId(required_component_slice[0])) orelse return;
 
-            for (archetypes.keys()) |archetype_index| {
-                if (!(self.component_store.archetypeHasAllComponents(self.archetype_index, required_component_slice[1..]) and
-                    !self.component_store.archetypeHasAnyComponents(self.archetype_index, excluded_component_slice) and
-                    self.component_store.archetypes.items[self.archetype_index].chunks.items.len > 0))
+            for (component_type_desc.archetypes.keys(), component_type_desc.archetypes.values()) |archetype_index, archetype_record| {
+                if (!(self.component_store.archetypeHasAllComponents(archetype_index, required_component_slice[1..]) and
+                    !self.component_store.archetypeHasAnyComponents(archetype_index, excluded_component_slice) and
+                    self.component_store.archetypes.items[archetype_index].chunks.items.len > 0))
                 {
                     continue;
                 }
-
-                const archetype = &self.component_store.archetypes.items[archetype_index];
-
-                chunk_count += archetype.chunks.items.len;
-
-                for (archetype.chunks.items) |chunk| {
-                    chunk_pointer_count += chunk.row_count * (1 + required_component_slice.len);
-                }
-            }
-
-            self.chunk_count = chunk_count;
-
-            if (self.chunk_count > self.chunk_capacity) {
-                self.chunk_entity_counts = try self.component_store.allocator.realloc(self.chunk_entity_counts[self.chunk_capacity], self.chunk_count);
-                self.chunk_entities = try self.component_store.allocator.realloc(self.chunk_entities[self.chunk_capacity], self.chunk_count);
-                self.chunk_capacity = self.chunk_count;
-            }
-
-            if (chunk_pointer_count > self.chunk_pointer_capacity) {
-                self.chunk_pointers = try self.component_store.allocator.realloc(self.chunk_pointers[self.chunk_pointer_capacity], chunk_pointer_count);
-                self.chunk_pointer_capacity = chunk_pointer_count;
-            }
-
-            var query_chunk_index: usize = 0;
-
-            for (archetypes.keys(), archetypes.values()) |archetype_index, record| {
-                if (!(self.component_store.archetypeHasAllComponents(self.archetype_index, required_component_slice[1..]) and
-                    !self.component_store.archetypeHasAnyComponents(self.archetype_index, excluded_component_slice) and
-                    self.component_store.archetypes.items[self.archetype_index].chunks.items.len > 0))
-                {
-                    continue;
-                }
-
-                defer query_chunk_index += 1;
 
                 const archetype: *Archetype = &self.component_store.archetypes.items[archetype_index];
 
-                for (archetype.chunks.items) |chunk| {
-                    const column: *ChunkColumn = &chunk.columns[record.column];
+                for (archetype.chunks.items) |*chunk| {
+                    var block: CachedBlock = undefined;
+
+                    if (chunk.row_count == 0) {
+                        continue;
+                    }
+
+                    block.entity_count = &chunk.row_count;
+                    block.entities = chunk.entities().ptr;
 
                     inline for (component_fetches) |component_type| {
-                        @field(self.chunk_components, componentName(component_type))[query_chunk_index] = chunk.getComponents(component_type, column.offset);
+                        const column: *ChunkColumn = &chunk.columns[archetype_record.column];
+
+                        @field(block, componentName(component_type)) = chunk.getComponents(component_type, column.offset).ptr;
                     }
+
+                    try self.blocks.append(self.component_store.allocator, block);
                 }
             }
         }
@@ -919,6 +949,28 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
         }
 
         pub fn nextBlock(self: *@This()) ?Block {
+            // if (true) {
+            //     defer self.chunk_index += 1;
+
+            //     if (self.blocks.items.len == 0) {
+            //         return null;
+            //     }
+
+            //     const cached = self.blocks.items[self.chunk_index];
+
+            //     const entity_count = cached.entity_count.*;
+
+            //     var block: Block = undefined;
+
+            //     block.entities = cached.entities[0..entity_count];
+
+            //     inline for (component_fetches) |component_type| {
+            //         @field(block, componentName(component_type)) = @field(cached, componentName(component_type))[0..entity_count];
+            //     }
+
+            //     return null;
+            // }
+
             var archetype_index: ArchetypeIndex = self.nextArchetype() orelse return null;
             var archetype: *const Archetype = &self.component_store.archetypes.items[archetype_index];
 
@@ -1264,6 +1316,8 @@ fn createArchetype(
         archetype_record.value_ptr.column = @as(u32, @intCast(i));
     }
 
+    self.changes.added_archetypes = true;
+
     return archetype_index;
 }
 
@@ -1342,6 +1396,8 @@ fn archetypeAllocateChunk(
         running_offset += @as(ChunkOffset, @intCast(max_entity_count)) * @as(ChunkOffset, @intCast(destination_column.element_size));
     }
 
+    try self.changes.added_chunks.append(self.allocator, .{ .archetype_index = @intCast(archetype_index), .chunk_index = chunk_index });
+
     return chunk_index;
 }
 
@@ -1366,6 +1422,8 @@ fn archetypeFreeChunk(
     chunk.columns = &.{};
     chunk.max_row_count = 0;
     chunk.row_count = 0;
+
+    self.changes.removed_chunks = true;
 }
 
 ///Finds or creates a chunk which can fit the specified number of rows
@@ -1703,7 +1761,7 @@ pub fn componentId(comptime T: type) ComponentId {
     return reflect.Type.info(T);
 }
 
-fn componentType(comptime T: type) ComponentType {
+pub fn componentType(comptime T: type) ComponentType {
     return .{
         .id = componentId(T),
         .size = @sizeOf(T),
@@ -1711,7 +1769,7 @@ fn componentType(comptime T: type) ComponentType {
     };
 }
 
-fn componentIsTag(comptime T: type) bool {
+pub fn componentIsTag(comptime T: type) bool {
     return @sizeOf(T) == 0;
 }
 

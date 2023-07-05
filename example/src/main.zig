@@ -428,6 +428,8 @@ pub fn update() !quanta.app.UpdateResult {
         state.camera.translation = state.camera_position;
     }
 
+    state.ecs_scene.beginQueryWindow();
+
     acceleration_system.run(&state.ecs_scene, state.delta_time);
     quanta.systems.force_system.run(&state.ecs_scene, state.delta_time);
 
@@ -496,31 +498,6 @@ pub fn update() !quanta.app.UpdateResult {
                 state.camera,
                 &state.selected_entities,
             );
-
-            // if (state.selected_entity != null and !state.ecs_scene.entityExists(state.selected_entity.?)) {
-            //     state.selected_entity = null;
-            // }
-
-            // //Duplicate
-            // if (window.getKeyDown(.left_control) and
-            //     window.getKeyDown(.d) and
-            //     !state.cloned_entity_last_frame and
-            //     state.selected_entity != null)
-            // {
-            //     state.entity_debugger_commands.entityClone(state.selected_entity.?);
-
-            //     state.cloned_entity_last_frame = true;
-            // }
-
-            // if (!window.getKeyDown(.left_control) and
-            //     !window.getKeyDown(.d))
-            // {
-            //     state.cloned_entity_last_frame = false;
-            // }
-
-            // if (state.selected_entity != null and window.getKeyDown(.delete)) {
-            //     state.entity_debugger_commands.entityDestroy(state.selected_entity.?);
-            // }
 
             // //Selection
             // if (window.getMouseDown(.left) and !state.mouse_pressed_last_Frame and !imguizmo.ImGuizmo_IsUsing() and !imguizmo.ImGuizmo_IsOver() and !imgui.igIsAnyItemFocused()) {
@@ -597,49 +574,6 @@ pub fn update() !quanta.app.UpdateResult {
             //             }
             //         }
             //     };
-
-            //     var light_query = state.ecs_scene.query(.{
-            //         quanta.components.Position,
-            //         quanta.components.PointLight,
-            //     }, .{});
-
-            //     const camera_view = state.camera.getView();
-            //     const camera_projection = state.camera.getProjectionNonInverse();
-            //     const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
-
-            //     while (light_query.nextBlock()) |block| {
-            //         for (block.entities, block.Position) |entity, position| {
-            //             const viewport = imgui.igGetWindowViewport();
-
-            //             const screen_pos = widgets.worldToScreenPos(@Vector(3, f32){ position.x, position.y, position.z }, camera_view_projection, viewport) orelse continue;
-
-            //             const selector_radius = 10;
-
-            //             if (mouse_pos[0] > screen_pos[0] - selector_radius and mouse_pos[1] > screen_pos[1] - selector_radius and
-            //                 mouse_pos[0] < screen_pos[0] + selector_radius and mouse_pos[1] < screen_pos[1] + selector_radius)
-            //             {
-            //                 found_entity = entity;
-            //             }
-            //         }
-            //     }
-
-            //     if (found_entity != null) {
-            //         state.selected_entity = found_entity;
-            //     }
-
-            //     state.mouse_pressed_last_Frame = true;
-            // }
-
-            // if (!window.getMouseDown(.left)) {
-            //     state.mouse_pressed_last_Frame = false;
-            // }
-
-            // entity_editor.entityViewer(&state.ecs_scene, &state.entity_debugger_commands, state.selected_entity);
-            // entity_editor.chunkViewer(&state.ecs_scene);
-            // quanta.imgui.log.viewer("Log");
-
-            // if (state.selected_entity != null and !state.ecs_scene.entityExists(state.selected_entity.?)) {
-            //     state.selected_entity = null;
             // }
 
             const primary_selected_entity = if (state.selected_entities.items.len != 0) state.selected_entities.items[0] else quanta.ecs.ComponentStore.Entity.nil;
@@ -795,6 +729,12 @@ pub fn update() !quanta.app.UpdateResult {
             RendererGui.renderImGuiDrawData(imgui.igGetDrawData()) catch unreachable;
         }
     }
+
+    for (state.ecs_scene.changes.added_chunks.items) |added_chunk| {
+        std.log.info("added chunk to scene: {any}", .{added_chunk});
+    }
+
+    state.ecs_scene.endQueryWindow();
 
     try state.swapchain.present();
     try state.swapchain.swap();

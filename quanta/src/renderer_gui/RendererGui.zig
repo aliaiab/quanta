@@ -213,15 +213,13 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
             {
                 std.debug.assert(draw_data.CmdListsCount != 0);
 
-                var command_list_index: usize = 0;
-
                 var vertex_offset: usize = 0;
                 var index_offset: usize = 0;
 
                 const staging_vertices = try self.vertices_staging_buffer.map(imgui.ImDrawVert);
                 const staging_indices = try self.indices_staging_buffer.map(u16);
 
-                while (command_list_index < @as(usize, @intCast(draw_data.CmdListsCount))) : (command_list_index += 1) {
+                for (0..@intCast(draw_data.CmdListsCount)) |command_list_index| {
                     const command_list: *imgui.ImDrawList = draw_data.CmdLists[command_list_index];
 
                     const vertices: []imgui.ImDrawVert = command_list.VtxBuffer.Data[0..@as(usize, @intCast(command_list.VtxBuffer.Size))];
@@ -296,36 +294,29 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
 
             self.command_buffer.setIndexBuffer(self.indices_buffer, .u16);
 
-            {
-                var command_list_index: usize = 0;
+            var vertex_offset: usize = 0;
+            var index_offset: usize = 0;
 
-                var vertex_offset: usize = 0;
-                var index_offset: usize = 0;
+            for (0..@intCast(draw_data.CmdListsCount)) |command_list_index| {
+                const command_list: *imgui.ImDrawList = draw_data.CmdLists[command_list_index];
 
-                while (command_list_index < @as(usize, @intCast(draw_data.CmdListsCount))) : (command_list_index += 1) {
-                    const command_list: *imgui.ImDrawList = draw_data.CmdLists[command_list_index];
+                const vertices: []imgui.ImDrawVert = command_list.VtxBuffer.Data[0..@as(usize, @intCast(command_list.VtxBuffer.Size))];
+                const indices: []u16 = command_list.IdxBuffer.Data[0..@as(usize, @intCast(command_list.IdxBuffer.Size))];
 
-                    const vertices: []imgui.ImDrawVert = command_list.VtxBuffer.Data[0..@as(usize, @intCast(command_list.VtxBuffer.Size))];
-                    const indices: []u16 = command_list.IdxBuffer.Data[0..@as(usize, @intCast(command_list.IdxBuffer.Size))];
+                for (0..@intCast(command_list.CmdBuffer.Size)) |command_index| {
+                    const command: imgui.ImDrawCmd = command_list.CmdBuffer.Data[command_index];
 
-                    var command_index: usize = 0;
+                    self.command_buffer.setPushData(MeshPipelinePushData, .{
+                        .projection = ortho,
+                        .texture_index = @as(u32, @intCast(@intFromPtr(command.TextureId))),
+                    });
 
-                    while (command_index < @as(usize, @intCast(command_list.CmdBuffer.Size))) : (command_index += 1) {
-                        const command: imgui.ImDrawCmd = command_list.CmdBuffer.Data[command_index];
-
-                        self.command_buffer.setPushData(MeshPipelinePushData, .{
-                            .projection = ortho,
-                            .texture_index = @as(u32, @intCast(@intFromPtr(command.TextureId))),
-                        });
-
-                        self.command_buffer.setScissor(@as(u32, @intFromFloat(@max(command.ClipRect.x, 0))), @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))), @as(u32, @intFromFloat(@min(command.ClipRect.z, @as(f32, @floatFromInt(window.getWidth()))))) - @as(u32, @intFromFloat(@max(command.ClipRect.x, 0))), @as(u32, @intFromFloat(@min(command.ClipRect.w, @as(f32, @floatFromInt(window.getHeight()))))) - @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))));
-
-                        self.command_buffer.drawIndexed(command.ElemCount, 1, @as(u32, @intCast(index_offset)) + command.IdxOffset, @as(i32, @intCast(vertex_offset)) + @as(i32, @intCast(command.VtxOffset)), 0);
-                    }
-
-                    vertex_offset += vertices.len;
-                    index_offset += indices.len;
+                    self.command_buffer.setScissor(@as(u32, @intFromFloat(@max(command.ClipRect.x, 0))), @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))), @as(u32, @intFromFloat(@min(command.ClipRect.z, @as(f32, @floatFromInt(window.getWidth()))))) - @as(u32, @intFromFloat(@max(command.ClipRect.x, 0))), @as(u32, @intFromFloat(@min(command.ClipRect.w, @as(f32, @floatFromInt(window.getHeight()))))) - @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))));
+                    self.command_buffer.drawIndexed(command.ElemCount, 1, @as(u32, @intCast(index_offset)) + command.IdxOffset, @as(i32, @intCast(vertex_offset)) + @as(i32, @intCast(command.VtxOffset)), 0);
                 }
+
+                vertex_offset += vertices.len;
+                index_offset += indices.len;
             }
         }
     }
