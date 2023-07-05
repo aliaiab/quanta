@@ -28,3 +28,6 @@
 [submodule "quanta/lib/SPIRV-Tools"]
 	path = quanta/lib/SPIRV-Tools
 	url = https://github.com/KhronosGroup/SPIRV-Tools.git
+[submodule "quanta/lib/spvine"]
+	path = quanta/lib/spvine
+	url = https://github.com/zkburke/spvine.git
