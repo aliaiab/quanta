@@ -53,6 +53,7 @@ pub const Context = struct {
                 .{ .name = "zgltf", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zgltf/src/main.zig" })) }) },
                 .{ .name = "zigimg", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zigimg/zigimg.zig" })) }) },
                 .{ .name = "zalgebra", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zalgebra/src/main.zig" })) }) },
+                .{ .name = "spvine", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/spvine/src/main.zig" })) }) },
                 .{ .name = "renderer_tri_vert.spv", .module = renderer_tri_vert_spv_module },
                 .{ .name = "renderer_tri_frag.spv", .module = renderer_tri_frag_spv_module },
                 .{ .name = "renderer_depth_vert.spv", .module = renderer_depth_vert_spv_module },
@@ -209,9 +210,8 @@ pub const Context = struct {
         glslc.addIncludePath("quanta/lib/shaderc/libshaderc/include/");
         glslc.addIncludePath("quanta/lib/shaderc/libshaderc_util/include/");
         glslc.addIncludePath("zig-cache/glslc/");
-        // glslc.linkSystemLibraryNeeded("spirv");
 
-        glslc.install();
+        builder.installArtifact(glslc);
         glslc.linkLibC();
         glslc.linkLibCpp();
         glslc.linkLibrary(libshaderc);

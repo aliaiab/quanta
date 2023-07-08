@@ -17,6 +17,8 @@ pub const Type = union(enum) {
     EnumLiteral: void,
     Pointer: Pointer,
 
+    pub const Id = enum(u64) { _ };
+
     pub const Struct = struct {
         name: []const u8,
         size: u32,
@@ -100,6 +102,18 @@ pub const Type = union(enum) {
         is_allowzero: bool,
         sentinel: ?*const anyopaque,
     };
+
+    ///Returns a unique id for a type without initializing
+    ///Any type info. Use this when type info is not needed
+    pub fn id(comptime T: type) Id {
+        _ = T;
+
+        const static = struct {
+            var value: u8 = 0;
+        };
+
+        return @as(Id, @enumFromInt(@intFromPtr(&static.value)));
+    }
 
     ///Returns a pointer to the canonical Type for T
     pub fn info(comptime T: type) *const Type {

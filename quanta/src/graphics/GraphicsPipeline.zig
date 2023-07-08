@@ -7,6 +7,7 @@ const Image = @import("Image.zig");
 const Sampler = @import("Sampler.zig");
 const Buffer = @import("Buffer.zig");
 const spirv_parse = @import("spirv_parse.zig");
+const spirv = @import("spvine").spirv;
 
 handle: vk.Pipeline,
 layout: vk.PipelineLayout,
@@ -177,6 +178,16 @@ fn getVertexLayout(comptime T: type) [if (T == void) 0 else std.meta.fieldNames(
     return attributes;
 }
 
+fn getDescriptorType(spirv_op: spirv.Op) vk.DescriptorType {
+    return switch (spirv_op) {
+        .TypeStruct => .storage_buffer,
+        .TypeImage => .storage_image,
+        .TypeSampler => .sampler,
+        .TypeSampledImage => .combined_image_sampler,
+        else => unreachable,
+    };
+}
+
 ///Provides a compile time known type for fixed function vertex layouts
 ///Could use the upcoming zig feature inline function parameters with runtime type info
 pub fn init(
@@ -189,15 +200,20 @@ pub fn init(
         @compileLog("PushData cannot be larger than 128 bytes");
     }
 
+    var reflect_result: spirv.reflect.Result = std.mem.zeroes(spirv.reflect.Result);
+
+    try spirv.reflect.parse(allocator, &reflect_result, options.vertex_shader_binary);
+
+    const fragment_shader_entry_point = reflect_result.entry_point;
+
+    try spirv.reflect.parse(allocator, &reflect_result, options.vertex_shader_binary);
+
+    const vertex_shader_entry_point = reflect_result.entry_point;
+
     var shader_parse_result: spirv_parse.ShaderParseResult = std.mem.zeroes(spirv_parse.ShaderParseResult);
 
     try spirv_parse.parseShaderModule(&shader_parse_result, allocator, @as([*]const u32, @ptrCast(options.vertex_shader_binary.ptr))[0 .. options.vertex_shader_binary.len / @sizeOf(u32)]);
-
-    const vertex_shader_entry_point = shader_parse_result.entry_point;
-
     try spirv_parse.parseShaderModule(&shader_parse_result, allocator, @as([*]const u32, @ptrCast(options.fragment_shader_binary.ptr))[0 .. options.fragment_shader_binary.len / @sizeOf(u32)]);
-
-    const fragment_shader_entry_point = shader_parse_result.entry_point;
 
     const vertex_binding_descriptions = [_]vk.VertexInputBindingDescription{
         .{

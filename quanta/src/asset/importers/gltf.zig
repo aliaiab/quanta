@@ -3,6 +3,8 @@ const Renderer3D = @import("../../renderer/Renderer3D.zig");
 const zalgebra = @import("zalgebra");
 const png = @import("png.zig");
 const zgltf = @import("zgltf");
+const AssetStorage = @import("../AssetStorage.zig");
+const Asset = AssetStorage.Asset;
 
 pub const Import = struct {
     vertex_positions: [][3]f32,
@@ -38,6 +40,27 @@ pub const Import = struct {
         width: u32,
         height: u32,
     };
+
+    pub fn assetLoad(
+        storage: *AssetStorage,
+        handle: Asset(Import),
+        asset: *Import,
+        data: []u8,
+    ) !void {
+        _ = handle;
+
+        asset.* = try decode(storage.allocator, data);
+    }
+
+    pub fn assetUnload(
+        storage: *AssetStorage,
+        handle: Asset(Import),
+        asset: *Import,
+    ) void {
+        _ = handle;
+
+        decodeFree(asset.*, storage.allocator);
+    }
 };
 
 pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import {

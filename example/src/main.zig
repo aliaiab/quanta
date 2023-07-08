@@ -55,6 +55,7 @@ var state: struct {
 
     renderer_scene: Renderer3D.SceneHandle = undefined,
     ecs_scene: quanta.ecs.ComponentStore = undefined,
+    asset_storage: asset.AssetStorage = undefined,
 
     entity_debugger_commands: quanta.ecs.CommandBuffer = undefined,
 
@@ -144,10 +145,12 @@ pub fn init() !void {
 
     log.info("asset_archive.assets.len = {any}", .{state.asset_archive.assets.len});
 
-    const test_scene_blob = state.asset_archive.getAssetData(@as(asset.Archive.AssetDescriptor, @enumFromInt(3)));
+    state.asset_storage = asset.AssetStorage.init(state.allocator, state.asset_archive);
+    errdefer state.asset_storage.deinit();
 
-    const test_scene_import = try gltf.decode(state.allocator, test_scene_blob);
-    defer gltf.decodeFree(test_scene_import, state.allocator);
+    const test_scene_handle = state.asset_storage.load(gltf.Import, @as(asset.Archive.AssetDescriptor, @enumFromInt(3)));
+
+    const test_scene_import = state.asset_storage.get(gltf.Import, test_scene_handle).?;
 
     state.test_scene_meshes = try state.allocator.alloc(Renderer3D.MeshHandle, test_scene_import.sub_meshes.len);
     state.test_scene_textures = try state.allocator.alloc(Renderer3D.TextureHandle, test_scene_import.textures.len);
@@ -187,7 +190,8 @@ pub fn init() !void {
         }
     }
 
-    const environment_map_data = state.asset_archive.getAssetData(@as(asset.Archive.AssetDescriptor, @enumFromInt(2)));
+    const environment_map = state.asset_storage.load(asset.CubeMap, @as(asset.Archive.AssetDescriptor, @enumFromInt(2)));
+    const environment_map_data = state.asset_storage.get(asset.CubeMap, environment_map).?;
 
     state.ecs_scene = try quanta.ecs.ComponentStore.init(state.allocator);
 
@@ -196,9 +200,9 @@ pub fn init() !void {
         50_000,
         4,
         4096,
-        environment_map_data,
-        1024,
-        1024,
+        environment_map_data.data,
+        environment_map_data.width,
+        environment_map_data.height,
     );
 
     for (test_scene_import.sub_meshes, 0..) |sub_mesh, i| {
@@ -352,6 +356,7 @@ pub fn deinit() void {
     defer Renderer3D.destroyScene(state.renderer_scene);
     defer state.entity_debugger_commands.deinit();
     defer state.selected_entities.deinit();
+    defer state.asset_storage.deinit();
 }
 
 pub fn update() !quanta.app.UpdateResult {
