@@ -11,7 +11,7 @@ layout(push_constant) uniform Constants
 
 layout(set = 0, binding = 0, scalar) restrict readonly buffer VertexPositions
 {
-    vec3 vertex_positions[];
+    uvec2 vertex_positions[];
 };
 
 layout(set = 0, binding = 1, scalar) restrict readonly buffer Transforms
@@ -38,7 +38,14 @@ void main()
 {
     uint instance_index = draw_commands[gl_DrawIDARB].instance_index;
     
-    vec3 vertex_position = vertex_positions[gl_VertexIndex]; 
+    uvec2 position_quantised = vertex_positions[gl_VertexIndex];
+
+    vec2 position_xy = unpackHalf2x16(position_quantised[0]);
+    vec2 position_zw = unpackHalf2x16(position_quantised[1]);
+
+    vec3 dequantised_position = vec3(position_xy.x, position_xy.y, position_zw.x);
+
+    vec3 vertex_position = dequantised_position; 
     mat4 transform = mat4(transforms[instance_index]);
 
     gl_Position = constants.view_projection * transform * vec4(vertex_position, 1.0);

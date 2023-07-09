@@ -1550,7 +1550,7 @@ const MeshLod = extern struct {
 pub const MeshHandle = enum(u32) { _ };
 
 pub fn createMesh(
-    vertex_positions: []const [3]f32,
+    vertex_positions: []const VertexPosition,
     vertices: []const Vertex,
     indices: []const u32,
     bounding_box_min: @Vector(3, f32),
@@ -1584,7 +1584,7 @@ pub fn createMesh(
         .bounding_box_extents = bounding_box_extents,
     });
 
-    var vertex_positions_staging_buffer = try graphics.Buffer.initData([3]f32, vertex_positions, .staging);
+    var vertex_positions_staging_buffer = try graphics.Buffer.initData(VertexPosition, vertex_positions, .staging);
     errdefer vertex_positions_staging_buffer.deinit();
 
     try self.vertex_position_staging_buffers.append(self.allocator, vertex_positions_staging_buffer);
@@ -1711,10 +1711,87 @@ pub fn createMaterial(
     return @as(MaterialHandle, @enumFromInt(material_handle));
 }
 
+const VertexPositionAABB = packed struct(u64) {
+    ///We store 0-1 normalised floats using all 21 bits of precision
+    ///0(u21) = 0.0(f32), max(u21) = 1.0(f32)
+    x: u21,
+    y: u21,
+    z: u21,
+    padding: u1 = 0,
+
+    ///For best use of the precision, the mesh should be centered on (0, 0, 0)
+    pub fn encode(pos: @Vector(3, f32), scale: f32) VertexPositionAABB {
+        return .{
+            //   (0.0, 1.0)       * (2^21)
+            .x = @intFromFloat((pos[0] / scale) * (std.math.maxInt(u21) + 1)),
+            .y = @intFromFloat((pos[1] / scale) * (std.math.maxInt(u21) + 1)),
+            .z = @intFromFloat((pos[2] / scale) * (std.math.maxInt(u21) + 1)),
+        };
+    }
+};
+
+pub const VertexPosition = packed struct(u64) {
+    x: f16,
+    y: f16,
+    z: f16,
+    padding: u16 = 0,
+};
+
+pub const VertexNormal = packed struct(u32) {
+    x: i10,
+    y: i10,
+    z: i10,
+    padding: u2 = 0,
+};
+
+pub const VertexNormalSpherical = packed struct(u32) {
+    //theta radians = (theta/2^16)tau
+    //phi radians = (phi/2^16)tau
+
+    theta: u16,
+    phi: u16,
+
+    pub fn fromCartesian(normal: @Vector(3, f32)) VertexNormalSpherical {
+        const theta = std.math.fabs(std.math.acos(normal[2]));
+        const phi = std.math.fabs(std.math.atan2(f32, normal[1], normal[0]));
+
+        const scale = @as(f32, @floatFromInt(std.math.maxInt(u16)));
+
+        return .{
+            .theta = @intFromFloat((theta / std.math.tau) * scale),
+            .phi = @intFromFloat((phi / std.math.tau) * scale),
+        };
+    }
+
+    pub fn toCartesian(normal: VertexNormalSpherical) @Vector(3, f32) {
+        const scale = 1 / @as(f32, @floatFromInt(std.math.maxInt(u16)));
+
+        const theta: f32 = @as(f32, @floatFromInt(normal.theta)) * scale;
+        const phi: f32 = @as(f32, @floatFromInt(normal.phi)) * scale;
+
+        const sin_theta = @sin(theta * std.math.tau);
+        const cos_theta = @cos(theta * std.math.tau);
+        const cos_phi = @cos(phi * std.math.tau);
+
+        const x = sin_theta * cos_phi;
+        const y = sin_theta * sin_theta;
+        const z = cos_theta;
+
+        return .{ x, y, z };
+    }
+};
+
+pub const VertexUV = packed struct(u32) {
+    u: f16,
+    v: f16,
+};
+
+pub const VertexColor = u32;
+
 pub const Vertex = extern struct {
-    normal: [3]f32,
-    color: u32,
-    uv: [2]f32,
+    normal: VertexNormal,
+    color: VertexColor,
+    uv: VertexUV,
 };
 
 pub const Statistics = struct {

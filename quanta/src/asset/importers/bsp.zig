@@ -1,5 +1,6 @@
 const std = @import("std");
 const log = std.log.scoped(.bsp);
+const Renderer3D = @import("../../renderer/Renderer3D.zig");
 
 pub const Lump = extern struct {
     fileofs: i32, // offset into file (bytes)
@@ -309,14 +310,14 @@ pub fn convertToGltfImport(allocator: std.mem.Allocator, import_result: ImportRe
         .point_lights = &.{},
     };
 
-    gltf_import_data.vertex_positions = try allocator.alloc([3]f32, import_result.vertices.len);
+    gltf_import_data.vertex_positions = try allocator.alloc(Renderer3D.VertexPosition, import_result.vertices.len);
     errdefer allocator.free(gltf_import_data.vertex_positions);
 
     // @memcpy(gltf_import_data.vertex_positions, import_result.vertices);
 
     @memcpy(
-        @as([*]u8, @ptrCast(gltf_import_data.vertex_positions.ptr))[0 .. import_result.vertices.len * @sizeOf([3]f32)],
-        @as([*]const u8, @ptrCast(import_result.vertices.ptr))[0 .. import_result.vertices.len * @sizeOf([3]f32)],
+        @as([*]u8, @ptrCast(gltf_import_data.vertex_positions.ptr))[0 .. import_result.vertices.len * @sizeOf(u64)],
+        @as([*]const u8, @ptrCast(import_result.vertices.ptr))[0 .. import_result.vertices.len * @sizeOf(u64)],
     );
 
     gltf_import_data.indices = try allocator.alloc(u32, import_result.indices.len);
@@ -331,8 +332,8 @@ pub fn convertToGltfImport(allocator: std.mem.Allocator, import_result: ImportRe
 
     for (gltf_import_data.vertices) |*vertex| {
         vertex.color = std.math.maxInt(u32);
-        vertex.uv = .{ 0, 0 };
-        vertex.normal = .{ 0, 1, 0 };
+        vertex.uv = undefined;
+        vertex.normal = undefined;
     }
 
     gltf_import_data.materials = try allocator.alloc(std.meta.Child(@TypeOf(gltf_import_data.materials)), 1);

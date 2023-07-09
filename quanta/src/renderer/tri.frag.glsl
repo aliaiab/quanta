@@ -312,4 +312,5 @@ void main()
 
     output_color = ambient + vec4(vec3(light_color), 0);
     // output_color = unpackUnorm4x8(in_data.triangle_index);
+    // output_color = albedo;
 }

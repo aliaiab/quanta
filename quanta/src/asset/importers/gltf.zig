@@ -7,7 +7,7 @@ const AssetStorage = @import("../AssetStorage.zig");
 const Asset = AssetStorage.Asset;
 
 pub const Import = struct {
-    vertex_positions: [][3]f32,
+    vertex_positions: []Renderer3D.VertexPosition,
     vertices: []Renderer3D.Vertex,
     indices: []u32,
     sub_meshes: []SubMesh,
@@ -115,7 +115,7 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import 
     var model_vertices = std.ArrayList(Renderer3D.Vertex).init(allocator);
     errdefer model_vertices.deinit();
 
-    var model_vertex_positions = std.ArrayList([3]f32).init(allocator);
+    var model_vertex_positions = std.ArrayList(Renderer3D.VertexPosition).init(allocator);
     errdefer model_vertex_positions.deinit();
 
     var model_indices = std.ArrayList(u32).init(allocator);
@@ -271,10 +271,17 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import 
 
                     const position_vector = @Vector(3, f32){ position_source_x, position_source_y, position_source_z };
 
-                    try model_vertex_positions.append(position_vector);
+                    const position_quantised = quantisePosition(position_vector);
+                    const normal_quantised = quantiseNormal(.{ normals.items[normal_index], normals.items[normal_index + 1], normals.items[normal_index + 2] });
+                    const uv_quantised = quantiseUV(.{ texture_coordinates.items[uv_index], texture_coordinates.items[uv_index + 1] });
+
+                    std.log.info("vtx normal: {d}, {d}, {d}", .{ normals.items[normal_index], normals.items[normal_index + 1], normals.items[normal_index + 2] });
+                    std.log.info("vtx normal quantised({b}): {}, {}, {}", .{ @as(u32, @bitCast(normal_quantised)), normal_quantised.x, normal_quantised.y, normal_quantised.z });
+
+                    try model_vertex_positions.append(position_quantised);
                     try model_vertices.append(.{
-                        .normal = .{ normals.items[normal_index], normals.items[normal_index + 1], normals.items[normal_index + 2] },
-                        .uv = .{ texture_coordinates.items[uv_index], texture_coordinates.items[uv_index + 1] },
+                        .normal = normal_quantised,
+                        .uv = uv_quantised,
                         .color = if (colors.items.len != 0) packUnorm4x8(.{ colors.items[color_index], colors.items[color_index + 1], colors.items[color_index + 2], 1 }) else packUnorm4x8(.{ 1, 1, 1, 1 }),
                     });
 
@@ -429,8 +436,8 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8 {
     // size = std.mem.alignForward(size, @alignOf(ImportBinHeader));
     size += @sizeOf(ImportBinHeader);
 
-    size = std.mem.alignForward(usize, size, @alignOf([3]f32));
-    size += @sizeOf([3]f32) * import_data.vertex_positions.len;
+    size = std.mem.alignForward(usize, size, @alignOf(Renderer3D.VertexPosition));
+    size += @sizeOf(Renderer3D.VertexPosition) * import_data.vertex_positions.len;
 
     size = std.mem.alignForward(usize, size, @alignOf(Renderer3D.Vertex));
     size += @sizeOf(Renderer3D.Vertex) * import_data.vertices.len;
@@ -473,7 +480,7 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8 {
     header.texture_count = @as(u32, @intCast(import_data.textures.len));
     header.point_light_count = @as(u32, @intCast(import_data.point_lights.len));
 
-    _ = try fba.dupe([3]f32, import_data.vertex_positions);
+    _ = try fba.dupe(Renderer3D.VertexPosition, import_data.vertex_positions);
     _ = try fba.dupe(Renderer3D.Vertex, import_data.vertices);
     _ = try fba.dupe(u32, import_data.indices);
     _ = try fba.dupe(Import.SubMesh, import_data.sub_meshes);
@@ -520,8 +527,8 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import {
 
     const vertex_positions_offset = offset;
 
-    offset = std.mem.alignForward(usize, offset, @alignOf([3]f32));
-    offset += @sizeOf([3]f32) * header.vertex_count;
+    offset = std.mem.alignForward(usize, offset, @alignOf(Renderer3D.VertexPosition));
+    offset += @sizeOf(Renderer3D.VertexPosition) * header.vertex_count;
 
     const vertices_offset = offset;
 
@@ -577,7 +584,7 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import {
 
     offset += @sizeOf(Renderer3D.PointLight) * header.point_light_count;
 
-    import_data.vertex_positions = @as([*][3]f32, @ptrCast(@alignCast(data.ptr + vertex_positions_offset)))[0..header.vertex_count];
+    import_data.vertex_positions = @as([*]Renderer3D.VertexPosition, @ptrCast(@alignCast(data.ptr + vertex_positions_offset)))[0..header.vertex_count];
     import_data.vertices = @as([*]Renderer3D.Vertex, @ptrCast(@alignCast(data.ptr + vertices_offset)))[0..header.vertex_count];
     import_data.indices = @as([*]u32, @ptrCast(@alignCast(data.ptr + indices_offset)))[0..header.index_count];
     import_data.sub_meshes = @as([*]Import.SubMesh, @ptrCast(@alignCast(data.ptr + sub_meshs_offset)))[0..header.sub_mesh_count];
@@ -595,6 +602,62 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import {
 
 pub fn decodeFree(import_data: Import, allocator: std.mem.Allocator) void {
     allocator.free(import_data.textures);
+}
+
+///I think u32 should be enough to represent most if not all vertices in a normalized
+///Mesh, but there will be some, tho minimal, precision problems as always.
+///Overall, it's worth it as it gives us a theoretical 3x bandwidth reduction
+fn quantisePosition(
+    pos: @Vector(3, f32),
+) Renderer3D.VertexPosition {
+    const quantised = Renderer3D.VertexPosition{
+        .x = @floatCast(pos[0]),
+        .y = @floatCast(pos[1]),
+        .z = @floatCast(pos[2]),
+    };
+
+    return quantised;
+}
+
+fn quantiseNormal(normal: @Vector(3, f32)) Renderer3D.VertexNormal {
+    const quantised = Renderer3D.VertexNormal{
+        .x = quantiseFloatSNorm(normal[0], 10),
+        .y = quantiseFloatSNorm(normal[1], 10),
+        .z = quantiseFloatSNorm(normal[2], 10),
+    };
+
+    return quantised;
+}
+
+fn quantiseUV(uv: @Vector(2, f32)) Renderer3D.VertexUV {
+    const quantised = Renderer3D.VertexUV{
+        .u = @floatCast(uv[0]),
+        .v = @floatCast(uv[1]),
+    };
+
+    return quantised;
+}
+
+fn quantiseFloatUNorm(float: f32, comptime bits: comptime_int) std.meta.Int(.unsigned, bits) {
+    const Int = std.meta.Int(.unsigned, bits);
+
+    const normalized = std.math.clamp(float, -1, 1);
+
+    return @intFromFloat(normalized * std.math.maxInt(Int) + 0.5);
+}
+
+fn quantiseFloatSNorm(float: f32, comptime bits: comptime_int) std.meta.Int(.signed, bits) {
+    // const scale: f32 = @floatFromInt((1 << (bits - 1)) - 1);
+
+    // const normalized = std.math.clamp(float, -1, 1);
+
+    // return @intFromFloat(normalized * scale + (0.5 * std.math.sign(float)));
+
+    const Int = std.meta.Int(.signed, bits);
+
+    const normalized = std.math.clamp(float, -1, 1) * std.math.maxInt(Int);
+
+    return @intFromFloat(normalized);
 }
 
 fn packUnorm4x8(v: [4]f32) u32 {
