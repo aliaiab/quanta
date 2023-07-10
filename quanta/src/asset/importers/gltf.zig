@@ -621,9 +621,9 @@ fn quantisePosition(
 
 fn quantiseNormal(normal: @Vector(3, f32)) Renderer3D.VertexNormal {
     const quantised = Renderer3D.VertexNormal{
-        .x = quantiseFloatSNorm(normal[0], 10),
-        .y = quantiseFloatSNorm(normal[1], 10),
-        .z = quantiseFloatSNorm(normal[2], 10),
+        .x = quantiseFloat(i10, normal[0]),
+        .y = quantiseFloat(i10, normal[1]),
+        .z = quantiseFloat(i10, normal[2]),
     };
 
     return quantised;
@@ -638,26 +638,16 @@ fn quantiseUV(uv: @Vector(2, f32)) Renderer3D.VertexUV {
     return quantised;
 }
 
-fn quantiseFloatUNorm(float: f32, comptime bits: comptime_int) std.meta.Int(.unsigned, bits) {
-    const Int = std.meta.Int(.unsigned, bits);
+fn quantiseFloat(comptime T: type, float: f32) T {
+    if (@typeInfo(T).Int.signedness == .unsigned) {
+        const normalized = std.math.fabs(std.math.clamp(float, -1, 1));
 
-    const normalized = std.math.clamp(float, -1, 1);
+        return @intFromFloat(normalized * std.math.maxInt(T));
+    } else {
+        const normalized = std.math.clamp(float, -1, 1);
 
-    return @intFromFloat(normalized * std.math.maxInt(Int) + 0.5);
-}
-
-fn quantiseFloatSNorm(float: f32, comptime bits: comptime_int) std.meta.Int(.signed, bits) {
-    // const scale: f32 = @floatFromInt((1 << (bits - 1)) - 1);
-
-    // const normalized = std.math.clamp(float, -1, 1);
-
-    // return @intFromFloat(normalized * scale + (0.5 * std.math.sign(float)));
-
-    const Int = std.meta.Int(.signed, bits);
-
-    const normalized = std.math.clamp(float, -1, 1) * std.math.maxInt(Int);
-
-    return @intFromFloat(normalized);
+        return @intFromFloat(normalized * std.math.maxInt(T));
+    }
 }
 
 fn packUnorm4x8(v: [4]f32) u32 {
@@ -668,10 +658,10 @@ fn packUnorm4x8(v: [4]f32) u32 {
         w: u8,
     };
 
-    const x = @as(u8, @intFromFloat(v[0] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
-    const y = @as(u8, @intFromFloat(v[1] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
-    const z = @as(u8, @intFromFloat(v[2] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
-    const w = @as(u8, @intFromFloat(v[3] * @as(f32, @floatFromInt(std.math.maxInt(u8)))));
+    const x = quantiseFloat(u8, v[0]);
+    const y = quantiseFloat(u8, v[1]);
+    const z = quantiseFloat(u8, v[2]);
+    const w = quantiseFloat(u8, v[3]);
 
     return @as(u32, @bitCast(Unorm4x8{
         .x = x,

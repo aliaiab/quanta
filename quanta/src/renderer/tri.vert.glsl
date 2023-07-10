@@ -39,7 +39,7 @@ layout(binding = 10, scalar) restrict readonly buffer SceneUniforms
 
 struct Vertex 
 {
-    uint normal;
+    int normal;
     uint color;
     uint uv;
 };

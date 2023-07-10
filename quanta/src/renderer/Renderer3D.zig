@@ -1730,6 +1730,22 @@ const VertexPositionAABB = packed struct(u64) {
     }
 };
 
+pub const Triangle = extern struct {
+    a: VertexPosition,
+    //If we can compress b and c in terms of a,
+    //then we can take a trianglet that takes up 192 bits
+    //and compress it to one that takes 128 bits
+    b: PositionRelative,
+    c: PositionRelative,
+
+    pub const PositionRelative = packed struct(u32) {
+        x: u10,
+        y: u10,
+        z: u10,
+        padding: u2 = 0,
+    };
+};
+
 pub const VertexPosition = packed struct(u64) {
     x: f16,
     y: f16,

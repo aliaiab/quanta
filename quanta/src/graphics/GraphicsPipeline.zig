@@ -23,6 +23,8 @@ pub const Options = struct {
     stencil_attachment_format: ?vk.Format = null,
     vertex_shader_binary: []align(4) const u8,
     fragment_shader_binary: []align(4) const u8,
+    task_shader_binary: ?[]align(4) const u8 = null,
+    mesh_shader_binary: ?[]align(4) const u8 = null,
     depth_state: DepthState = .{},
     rasterisation_state: RasterisationState = .{},
     blend_state: BlendState = .{},
