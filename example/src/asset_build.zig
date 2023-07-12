@@ -12,6 +12,7 @@ pub fn main() !void {
     std.fs.cwd().makeDir(cache_directory) catch {};
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    // defer std.debug.assert(gpa.deinit() != .leak);
 
     const allocator = gpa.allocator();
 
@@ -60,7 +61,33 @@ pub fn main() !void {
         .mapped_data_size = environment_map.data.len,
     });
 
-    const test_scene = try gltf.importZgltf(allocator, "example/src/assets/test_scene/test_scene.gltf");
+    {
+        const ZonTest = struct {
+            optimize: std.builtin.OptimizeMode,
+            scale: f32 = 1,
+            lod_count: u32 = 0,
+            union_test: union(enum) {
+                int: u32,
+                float: f32,
+            } = .{ .int = 1 },
+            struct_init: struct {
+                lol: []const u8,
+            } = .{ .lol = "default_lol" },
+            array: @Vector(4, f32) = .{ 0, 0, 0, 0 },
+            slice: []const f32,
+            optional: ?bool = null,
+        };
+
+        const zon_test = try asset.metadata.load(ZonTest, allocator, "example/src/assets/dragon/DragonAttenuation.gltf.zon");
+        defer asset.metadata.loadFree(ZonTest, allocator, zon_test);
+
+        std.log.info("zon_test: {any}", .{zon_test});
+        std.log.info("zon_test.struct_init.lol = {s}", .{zon_test.struct_init.lol});
+
+        return;
+    }
+
+    const test_scene = try gltf.importZgltf(allocator, "example/src/assets/light_test/light_test.gltf");
     defer gltf.importFree(test_scene, allocator);
 
     const test_scene_encoded = try gltf.encode(allocator, test_scene);
