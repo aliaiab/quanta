@@ -478,8 +478,8 @@ pub fn update() !quanta.app.UpdateResult {
             imgui.igShowDemoWindow(null);
 
             if (widgets.begin("Basic properties")) {
-                widgets.textFormat("Frame time {d:.2}", .{state.delta_time});
-                widgets.textFormat("Frame rate {d:.2}", .{1 / (state.delta_time / 1000)});
+                widgets.textFormat("Frame time {d:.2}ms", .{state.delta_time});
+                widgets.textFormat("Frame rate {d:.2}Hz", .{1 / (state.delta_time / 1000)});
 
                 if (widgets.button("Button test")) {
                     log.info("Praise be the {s}", .{"BIG BUTTON"});

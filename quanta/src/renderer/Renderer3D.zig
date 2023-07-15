@@ -77,6 +77,7 @@ shadow_image: graphics.Image,
 shadow_sampler: graphics.Sampler,
 command_buffers: []graphics.CommandBuffer,
 frame_fence: graphics.Fence,
+first_frame: bool = true,
 
 transfer_command_buffer: graphics.CommandBuffer,
 image_transfer_events: std.ArrayListUnmanaged(graphics.Event),
@@ -233,6 +234,7 @@ pub fn init(allocator: std.mem.Allocator, swapchain: *graphics.Swapchain) !void 
     self.vertex_position_staging_buffers = .{};
     self.vertex_staging_buffers = .{};
     self.index_staging_buffers = .{};
+    self.first_frame = true;
 
     self.depth_reduce_pipeline = try graphics.ComputePipeline.init(self.allocator, depth_reduce_comp_spv, .@"2d", null, DepthReducePushData);
     errdefer self.depth_reduce_pipeline.deinit(self.allocator);
@@ -761,6 +763,13 @@ fn endRenderInternal(scene: SceneHandle) !void {
         self.index_staging_buffers.clearRetainingCapacity();
     }
 
+    if (!self.first_frame) {
+        self.frame_fence.wait();
+        self.frame_fence.reset();
+    }
+
+    self.first_frame = false;
+
     const image_index = self.swapchain.image_index;
     const image = self.swapchain.swap_images[image_index];
     const command_buffer = &self.command_buffers[image_index];
@@ -1206,9 +1215,6 @@ fn endRenderInternal(scene: SceneHandle) !void {
             .device_index = 0,
         }},
     }}, self.frame_fence.handle);
-
-    self.frame_fence.wait();
-    self.frame_fence.reset();
 
     var times = [_]u64{ 0, 0, 0, 0 };
 
