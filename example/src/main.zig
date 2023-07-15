@@ -479,6 +479,7 @@ pub fn update() !quanta.app.UpdateResult {
 
             if (widgets.begin("Basic properties")) {
                 widgets.textFormat("Frame time {d:.2}", .{state.delta_time});
+                widgets.textFormat("Frame rate {d:.2}", .{1 / (state.delta_time / 1000)});
 
                 if (widgets.button("Button test")) {
                     log.info("Praise be the {s}", .{"BIG BUTTON"});
@@ -761,6 +762,8 @@ pub fn main() !void {
 }
 
 pub const std_options = struct {
+    pub const log_level = std.log.Level.info;
+
     pub fn logFn(
         comptime message_level: std.log.Level,
         comptime scope: @Type(.EnumLiteral),

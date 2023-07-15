@@ -52,9 +52,9 @@ pub fn viewer(name: [:0]const u8) void {
     const reserve_height = (imgui.igGetStyle().*.ItemSpacing.y * 2) + imgui.igGetFrameHeightWithSpacing();
 
     if (imgui.igBeginChild_Str("Scroll Area", .{ .x = 0, .y = -reserve_height }, false, imgui.ImGuiWindowFlags_HorizontalScrollbar)) {
-        const message_count = viewed_message_count;
+        const message_count = @min(messages.items.len, viewed_message_count);
 
-        for (messages.items[messages.items.len - message_count ..]) |message| {
+        for (messages.items[messages.items.len - message_count ..][0..message_count]) |message| {
             if (!show_info and message.level == .info) continue;
             if (!show_warn and message.level == .warn) continue;
             if (!show_err and message.level == .err) continue;
