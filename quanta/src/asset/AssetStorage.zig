@@ -151,7 +151,7 @@ pub fn create(self: *AssetStorage, comptime T: type) Asset(T) {
     return handle.cast(T);
 }
 
-pub fn load(self: *AssetStorage, comptime T: type, asset_descriptor: Archive.AssetDescriptor) Asset(T) {
+pub fn load(self: *AssetStorage, comptime T: type, name: []const u8) Asset(T) {
     const handle = self.create(T);
 
     const data = @constCast(self.get(T, handle).?);
@@ -159,7 +159,7 @@ pub fn load(self: *AssetStorage, comptime T: type, asset_descriptor: Archive.Ass
     //problem: getting asset descriptors from paths
     //solution: some kind of asset descriptor path table
 
-    const asset_data = self.archive.getAssetData(asset_descriptor);
+    const asset_data = self.archive.getAssetDataFromName(name);
 
     //Ideally we would schedule this load function and the io loading itself to
     //another thread, but that requires a robust way to schedule jobs

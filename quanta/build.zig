@@ -20,6 +20,8 @@ pub const Context = struct {
     module: *std.Build.Module,
 
     glslc: *std.Build.CompileStep,
+    asset_compiler: *std.Build.CompileStep,
+    run_asset_compiler: *std.build.Step.Run,
 
     pub fn init(
         builder: *std.Build,
@@ -72,10 +74,35 @@ pub const Context = struct {
             },
         });
 
+        const asset_compiler = builder.addExecutable(.{
+            .name = "asset_compiler",
+            .root_source_file = std.build.FileSource.relative("quanta/src/asset/compiler.zig"),
+            .target = std.zig.CrossTarget.fromTarget(builder.host.target),
+            .optimize = mode,
+        });
+
+        asset_compiler.main_pkg_path = "quanta/src/";
+
+        asset_compiler.addModule("zon", builder.createModule(.{
+            .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/src/zon.zig" })),
+        }));
+
+        asset_compiler.addAnonymousModule("zgltf", .{
+            .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zgltf/src/main.zig" })),
+        });
+
+        asset_compiler.addAnonymousModule("zigimg", .{
+            .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zigimg/zigimg.zig" })),
+        });
+
+        try link(builder, asset_compiler, "");
+
         if (true) return Context{
             .builder = builder,
             .module = module,
             .glslc = undefined,
+            .asset_compiler = asset_compiler,
+            .run_asset_compiler = builder.addRunArtifact(asset_compiler),
         };
 
         const glslang = builder.addStaticLibrary(.{

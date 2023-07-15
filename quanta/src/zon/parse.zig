@@ -189,7 +189,9 @@ const Value = union(enum) {
 
         std.log.info("root: {}, {}", .{ root.data.lhs, root.data.rhs });
 
-        const struct_init = ast.structInitDot(root.data.lhs);
+        var struct_init_buffer: [2]std.zig.Ast.Node.Index = undefined;
+
+        const struct_init = ast.fullStructInit(&struct_init_buffer, root.data.lhs).?;
 
         std.log.info("{any}", .{struct_init.ast.fields});
 

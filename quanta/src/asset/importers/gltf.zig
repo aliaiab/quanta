@@ -4,6 +4,7 @@ const zalgebra = @import("zalgebra");
 const png = @import("png.zig");
 const zgltf = @import("zgltf");
 const AssetStorage = @import("../AssetStorage.zig");
+const compiler = @import("../compiler.zig");
 const Asset = AssetStorage.Asset;
 
 pub const Import = struct {
@@ -61,6 +62,31 @@ pub const Import = struct {
 
         decodeFree(asset.*, storage.allocator);
     }
+
+    pub const MetaData = struct {
+        optimize: std.builtin.OptimizeMode = .ReleaseFast,
+        lod_count: u32 = 1,
+        scale: f32 = 1,
+    };
+
+    pub fn assetCompile(
+        context: *compiler.CompilerContext,
+        file_path: []const u8,
+        data: []const u8,
+        meta_data: ?MetaData,
+    ) ![]const u8 {
+        _ = data;
+
+        std.log.info("gltf compiler input: meta: {any}", .{meta_data.?});
+
+        const import_result = try importZgltf(context.allocator, file_path);
+        defer importFree(import_result, context.allocator);
+        const encoded = try encode(context.allocator, import_result);
+
+        return encoded;
+    }
+
+    pub const file_extension = ".gltf";
 };
 
 pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import {
@@ -274,9 +300,6 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import 
                     const position_quantised = quantisePosition(position_vector);
                     const normal_quantised = quantiseNormal(.{ normals.items[normal_index], normals.items[normal_index + 1], normals.items[normal_index + 2] });
                     const uv_quantised = quantiseUV(.{ texture_coordinates.items[uv_index], texture_coordinates.items[uv_index + 1] });
-
-                    std.log.info("vtx normal: {d}, {d}, {d}", .{ normals.items[normal_index], normals.items[normal_index + 1], normals.items[normal_index + 2] });
-                    std.log.info("vtx normal quantised({b}): {}, {}, {}", .{ @as(u32, @bitCast(normal_quantised)), normal_quantised.x, normal_quantised.y, normal_quantised.z });
 
                     try model_vertex_positions.append(position_quantised);
                     try model_vertices.append(.{

@@ -47,7 +47,6 @@ var state: struct {
     swapchain: graphics.Swapchain = undefined,
     asset_archive_blob: []align(std.mem.page_size) u8 = undefined,
     asset_archive: asset.Archive = undefined,
-    asset_archive_reader: asset.ArchiveLoader = undefined,
 
     test_scene_meshes: []Renderer3D.MeshHandle = &.{},
     test_scene_textures: []Renderer3D.TextureHandle = &.{},
@@ -130,9 +129,6 @@ pub fn init() !void {
 
     var asset_archive_file_path = "assets/example_assets_archive";
 
-    state.asset_archive_reader = try quanta.asset.ArchiveLoader.init(state.allocator, asset_archive_file_path);
-    errdefer state.asset_archive_reader.deinit();
-
     const asset_archive_fd = try std.os.open(asset_archive_file_path, std.os.O.RDONLY, std.os.S.IRUSR | std.os.S.IWUSR);
     defer std.os.close(asset_archive_fd);
 
@@ -141,6 +137,7 @@ pub fn init() !void {
     log.info("assets_archive size = {}", .{asset_archive_fd_stat.size});
 
     state.asset_archive_blob = try std.os.mmap(null, @as(usize, @intCast(asset_archive_fd_stat.size)), std.os.PROT.READ, std.os.MAP.PRIVATE, asset_archive_fd, 0);
+
     state.asset_archive = try asset.Archive.decode(state.allocator, state.asset_archive_blob);
 
     log.info("asset_archive.assets.len = {any}", .{state.asset_archive.assets.len});
@@ -148,7 +145,7 @@ pub fn init() !void {
     state.asset_storage = asset.AssetStorage.init(state.allocator, state.asset_archive);
     errdefer state.asset_storage.deinit();
 
-    const test_scene_handle = state.asset_storage.load(gltf.Import, @as(asset.Archive.AssetDescriptor, @enumFromInt(3)));
+    const test_scene_handle = state.asset_storage.load(gltf.Import, "example/src/assets/test_scene/test_scene.gltf");
 
     const test_scene_import = state.asset_storage.get(gltf.Import, test_scene_handle).?;
 
@@ -190,7 +187,7 @@ pub fn init() !void {
         }
     }
 
-    const environment_map = state.asset_storage.load(asset.CubeMap, @as(asset.Archive.AssetDescriptor, @enumFromInt(2)));
+    const environment_map = state.asset_storage.load(asset.CubeMap, "example/src/assets/skybox/right.png");
     const environment_map_data = state.asset_storage.get(asset.CubeMap, environment_map).?;
 
     state.ecs_scene = try quanta.ecs.ComponentStore.init(state.allocator);

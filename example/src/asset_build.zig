@@ -27,6 +27,7 @@ pub fn main() !void {
     const gm_construct_gltf_encoded = try gltf.encode(allocator, gm_construct_gltf);
 
     try assets.append(allocator, .{
+        .name = "example/src/assets/gm_construct.bsp",
         .source_data = gm_construct_gltf_encoded,
         .source_data_alignment = @alignOf(gltf.ImportBinHeader),
         .mapped_data_size = gm_construct_gltf_encoded.len,
@@ -40,6 +41,7 @@ pub fn main() !void {
     const gm_castle_island_gltf_encoded = try gltf.encode(allocator, gm_castle_island_gltf);
 
     try assets.append(allocator, .{
+        .name = "example/src/assets/gm_castle_island.bsp",
         .source_data = gm_castle_island_gltf_encoded,
         .source_data_alignment = @alignOf(gltf.ImportBinHeader),
         .mapped_data_size = gm_castle_island_gltf_encoded.len,
@@ -56,6 +58,7 @@ pub fn main() !void {
     defer png.free(&environment_map, allocator);
 
     try assets.append(allocator, .{
+        .name = "example/src/assets/skybox/right.png",
         .source_data = environment_map.data,
         .source_data_alignment = @alignOf(u32),
         .mapped_data_size = environment_map.data.len,
@@ -84,15 +87,16 @@ pub fn main() !void {
         std.log.info("zon_test: {any}", .{zon_test});
         std.log.info("zon_test.struct_init.lol = {s}", .{zon_test.struct_init.lol});
 
-        return;
+        // return;
     }
 
-    const test_scene = try gltf.importZgltf(allocator, "example/src/assets/light_test/light_test.gltf");
+    const test_scene = try gltf.importZgltf(allocator, "example/src/assets/test_scene/test_scene.gltf");
     defer gltf.importFree(test_scene, allocator);
 
     const test_scene_encoded = try gltf.encode(allocator, test_scene);
 
     try assets.append(allocator, .{
+        .name = "example/src/assets/test_scene/test_scene.gltf",
         .source_data = test_scene_encoded,
         .source_data_alignment = @alignOf(gltf.ImportBinHeader),
         .mapped_data_size = test_scene_encoded.len,

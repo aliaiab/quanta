@@ -79,6 +79,7 @@ pub fn build(builder: *std.build.Builder) !void {
         const run_cmd = builder.addRunArtifact(exe);
 
         run_cmd.step.dependOn(builder.getInstallStep());
+        run_cmd.step.dependOn(&quanta_build_context.run_asset_compiler.step);
 
         if (builder.args) |args| {
             run_cmd.addArgs(args);
