@@ -1,9 +1,3 @@
-const std = @import("std");
-const reflect = @import("../reflect/reflect.zig");
-const Archive = @import("Archive.zig");
-
-const AssetStorage = @This();
-
 pub fn AssetPath(comptime T: ?type) type {
     _ = T;
     return struct {
@@ -205,3 +199,8 @@ fn assetTypeIndex(self: *AssetStorage, comptime T: type) u32 {
 
     return result.value_ptr.*;
 }
+
+const std = @import("std");
+const reflect = @import("../reflect/reflect.zig");
+const Archive = @import("Archive.zig");
+const AssetStorage = @This();
