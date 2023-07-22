@@ -245,7 +245,7 @@ pub fn init(allocator: std.mem.Allocator, swapchain: *graphics.Swapchain) !void 
     try initFrameImages(window.getWidth(), window.getHeight());
     errdefer deinitFrameImages();
 
-    self.command_buffers = try allocator.alloc(graphics.CommandBuffer, swapchain.swap_images.len);
+    self.command_buffers = try allocator.alloc(graphics.CommandBuffer, 2);
     errdefer allocator.free(self.command_buffers);
 
     self.materials = .{};
@@ -763,16 +763,9 @@ fn endRenderInternal(scene: SceneHandle) !void {
         self.index_staging_buffers.clearRetainingCapacity();
     }
 
-    if (!self.first_frame) {
-        self.frame_fence.wait();
-        self.frame_fence.reset();
-    }
-
-    self.first_frame = false;
-
     const image_index = self.swapchain.image_index;
     const image = self.swapchain.swap_images[image_index];
-    const command_buffer = &self.command_buffers[image_index];
+    const command_buffer = &self.command_buffers[0];
 
     const aspect_ratio: f32 = @as(f32, @floatFromInt(window.getWidth())) / @as(f32, @floatFromInt(window.getHeight()));
     const near_plane: f32 = 0.01;
@@ -801,7 +794,7 @@ fn endRenderInternal(scene: SceneHandle) !void {
     shadow_view_frustrum_center[1] /= @as(f32, @floatFromInt(view_frustum_corners.len));
     shadow_view_frustrum_center[2] /= @as(f32, @floatFromInt(view_frustum_corners.len));
 
-    const primary_directional_light = &scene_data.directional_lights[scene_data.primary_directional_light_index];
+    const primary_directional_light = &scene_data.directional_lights[0][scene_data.primary_directional_light_index];
 
     const shadow_view_position = [3]f32{ shadow_view_frustrum_center[0] + primary_directional_light.direction[0], shadow_view_frustrum_center[1] + primary_directional_light.direction[1], shadow_view_frustrum_center[2] + primary_directional_light.direction[2] };
 
@@ -851,7 +844,7 @@ fn endRenderInternal(scene: SceneHandle) !void {
     //view_projection for directional light view
     const shadow_view_projection = shadow_projection.mul(shadow_view);
 
-    scene_data.uniforms.* = ColorPassUniforms{
+    scene_data.uniforms[0].* = ColorPassUniforms{
         .view_projection = view_projection.data,
         .view_position = self.camera.translation,
         .point_light_count = scene_data.point_light_count,
@@ -868,9 +861,47 @@ fn endRenderInternal(scene: SceneHandle) !void {
     color_image.handle = image.image;
     color_image.aspect_mask = .{ .color_bit = true };
 
+    if (!self.first_frame) {
+        self.command_buffers[1].wait_fence.wait();
+        self.command_buffers[1].wait_fence.reset();
+
+        var times = [_]u64{ 0, 0, 0, 0 };
+
+        _ = try GraphicsContext.self.vkd.getQueryPoolResults(
+            GraphicsContext.self.device,
+            self.timeline_query_pool,
+            0,
+            4,
+            @sizeOf(@TypeOf(times)),
+            &times,
+            @sizeOf(u64),
+            vk.QueryResultFlags{ .wait_bit = false, .@"64_bit" = true },
+        );
+
+        self.statistics.depth_prepass_time = times[1] - times[0];
+        self.statistics.geometry_pass_time = times[3] - times[2];
+    }
+
+    self.first_frame = false;
+
+    //Render passes
     {
         command_buffer.begin() catch unreachable;
         defer command_buffer.end();
+
+        command_buffer.copyEntireBuffer(scene_data.uniforms_staging_buffers[0], scene_data.uniforms_buffer);
+        command_buffer.copyEntireBuffer(scene_data.input_draw_staging_buffers[0], scene_data.input_draw_buffer);
+        command_buffer.copyEntireBuffer(scene_data.transforms_staging_buffers[0], scene_data.transforms_buffer);
+        command_buffer.copyEntireBuffer(scene_data.material_indices_staging_buffers[0], scene_data.material_indices_buffer);
+        command_buffer.copyEntireBuffer(scene_data.point_light_staging_buffers[0], scene_data.point_light_buffer);
+        command_buffer.copyEntireBuffer(scene_data.directional_light_staging_buffers[0], scene_data.directional_light_buffer);
+
+        command_buffer.memoryBarrier(.{
+            .source_stage = .{ .copy = true },
+            .source_access = .{ .transfer_write = true },
+            .destination_stage = .{ .all_commands = true },
+            .destination_access = .{ .shader_storage_read = true, .shader_read = true, .transfer_read = true },
+        });
 
         GraphicsContext.self.vkd.cmdResetQueryPool(command_buffer.handle, self.timeline_query_pool, 0, 4);
 
@@ -1214,14 +1245,24 @@ fn endRenderInternal(scene: SceneHandle) !void {
             },
             .device_index = 0,
         }},
-    }}, self.frame_fence.handle);
+    }}, command_buffer.wait_fence.handle);
 
-    var times = [_]u64{ 0, 0, 0, 0 };
+    //Command buffer 0 is the command buffer being encoded
+    //and command buffer 1 is the command buffer being executed
+    std.mem.swap(graphics.CommandBuffer, &self.command_buffers[0], &self.command_buffers[1]);
+    std.mem.swap(graphics.Buffer, &scene_data.uniforms_staging_buffers[0], &scene_data.uniforms_staging_buffers[1]);
+    std.mem.swap(graphics.Buffer, &scene_data.input_draw_staging_buffers[0], &scene_data.input_draw_staging_buffers[1]);
+    std.mem.swap(graphics.Buffer, &scene_data.transforms_staging_buffers[0], &scene_data.transforms_staging_buffers[1]);
+    std.mem.swap(graphics.Buffer, &scene_data.point_light_staging_buffers[0], &scene_data.point_light_staging_buffers[1]);
+    std.mem.swap(graphics.Buffer, &scene_data.material_indices_staging_buffers[0], &scene_data.material_indices_staging_buffers[1]);
+    std.mem.swap(graphics.Buffer, &scene_data.directional_light_staging_buffers[0], &scene_data.directional_light_staging_buffers[1]);
 
-    _ = try GraphicsContext.self.vkd.getQueryPoolResults(GraphicsContext.self.device, self.timeline_query_pool, 0, 4, @sizeOf(@TypeOf(times)), &times, @sizeOf(u64), vk.QueryResultFlags{ .wait_bit = true, .@"64_bit" = true });
-
-    self.statistics.depth_prepass_time = times[1] - times[0];
-    self.statistics.geometry_pass_time = times[3] - times[2];
+    std.mem.swap(@TypeOf(scene_data.uniforms[0]), &scene_data.uniforms[0], &scene_data.uniforms[1]);
+    std.mem.swap(@TypeOf(scene_data.input_draws[0]), &scene_data.input_draws[0], &scene_data.input_draws[1]);
+    std.mem.swap(@TypeOf(scene_data.transforms[0]), &scene_data.transforms[0], &scene_data.transforms[1]);
+    std.mem.swap(@TypeOf(scene_data.point_lights[0]), &scene_data.point_lights[0], &scene_data.point_lights[1]);
+    std.mem.swap(@TypeOf(scene_data.material_indices[0]), &scene_data.material_indices[0], &scene_data.material_indices[1]);
+    std.mem.swap(@TypeOf(scene_data.directional_lights[0]), &scene_data.directional_lights[0], &scene_data.directional_lights[1]);
 }
 
 ///Specifies a view into a scene
@@ -1240,21 +1281,29 @@ const Scene = struct {
     ambient_light: AmbientLight,
     views: []View,
 
-    transforms: [][4][3]f32,
+    //TODO: double buffer
     transforms_buffer: graphics.Buffer,
+    transforms_staging_buffers: [2]graphics.Buffer,
+    transforms: [2][][4][3]f32,
 
-    material_indices: []u32,
+    //TODO: double buffer
     material_indices_buffer: graphics.Buffer,
+    material_indices_staging_buffers: [2]graphics.Buffer,
+    material_indices: [2][]u32,
 
-    input_draws: []InputDraw,
+    //TODO: double buffer
     input_draw_buffer: graphics.Buffer,
+    input_draw_staging_buffers: [2]graphics.Buffer,
+    input_draws: [2][]InputDraw,
 
     //The conservative volume containing all meshes
     mesh_draw_volume_min: [3]f32,
     mesh_draw_volume_max: [3]f32,
 
     uniforms_buffer: graphics.Buffer,
-    uniforms: *ColorPassUniforms,
+    uniforms_staging_buffers: [2]graphics.Buffer,
+    //TODO: double buffer
+    uniforms: [2]*ColorPassUniforms,
 
     draw_indirect_buffer: graphics.Buffer,
     draw_indirect_count_buffer: graphics.Buffer,
@@ -1262,13 +1311,17 @@ const Scene = struct {
 
     post_depth_draw_command_offset: u32,
 
-    directional_lights: []DirectionalLight,
+    //TODO: double buffer
     directional_light_buffer: graphics.Buffer,
+    directional_light_staging_buffers: [2]graphics.Buffer,
+    directional_lights: [2][]DirectionalLight,
     directional_light_count: u32,
     primary_directional_light_index: u32,
 
-    point_lights: []PointLight,
+    //TODO: double buffer
     point_light_buffer: graphics.Buffer,
+    point_light_staging_buffers: [2]graphics.Buffer,
+    point_lights: [2][]PointLight,
     point_light_count: u32,
 
     environment_image: graphics.Image,
@@ -1322,25 +1375,38 @@ pub fn createScene(
 
     scene.post_depth_draw_command_offset = command_count / 2;
 
+    for (&scene.uniforms_staging_buffers, 0..) |*staging_buffer, i| {
+        staging_buffer.* = try graphics.Buffer.init(@sizeOf(ColorPassUniforms), .staging);
+
+        scene.uniforms[i] = &(try staging_buffer.map(ColorPassUniforms))[0];
+    }
+
     scene.uniforms_buffer = try graphics.Buffer.init(@sizeOf(ColorPassUniforms), .storage);
     errdefer scene.uniforms_buffer.deinit();
-
-    scene.uniforms = &(try scene.uniforms_buffer.map(ColorPassUniforms))[0];
 
     scene.input_draw_buffer = try graphics.Buffer.init(command_count * @sizeOf(InputDraw), .storage);
     errdefer scene.input_draw_buffer.deinit();
 
-    scene.input_draws = try scene.input_draw_buffer.map(InputDraw);
+    for (&scene.input_draw_staging_buffers, 0..) |*staging_buffer, i| {
+        staging_buffer.* = try graphics.Buffer.init(command_count * @sizeOf(InputDraw), .staging);
+        scene.input_draws[i] = try staging_buffer.map(InputDraw);
+    }
 
     scene.transforms_buffer = try graphics.Buffer.init(command_count * @sizeOf([4][3]f32), .storage);
     errdefer scene.transforms_buffer.deinit();
 
-    scene.transforms = try scene.transforms_buffer.map([4][3]f32);
+    for (&scene.transforms_staging_buffers, 0..) |*staging_buffer, i| {
+        staging_buffer.* = try graphics.Buffer.init(command_count * @sizeOf([4][3]f32), .staging);
+        scene.transforms[i] = try staging_buffer.map([4][3]f32);
+    }
 
     scene.material_indices_buffer = try graphics.Buffer.init(command_count * @sizeOf(u32), .storage);
     errdefer scene.material_indices_buffer.deinit();
 
-    scene.material_indices = try scene.material_indices_buffer.map(u32);
+    for (&scene.material_indices_staging_buffers, 0..) |*staging_buffer, i| {
+        staging_buffer.* = try graphics.Buffer.init(command_count * @sizeOf(u32), .staging);
+        scene.material_indices[i] = try staging_buffer.map(u32);
+    }
 
     scene.mesh_draw_volume_min = .{ std.math.floatMax(f32), std.math.floatMax(f32), std.math.floatMax(f32) };
     scene.mesh_draw_volume_max = .{ std.math.floatMin(f32), std.math.floatMin(f32), std.math.floatMin(f32) };
@@ -1362,16 +1428,20 @@ pub fn createScene(
     scene.directional_light_buffer = try graphics.Buffer.init(max_directional_light_count * @sizeOf(DirectionalLight), .storage);
     errdefer scene.directional_light_buffer.deinit();
 
-    scene.directional_lights = try scene.directional_light_buffer.map(DirectionalLight);
-    errdefer scene.directional_light_buffer.unmap();
+    for (&scene.directional_light_staging_buffers, 0..) |*staging_buffer, i| {
+        staging_buffer.* = try graphics.Buffer.init(max_directional_light_count * @sizeOf(DirectionalLight), .staging);
+        scene.directional_lights[i] = try staging_buffer.map(DirectionalLight);
+    }
 
     scene.directional_light_count = 0;
 
     scene.point_light_buffer = try graphics.Buffer.init(max_point_light_count * @sizeOf(PointLight), .storage);
     errdefer scene.point_light_buffer.deinit();
 
-    scene.point_lights = try scene.point_light_buffer.map(PointLight);
-    errdefer scene.point_light_buffer.unmap();
+    for (&scene.point_light_staging_buffers, 0..) |*staging_buffer, i| {
+        staging_buffer.* = try graphics.Buffer.init(max_point_light_count * @sizeOf(PointLight), .staging);
+        scene.point_lights[i] = try staging_buffer.map(PointLight);
+    }
 
     scene.point_light_count = 0;
 
@@ -1421,9 +1491,25 @@ pub fn destroyScene(scene: SceneHandle) void {
     defer scene_data.transforms_buffer.deinit();
     defer scene_data.material_indices_buffer.deinit();
     defer scene_data.point_light_buffer.deinit();
-    defer scene_data.point_light_buffer.unmap();
     defer scene_data.directional_light_buffer.deinit();
-    defer scene_data.directional_light_buffer.unmap();
+    defer for (&scene_data.uniforms_staging_buffers) |*staging_buffer| {
+        staging_buffer.deinit();
+    };
+    defer for (&scene_data.input_draw_staging_buffers) |*staging_buffer| {
+        staging_buffer.deinit();
+    };
+    defer for (&scene_data.transforms_staging_buffers) |*staging_buffer| {
+        staging_buffer.deinit();
+    };
+    defer for (&scene_data.material_indices_staging_buffers) |*staging_buffer| {
+        staging_buffer.deinit();
+    };
+    defer for (&scene_data.point_light_staging_buffers) |*staging_buffer| {
+        staging_buffer.deinit();
+    };
+    defer for (&scene_data.directional_light_staging_buffers) |*staging_buffer| {
+        staging_buffer.deinit();
+    };
     defer if (scene_data.environment_enabled) scene_data.environment_image.deinit();
     defer if (scene_data.environment_enabled) scene_data.environment_sampler.deinit();
 }
@@ -1441,18 +1527,18 @@ pub fn sceneAddMesh(
 
     const draw_offset = scene_data.static_draw_offset + scene_data.static_draw_count;
 
-    scene_data.input_draws[draw_offset] = .{
+    scene_data.input_draws[0][draw_offset] = .{
         .mesh_index = @intFromEnum(mesh),
     };
 
-    scene_data.transforms[draw_offset] = .{
+    scene_data.transforms[0][draw_offset] = .{
         transform.data[0][0..3].*,
         transform.data[1][0..3].*,
         transform.data[2][0..3].*,
         transform.data[3][0..3].*,
     };
 
-    scene_data.material_indices[draw_offset] = @intFromEnum(material);
+    scene_data.material_indices[0][draw_offset] = @intFromEnum(material);
 
     const mesh_data: Mesh = self.meshes.items[@intFromEnum(mesh)];
 
@@ -1495,18 +1581,18 @@ pub fn scenePushMesh(
 ) void {
     const scene_data: *Scene = &self.scenes.items[@intFromEnum(scene)];
 
-    scene_data.input_draws[scene_data.static_draw_count + scene_data.dynamic_draw_count] = .{
+    scene_data.input_draws[0][scene_data.static_draw_count + scene_data.dynamic_draw_count] = .{
         .mesh_index = @intFromEnum(mesh),
     };
 
-    scene_data.transforms[scene_data.static_draw_count + scene_data.dynamic_draw_count] = .{
+    scene_data.transforms[0][scene_data.static_draw_count + scene_data.dynamic_draw_count] = .{
         transform.data[0][0..3].*,
         transform.data[1][0..3].*,
         transform.data[2][0..3].*,
         transform.data[3][0..3].*,
     };
 
-    scene_data.material_indices[scene_data.static_draw_count + scene_data.dynamic_draw_count] = @intFromEnum(material);
+    scene_data.material_indices[0][scene_data.static_draw_count + scene_data.dynamic_draw_count] = @intFromEnum(material);
 
     scene_data.dynamic_draw_count += 1;
 }
@@ -1523,7 +1609,7 @@ pub fn scenePushPointLight(scene: SceneHandle, point_light: PointLight) void {
 
     const index = scene_data.point_light_count;
 
-    scene_data.point_lights[index] = point_light;
+    scene_data.point_lights[0][index] = point_light;
 
     scene_data.point_light_count += 1;
 }
@@ -1534,7 +1620,7 @@ pub fn scenePushDirectionalLight(scene: SceneHandle, directional_light: Directio
 
     const index = scene_data.directional_light_count;
 
-    scene_data.directional_lights[index] = directional_light;
+    scene_data.directional_lights[0][index] = directional_light;
 
     scene_data.directional_light_count += 1;
 }

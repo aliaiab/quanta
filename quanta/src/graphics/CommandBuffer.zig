@@ -107,6 +107,7 @@ fn placePendingBarriers(self: CommandBuffer) void {
 
 pub const PipelineStage = packed struct {
     all_commands: bool = false,
+    all_graphics: bool = false,
     color_attachment_output: bool = false,
     early_fragment_tests: bool = false,
     late_fragment_tests: bool = false,
@@ -116,6 +117,8 @@ pub const PipelineStage = packed struct {
     fragment_shader: bool = false,
     compute_shader: bool = false,
     copy: bool = false,
+    top_of_pipe: bool = false,
+    bottom_of_pipe: bool = false,
 };
 
 inline fn getVkPipelineStage(pipeline_stage: PipelineStage) vk.PipelineStageFlags2 {
@@ -130,6 +133,8 @@ inline fn getVkPipelineStage(pipeline_stage: PipelineStage) vk.PipelineStageFlag
         .fragment_shader_bit = pipeline_stage.fragment_shader,
         .compute_shader_bit = pipeline_stage.compute_shader,
         .copy_bit = pipeline_stage.copy,
+        .top_of_pipe_bit = pipeline_stage.top_of_pipe,
+        .bottom_of_pipe_bit = pipeline_stage.bottom_of_pipe,
     };
 }
 
@@ -388,6 +393,31 @@ pub fn setGraphicsPipeline(self: *CommandBuffer, pipeline: GraphicsPipeline) voi
     self.is_graphics_pipeline = true;
 }
 
+pub fn setDescriptorBuffer(self: *CommandBuffer, buffer: Buffer) void {
+    Context.self.vkd.cmdBindDescriptorBuffersEXT(
+        self.handle,
+        1,
+        &[_]vk.DescriptorBufferBindingInfoEXT{.{
+            .address = buffer.device_address,
+            .usage = switch (buffer.usage) {
+                .vertex => .{ .vertex_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true },
+                .index => .{ .index_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true },
+                .uniform => .{ .uniform_buffer_bit = true, .transfer_dst_bit = true },
+                .storage => .{
+                    .storage_buffer_bit = true,
+                    .transfer_dst_bit = true,
+                },
+                .indirect => .{
+                    .indirect_buffer_bit = true,
+                    .storage_buffer_bit = true,
+                    .transfer_dst_bit = true,
+                },
+                .staging => .{ .transfer_src_bit = true },
+            },
+        }},
+    );
+}
+
 pub fn setVertexBuffer(self: CommandBuffer, buffer: Buffer) void {
     Context.self.vkd.cmdBindVertexBuffers(self.handle, 0, 1, @as([*]const vk.Buffer, @ptrCast(&buffer.handle)), @as([*]const u64, @ptrCast(&@as(u64, 0))));
 }
@@ -441,6 +471,21 @@ pub fn copyBuffer(
     };
 
     Context.self.vkd.cmdCopyBuffer(self.handle, source.handle, destination.handle, 1, @as([*]const vk.BufferCopy, @ptrCast(&copy_region)));
+}
+
+pub fn copyEntireBuffer(
+    self: CommandBuffer,
+    source: Buffer,
+    destination: Buffer,
+) void {
+    self.copyBuffer(
+        source,
+        0,
+        source.size,
+        destination,
+        0,
+        destination.size,
+    );
 }
 
 pub fn updateBuffer(self: CommandBuffer, destination: Buffer, offset: usize, comptime T: type, data: []const T) void {

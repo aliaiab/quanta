@@ -10,6 +10,9 @@ memory_page: Context.DevicePageHandle,
 size: usize,
 alignment: usize,
 usage: Usage,
+device_address: usize,
+///This needs to be sized to fit descriptors from all platforms
+descriptor: u128,
 
 pub const Usage = enum {
     vertex,
@@ -71,25 +74,46 @@ pub fn init(size: usize, usage: Usage) !Buffer {
         .size = size,
         .alignment = 0,
         .usage = usage,
+        .device_address = undefined,
+        .descriptor = 0,
     };
 
     const create_info = vk.BufferCreateInfo{
         .flags = .{},
         .size = size,
         .usage = switch (usage) {
-            .vertex => .{ .vertex_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true },
-            .index => .{ .index_buffer_bit = true, .storage_buffer_bit = true, .transfer_dst_bit = true },
-            .uniform => .{ .uniform_buffer_bit = true, .transfer_dst_bit = true },
+            .vertex => .{
+                .vertex_buffer_bit = true,
+                .storage_buffer_bit = true,
+                .transfer_dst_bit = true,
+                .shader_device_address_bit = true,
+            },
+            .index => .{
+                .index_buffer_bit = true,
+                .storage_buffer_bit = true,
+                .transfer_dst_bit = true,
+                .shader_device_address_bit = true,
+            },
+            .uniform => .{
+                .uniform_buffer_bit = true,
+                .transfer_dst_bit = true,
+                .shader_device_address_bit = true,
+            },
             .storage => .{
                 .storage_buffer_bit = true,
                 .transfer_dst_bit = true,
+                .shader_device_address_bit = true,
             },
             .indirect => .{
                 .indirect_buffer_bit = true,
                 .storage_buffer_bit = true,
                 .transfer_dst_bit = true,
+                .shader_device_address_bit = true,
             },
-            .staging => .{ .transfer_src_bit = true },
+            .staging => .{
+                .transfer_src_bit = true,
+                .shader_device_address_bit = true,
+            },
         },
         .sharing_mode = .exclusive,
         .queue_family_index_count = 0,
@@ -110,14 +134,54 @@ pub fn init(size: usize, usage: Usage) !Buffer {
     self.alignment = memory_requirements.memory_requirements.alignment;
 
     self.memory_page = try Context.devicePageAllocateBuffer(self.handle, switch (usage) {
-        .staging => .{ .host_visible_bit = true, .host_coherent_bit = true },
+        .staging => .{
+            .host_visible_bit = true,
+            .host_coherent_bit = true,
+        },
         .vertex,
         .index,
-        => .{ .device_local_bit = true },
-        .storage, .uniform => .{ .host_visible_bit = true, .device_local_bit = true },
-        .indirect => .{ .host_visible_bit = true, .host_coherent_bit = true, .device_local_bit = true },
+        => .{
+            .device_local_bit = true,
+        },
+        .storage, .uniform => .{
+            .host_visible_bit = true,
+            .device_local_bit = true,
+        },
+        .indirect => .{
+            .host_visible_bit = true,
+            .host_coherent_bit = true,
+            .device_local_bit = true,
+        },
     });
     errdefer Context.devicePageFree(self.memory_page);
+
+    self.device_address = Context.self.vkd.getBufferDeviceAddress(
+        Context.self.device,
+        &vk.BufferDeviceAddressInfo{
+            .buffer = self.handle,
+        },
+    );
+
+    if (true)
+        Context.self.vkd.getDescriptorEXT(
+            Context.self.device,
+            &vk.DescriptorGetInfoEXT{
+                .type = switch (self.usage) {
+                    .vertex, .index, .storage => .storage_buffer,
+                    .uniform => .uniform_buffer,
+                    else => .storage_buffer,
+                },
+                .data = .{
+                    .p_storage_buffer = &.{
+                        .address = self.device_address,
+                        .range = self.size,
+                        .format = .undefined,
+                    },
+                },
+            },
+            @sizeOf(@TypeOf(self.descriptor)),
+            &self.descriptor,
+        );
 
     return self;
 }

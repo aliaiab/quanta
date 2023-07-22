@@ -27,18 +27,19 @@ const Texture = struct {
 allocator: std.mem.Allocator = undefined,
 rectangle_pipeline: graphics.GraphicsPipeline = undefined,
 mesh_pipeline: graphics.GraphicsPipeline = undefined,
-///Should use double buffering of course, but that will be a big change
-///and I want to create a solution common to all renderers in the engine
-command_buffer: graphics.CommandBuffer = undefined,
+command_buffers: [2]graphics.CommandBuffer = undefined,
 color_target_image: *const graphics.Image = undefined,
 rectangles: std.ArrayListUnmanaged(Rectangle) = .{},
 scissors: std.ArrayListUnmanaged([4]u16) = .{},
 rectangles_buffer: graphics.Buffer = undefined,
 vertices_buffer: graphics.Buffer = undefined,
-vertices_staging_buffer: graphics.Buffer = undefined,
+vertices_staging_buffers: [2]graphics.Buffer = undefined,
 indices_buffer: graphics.Buffer = undefined,
-indices_staging_buffer: graphics.Buffer = undefined,
+indices_staging_buffers: [2]graphics.Buffer = undefined,
+staging_vertices: [2][]imgui.ImDrawVert = undefined,
+staging_indices: [2][]u16 = undefined,
 textures: std.ArrayListUnmanaged(Texture) = .{},
+first_frame: bool = false,
 
 pub const TextureHandle = enum(u32) { null = 0, _ };
 
@@ -66,6 +67,7 @@ pub fn createTexture(data: []const u8, width: u32, height: u32) !TextureHandle {
 
 pub fn init(allocator: std.mem.Allocator, swapchain: graphics.Swapchain) !void {
     self.allocator = allocator;
+    self.first_frame = true;
     // self.rectangle_pipeline = try graphics.GraphicsPipeline.init(
     //     allocator,
     //     .{
@@ -109,8 +111,13 @@ pub fn init(allocator: std.mem.Allocator, swapchain: graphics.Swapchain) !void {
     );
     errdefer self.mesh_pipeline.deinit(self.allocator);
 
-    self.command_buffer = try graphics.CommandBuffer.init(.graphics);
-    errdefer self.command_buffer.deinit();
+    for (&self.command_buffers) |*command_buffer| {
+        command_buffer.* = try graphics.CommandBuffer.init(.graphics);
+    }
+
+    errdefer for (&self.command_buffers) |*command_buffer| {
+        command_buffer.deinit();
+    };
 
     self.rectangles_buffer = try graphics.Buffer.init(4096 * @sizeOf(Rectangle), .storage);
     errdefer self.rectangles_buffer.deinit();
@@ -123,16 +130,28 @@ pub fn init(allocator: std.mem.Allocator, swapchain: graphics.Swapchain) !void {
     self.vertices_buffer = try graphics.Buffer.init(max_vertices * @sizeOf(Vertex), .storage);
     errdefer self.vertices_buffer.deinit();
 
-    self.vertices_staging_buffer = try graphics.Buffer.init(max_vertices * @sizeOf(Vertex), .staging);
-    errdefer self.vertices_staging_buffer.deinit();
+    for (&self.vertices_staging_buffers, 0..) |*staging_buffer, i| {
+        staging_buffer.* = try graphics.Buffer.init(max_vertices * @sizeOf(Vertex), .staging);
+        self.staging_vertices[i] = try staging_buffer.map(imgui.ImDrawVert);
+    }
+
+    errdefer for (&self.vertices_staging_buffers) |*staging_buffer| {
+        staging_buffer.deinit();
+    };
 
     self.mesh_pipeline.setDescriptorBuffer(0, 0, self.vertices_buffer);
 
+    for (&self.indices_staging_buffers, 0..) |*staging_buffer, i| {
+        staging_buffer.* = try graphics.Buffer.init(max_indices * @sizeOf(u16), .staging);
+        self.staging_indices[i] = try staging_buffer.map(u16);
+    }
+
+    errdefer for (&self.indices_staging_buffers) |*staging_buffer| {
+        staging_buffer.deinit();
+    };
+
     self.indices_buffer = try graphics.Buffer.init(max_indices * @sizeOf(u16), .index);
     errdefer self.indices_buffer.deinit();
-
-    self.indices_staging_buffer = try graphics.Buffer.init(max_indices * @sizeOf(u16), .staging);
-    errdefer self.indices_staging_buffer.deinit();
 
     try initImGui();
     errdefer deinitImGui();
@@ -158,13 +177,19 @@ fn deinitImGui() void {}
 pub fn deinit() void {
     // defer self.rectangle_pipeline.deinit(self.allocator);
     defer self.mesh_pipeline.deinit(self.allocator);
-    defer self.command_buffer.deinit();
+    defer for (&self.command_buffers) |*command_buffer| {
+        command_buffer.deinit();
+    };
     defer self.rectangles_buffer.deinit();
     defer self.rectangles.deinit(self.allocator);
     defer self.vertices_buffer.deinit();
-    defer self.vertices_staging_buffer.deinit();
+    defer for (&self.vertices_staging_buffers) |*staging_buffer| {
+        staging_buffer.deinit();
+    };
     defer self.indices_buffer.deinit();
-    defer self.indices_staging_buffer.deinit();
+    defer for (&self.indices_staging_buffers) |*staging_buffer| {
+        staging_buffer.deinit();
+    };
     defer self.scissors.deinit(self.allocator);
     defer self.textures.deinit(self.allocator);
     defer for (self.textures.items) |*texture| {
@@ -204,9 +229,11 @@ pub fn drawRectangle(rectangle: Rectangle) void {
 pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
     if (draw_data.CmdListsCount == 0 or !draw_data.Valid) return;
 
+    const command_buffer = &self.command_buffers[0];
+
     {
-        try self.command_buffer.begin();
-        defer self.command_buffer.end();
+        try command_buffer.begin();
+        defer command_buffer.end();
 
         //Upload
         {
@@ -216,8 +243,9 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
                 var vertex_offset: usize = 0;
                 var index_offset: usize = 0;
 
-                const staging_vertices = try self.vertices_staging_buffer.map(imgui.ImDrawVert);
-                const staging_indices = try self.indices_staging_buffer.map(u16);
+                //no need to map every frame
+                const staging_vertices = self.staging_vertices[0];
+                const staging_indices = self.staging_indices[0];
 
                 for (0..@intCast(draw_data.CmdListsCount)) |command_list_index| {
                     const command_list: *imgui.ImDrawList = draw_data.CmdLists[command_list_index];
@@ -232,8 +260,8 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
                     index_offset += indices.len;
                 }
 
-                self.command_buffer.copyBuffer(
-                    self.vertices_staging_buffer,
+                command_buffer.copyBuffer(
+                    self.vertices_staging_buffers[0],
                     0,
                     vertex_offset * @sizeOf(imgui.ImDrawVert),
                     self.vertices_buffer,
@@ -241,8 +269,8 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
                     vertex_offset * @sizeOf(imgui.ImDrawVert),
                 );
 
-                self.command_buffer.copyBuffer(
-                    self.indices_staging_buffer,
+                command_buffer.copyBuffer(
+                    self.indices_staging_buffers[0],
                     0,
                     index_offset * @sizeOf(u16),
                     self.indices_buffer,
@@ -250,7 +278,7 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
                     index_offset * @sizeOf(u16),
                 );
 
-                self.command_buffer.bufferBarrier(self.vertices_buffer, .{
+                command_buffer.bufferBarrier(self.vertices_buffer, .{
                     .source_stage = .{
                         .copy = true,
                     },
@@ -261,7 +289,7 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
                     .destination_access = .{ .shader_read = true },
                 });
 
-                self.command_buffer.bufferBarrier(self.indices_buffer, .{
+                command_buffer.bufferBarrier(self.indices_buffer, .{
                     .source_stage = .{ .copy = true },
                     .source_access = .{ .transfer_write = true },
                     .destination_stage = .{ .index_input = true },
@@ -272,14 +300,14 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
 
         //#Color Pass 1: main
         {
-            self.command_buffer.beginRenderPass(0, 0, window.getWidth(), window.getHeight(), &[_]graphics.CommandBuffer.Attachment{.{
+            command_buffer.beginRenderPass(0, 0, window.getWidth(), window.getHeight(), &[_]graphics.CommandBuffer.Attachment{.{
                 .image = self.color_target_image,
             }}, null);
-            defer self.command_buffer.endRenderPass();
+            defer command_buffer.endRenderPass();
 
-            self.command_buffer.setGraphicsPipeline(self.mesh_pipeline);
-            self.command_buffer.setViewport(0, @as(f32, @floatFromInt(window.getHeight())), @as(f32, @floatFromInt(window.getWidth())), -@as(f32, @floatFromInt(window.getHeight())), 0, 1);
-            self.command_buffer.setScissor(0, 0, window.getWidth(), window.getHeight());
+            command_buffer.setGraphicsPipeline(self.mesh_pipeline);
+            command_buffer.setViewport(0, @as(f32, @floatFromInt(window.getHeight())), @as(f32, @floatFromInt(window.getWidth())), -@as(f32, @floatFromInt(window.getHeight())), 0, 1);
+            command_buffer.setScissor(0, 0, window.getWidth(), window.getHeight());
 
             // const projection = zalgebra.orthographic(0, @intToFloat(f32, window.getWidth()), 0, @intToFloat(f32, window.getHeight()), 0, 1);
 
@@ -292,7 +320,7 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
             ortho[0][0] /= @as(f32, @floatFromInt(window.getWidth()));
             ortho[1][1] /= @as(f32, @floatFromInt(window.getHeight()));
 
-            self.command_buffer.setIndexBuffer(self.indices_buffer, .u16);
+            command_buffer.setIndexBuffer(self.indices_buffer, .u16);
 
             var vertex_offset: usize = 0;
             var index_offset: usize = 0;
@@ -306,13 +334,13 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
                 for (0..@intCast(command_list.CmdBuffer.Size)) |command_index| {
                     const command: imgui.ImDrawCmd = command_list.CmdBuffer.Data[command_index];
 
-                    self.command_buffer.setPushData(MeshPipelinePushData, .{
+                    command_buffer.setPushData(MeshPipelinePushData, .{
                         .projection = ortho,
                         .texture_index = @as(u32, @intCast(@intFromPtr(command.TextureId))),
                     });
 
-                    self.command_buffer.setScissor(@as(u32, @intFromFloat(@max(command.ClipRect.x, 0))), @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))), @as(u32, @intFromFloat(@min(command.ClipRect.z, @as(f32, @floatFromInt(window.getWidth()))))) - @as(u32, @intFromFloat(@max(command.ClipRect.x, 0))), @as(u32, @intFromFloat(@min(command.ClipRect.w, @as(f32, @floatFromInt(window.getHeight()))))) - @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))));
-                    self.command_buffer.drawIndexed(command.ElemCount, 1, @as(u32, @intCast(index_offset)) + command.IdxOffset, @as(i32, @intCast(vertex_offset)) + @as(i32, @intCast(command.VtxOffset)), 0);
+                    command_buffer.setScissor(@as(u32, @intFromFloat(@max(command.ClipRect.x, 0))), @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))), @as(u32, @intFromFloat(@min(command.ClipRect.z, @as(f32, @floatFromInt(window.getWidth()))))) - @as(u32, @intFromFloat(@max(command.ClipRect.x, 0))), @as(u32, @intFromFloat(@min(command.ClipRect.w, @as(f32, @floatFromInt(window.getHeight()))))) - @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))));
+                    command_buffer.drawIndexed(command.ElemCount, 1, @as(u32, @intCast(index_offset)) + command.IdxOffset, @as(i32, @intCast(vertex_offset)) + @as(i32, @intCast(command.VtxOffset)), 0);
                 }
 
                 vertex_offset += vertices.len;
@@ -321,6 +349,19 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
         }
     }
 
+    if (!self.first_frame) {
+        self.command_buffers[1].wait_fence.wait();
+        self.command_buffers[1].wait_fence.reset();
+    }
+
+    self.first_frame = false;
+
     //quite slow but will do for now
-    try self.command_buffer.submitAndWait();
+    try command_buffer.submit(command_buffer.wait_fence);
+
+    std.mem.swap(graphics.CommandBuffer, &self.command_buffers[0], &self.command_buffers[1]);
+    std.mem.swap(graphics.Buffer, &self.vertices_staging_buffers[0], &self.vertices_staging_buffers[1]);
+    std.mem.swap(graphics.Buffer, &self.indices_staging_buffers[0], &self.indices_staging_buffers[1]);
+    std.mem.swap([]imgui.ImDrawVert, &self.staging_vertices[0], &self.staging_vertices[1]);
+    std.mem.swap([]u16, &self.staging_indices[0], &self.staging_indices[1]);
 }

@@ -136,6 +136,8 @@ pub const DeviceDispatch = vk.DeviceWrapper(.{
     .cmdBeginQuery = true,
     .cmdEndQuery = true,
     .getQueryPoolResults = true,
+    .getBufferDeviceAddress = true,
+    .getDescriptorEXT = true,
 });
 
 var vkGetInstanceProcAddr: vk.PfnGetInstanceProcAddr = undefined;
@@ -268,6 +270,7 @@ pub const RequiredExtensions = struct {
 ///If the extension is supported at runtime, it is kept as non-null, otherwise it's set to null
 pub const OptionalExtensions = struct {
     ext_memory_budget: ?[:0]const u8 = vk.extension_info.ext_memory_budget.name,
+    ext_descriptor_buffer: ?[:0]const u8 = vk.extension_info.ext_descriptor_buffer.name,
 };
 
 pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void {
@@ -362,13 +365,8 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
     }
 
     const validation_features = [_]vk.ValidationFeatureEnableEXT{
-        //I am getting really wierd segfaults at draw time using best practices layer
-        //It seems to happen whenever the shader changes between runs, which implies something to do with pipeline_cache
-        //TODO: Look into this, it's very wierd and needs time to be examined
         // .best_practices_ext,
         .synchronization_validation_ext,
-        // .gpu_assisted_ext,
-        // .gpu_assisted_reserve_binding_slot_ext
     };
 
     self.instance = try self.vkb.createInstance(&.{
@@ -957,8 +955,16 @@ pub fn deviceAllocateWithMemoryType(size: usize, memory_type: MemoryType, dedica
         });
     }
 
-    return try self.vkd.allocateMemory(self.device, &.{
+    var memory_allocate_flags_info = vk.MemoryAllocateFlagsInfo{
         .p_next = if (dedicated_info != null) &dedicated_info.? else null,
+        .flags = .{
+            .device_address_bit = true,
+        },
+        .device_mask = 0,
+    };
+
+    return try self.vkd.allocateMemory(self.device, &.{
+        .p_next = &memory_allocate_flags_info,
         .allocation_size = size,
         .memory_type_index = memory_type.index,
     }, &self.allocation_callbacks);
