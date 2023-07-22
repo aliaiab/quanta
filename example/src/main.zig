@@ -390,10 +390,10 @@ pub fn update() !quanta.app.UpdateResult {
 
         if (state.camera_enable) {
             const sensitivity = 0.1;
-            var camera_speed = @splat(3, @as(f32, 30)) * @splat(3, state.delta_time / 1000);
+            var camera_speed: @Vector(3, f32) = @splat(30 * state.delta_time / 1000);
 
             if (window.window.getKey(.left_control) == .press) {
-                camera_speed *= @splat(3, @as(f32, 2));
+                camera_speed *= @splat(2);
             }
 
             state.yaw += x_offset * sensitivity;

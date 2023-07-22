@@ -667,7 +667,7 @@ fn vectorCross(a: @Vector(3, f32), b: @Vector(3, f32)) @Vector(3, f32) {
 }
 
 fn normalizePlane(p: @Vector(4, f32)) @Vector(4, f32) {
-    return p / @splat(4, vectorLength(.{ p[0], p[1], p[2], 0 }));
+    return p / @as(@Vector(4, f32), @splat(vectorLength(.{ p[0], p[1], p[2], 0 })));
 }
 
 fn extractPlanesFromProjmat(proj: [4][4]f32, view: [4][4]f32, left: *[4]f32, right: *[4]f32, bottom: *[4]f32, top: *[4]f32, near: *[4]f32, far: *[4]f32) void {
@@ -929,7 +929,7 @@ fn endRenderInternal(scene: SceneHandle) !void {
 
             const front = @as(@Vector(3, f32), self.camera.target) - @as(@Vector(3, f32), self.camera.translation);
 
-            near_face = createPlane(self.camera.translation + (@splat(3, near_plane) * front), front);
+            near_face = createPlane(self.camera.translation + (@as(@Vector(3, f32), @splat(near_plane)) * front), front);
 
             command_buffer.setPushData(DrawCullPushConstants, .{
                 .draw_count = scene_data.static_draw_count + scene_data.dynamic_draw_count,
@@ -1660,7 +1660,7 @@ pub fn createMesh(
 
     try self.mesh_bounding_boxes.append(self.allocator, .{ .min = bounding_box_min, .max = bounding_box_max });
 
-    const bounding_box_center = (bounding_box_max + bounding_box_min) / @splat(3, @as(f32, 2));
+    const bounding_box_center = (bounding_box_max + bounding_box_min) / @as(@Vector(3, f32), @splat(2));
     const bounding_box_extents = @Vector(3, f32){
         bounding_box_max[0] - bounding_box_center[0],
         bounding_box_max[1] - bounding_box_center[1],

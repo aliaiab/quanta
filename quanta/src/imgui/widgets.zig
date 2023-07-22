@@ -205,15 +205,15 @@ pub fn worldToScreenPos(
 ) ?@Vector(2, f32) {
     var screen_ndc = matrix.mulByVec4(.{ .data = .{ world_pos[0], world_pos[1], world_pos[2], 1 } });
 
-    screen_ndc.data /= @splat(4, @as(f32, screen_ndc.w()));
+    screen_ndc.data /= @as(@Vector(4, f32), @splat(screen_ndc.w()));
 
     //TODO: use a general line clipping algorithm
     if (screen_ndc.z() < -1 or screen_ndc.z() > 1) {
         return null;
     }
 
-    screen_ndc.data *= @splat(4, @as(f32, 0.5));
-    screen_ndc.data += @splat(4, @as(f32, 0.5));
+    screen_ndc.data *= @as(@Vector(4, f32), @splat(0.5));
+    screen_ndc.data += @as(@Vector(4, f32), @splat(0.5));
 
     var translation: @Vector(2, f32) = .{ screen_ndc.x(), screen_ndc.y() };
 
