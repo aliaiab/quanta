@@ -51,9 +51,8 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void {
     const shader_target = "vulkan1.2";
 
     const shader_optimisation = switch (self.optimize_mode) {
-        //TODO: There is currently an issue with -O shaders which seems to result in a miscompile
-        .ReleaseFast => "-O0",
-        .ReleaseSafe => "-O0",
+        .ReleaseFast => "-O",
+        .ReleaseSafe => "-O",
         .ReleaseSmall => "-Os",
         .Debug => "-O0",
     };
@@ -66,21 +65,28 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void {
 
     const stage_arg = try std.mem.join(self.builder.allocator, "", (&.{ "-fshader-stage=", stage_string }));
 
-    var args = [_][]const u8{
-        "glslc",
-        "-fauto-map-locations",
-        "--target-env=" ++ shader_target,
-        stage_arg,
-        self.input_path,
-        "-Werror",
-        "-c",
-        shader_optimisation,
-        "-g",
-        "-o",
-        self.output_path,
-    };
+    var args_list: std.ArrayListUnmanaged([]const u8) = .{};
 
-    cache_manifest.hash.addListOfBytes(&args);
+    try args_list.append(self.builder.allocator, "glslc");
+    try args_list.append(self.builder.allocator, "-fauto-map-locations");
+    try args_list.append(self.builder.allocator, "--target-env=" ++ shader_target);
+    try args_list.append(self.builder.allocator, stage_arg);
+    try args_list.append(self.builder.allocator, self.input_path);
+    try args_list.append(self.builder.allocator, "-Werror");
+    try args_list.append(self.builder.allocator, "-c");
+
+    try args_list.append(self.builder.allocator, shader_optimisation);
+
+    if (self.optimize_mode == .Debug) {
+        try args_list.append(self.builder.allocator, "-g");
+    }
+
+    try args_list.append(self.builder.allocator, "-fpreserve-bindings");
+    try args_list.append(self.builder.allocator, "-o");
+    const output_path_arg_index = args_list.items.len;
+    try args_list.append(self.builder.allocator, self.output_path);
+
+    cache_manifest.hash.addListOfBytes(args_list.items);
     const input_file_index = try cache_manifest.addFile(self.input_path, std.math.maxInt(u32));
 
     const found_existing = try step.cacheHit(&cache_manifest);
@@ -122,7 +128,7 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void {
 
     self.generated_file.path = cached_path;
 
-    args[10] = cached_path;
+    args_list.items[output_path_arg_index] = cached_path;
 
     errdefer {
         self.generated_file.path = null;
@@ -130,7 +136,7 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void {
 
     const result = try std.process.Child.exec(.{
         .allocator = step.owner.allocator,
-        .argv = &args,
+        .argv = args_list.items,
     });
 
     switch (result.term) {

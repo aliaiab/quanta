@@ -762,8 +762,6 @@ pub fn main() !void {
 }
 
 pub const std_options = struct {
-    pub const log_level = std.log.Level.info;
-
     pub fn logFn(
         comptime message_level: std.log.Level,
         comptime scope: @Type(.EnumLiteral),
