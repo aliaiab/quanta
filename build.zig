@@ -20,7 +20,8 @@ pub fn build(builder: *std.build.Builder) !void {
         }
     }
 
-    const target = builder.standardTargetOptions(.{});
+    var target = builder.standardTargetOptions(.{});
+
     const mode = builder.standardOptimizeOption(.{});
 
     const quanta_build_context = try quanta_build.Context.init(builder, target, mode, "");

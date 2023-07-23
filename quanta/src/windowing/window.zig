@@ -1,5 +1,6 @@
 const std = @import("std");
 const glfw = @import("glfw");
+const XcbWindow = @import("xcb/XcbWindow.zig");
 
 pub var window: glfw.Window = undefined;
 
@@ -7,12 +8,14 @@ var self: @This() = undefined;
 
 width: u32,
 height: u32,
+xcb_window: XcbWindow,
 
 pub fn init(width: u32, height: u32, title: [:0]const u8) !void {
     if (!glfw.init(.{})) return error.glfwFailure;
 
     self.width = width;
     self.height = height;
+    self.xcb_window = try XcbWindow.init();
 
     window = glfw.Window.create(width, height, title.ptr, null, null, .{
         .client_api = .no_api,
@@ -23,9 +26,12 @@ pub fn init(width: u32, height: u32, title: [:0]const u8) !void {
 pub fn deinit() void {
     window.destroy();
     glfw.terminate();
+    self.xcb_window.deinit();
 }
 
 pub fn shouldClose() bool {
+    self.xcb_window.pollEvents();
+
     glfw.pollEvents();
 
     return window.shouldClose();

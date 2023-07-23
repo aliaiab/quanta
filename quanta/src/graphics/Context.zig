@@ -414,6 +414,8 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
 
     errdefer if (enable_debug_messenger) self.vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, &self.allocation_callbacks);
 
+    // self.vki.createXcbSurfaceKHR(, p_create_info: *const XcbSurfaceCreateInfoKHR, p_allocator: ?*const AllocationCallbacks)
+
     _ = glfw.createWindowSurface(self.instance, window.window, @as(?*vk.AllocationCallbacks, @ptrCast(&self.allocation_callbacks)), &self.surface);
     errdefer self.vki.destroySurfaceKHR(self.instance, self.surface, &self.allocation_callbacks);
 

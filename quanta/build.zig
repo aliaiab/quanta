@@ -266,6 +266,8 @@ pub fn link(builder: *std.Build, step: *std.Build.CompileStep, package_path: []c
         builder.pathJoin(&.{ package_path, "quanta/src/imgui/guizmo.cpp" }),
     }, &[_][]const u8{});
     step.linkLibCpp();
+    //TODO: static link xcb, relying on system headers and libraries is not acceptable long term
+    step.linkSystemLibraryNeeded("xcb");
 
     try glfw.link(builder, step, .{});
 }
