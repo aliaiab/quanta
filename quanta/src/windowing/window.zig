@@ -1,60 +1,57 @@
 const std = @import("std");
 const glfw = @import("glfw");
 const XcbWindow = @import("xcb/XcbWindow.zig");
+const Window = @import("Window.zig");
+const windowing = @import("../windowing.zig");
 
 pub var window: glfw.Window = undefined;
 
-var self: @This() = undefined;
+pub var self: @This() = undefined;
 
 width: u32,
 height: u32,
-xcb_window: XcbWindow,
+real_window: Window,
 
-pub fn init(width: u32, height: u32, title: [:0]const u8) !void {
-    if (!glfw.init(.{})) return error.glfwFailure;
+key_actions: [std.meta.fields(windowing.Key).len]windowing.Action,
 
+pub fn init(allocator: std.mem.Allocator, width: u16, height: u16, title: [:0]const u8) !void {
     self.width = width;
     self.height = height;
-    self.xcb_window = try XcbWindow.init();
+    self.real_window = try Window.init(allocator, width, height, title);
 
-    window = glfw.Window.create(width, height, title.ptr, null, null, .{
-        .client_api = .no_api,
-        .resizable = false,
-    }) orelse return error.glfwFailure;
+    std.log.info("window = {}", .{self.real_window});
+
+    window = self.real_window.impl.glfw_window;
 }
 
-pub fn deinit() void {
-    window.destroy();
-    glfw.terminate();
-    self.xcb_window.deinit();
+pub fn deinit(allocator: std.mem.Allocator) void {
+    self.real_window.deinit(allocator);
 }
 
 pub fn shouldClose() bool {
-    self.xcb_window.pollEvents();
+    self.real_window.pollEvents() catch unreachable;
 
-    glfw.pollEvents();
-
-    return window.shouldClose();
+    return self.real_window.shouldClose();
 }
 
 pub fn getWidth() u32 {
-    return self.width;
+    return self.real_window.getWidth();
 }
 
 pub fn getHeight() u32 {
-    return self.height;
+    return self.real_window.getHeight();
 }
 
-pub fn getKeyDown(key: glfw.Key) bool {
-    return window.getKey(key) == .press;
+pub fn getKeyDown(key: windowing.Key) bool {
+    return self.real_window.getKey(key) == .press;
 }
 
-pub fn getMouseDown(button: glfw.MouseButton) bool {
-    return window.getMouseButton(button) == glfw.Action.press;
+pub fn getMouseDown(button: windowing.MouseButton) bool {
+    return self.real_window.getMouseButton(button) == .press;
 }
 
 pub fn getMousePos() [2]f32 {
-    const pos = window.getCursorPos();
+    const pos = self.real_window.getCursorPosition();
 
-    return .{ @as(f32, @floatCast(pos.xpos)), @as(f32, @floatCast(pos.ypos)) };
+    return .{ @as(f32, @floatFromInt(pos[0])), @as(f32, @floatFromInt(pos[1])) };
 }

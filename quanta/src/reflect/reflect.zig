@@ -57,7 +57,6 @@ pub const Type = union(enum) {
         name: []const u8,
         type: *const Type,
         value: *const anyopaque,
-        is_pub: bool,
     };
 
     pub const Int = struct {
@@ -152,7 +151,6 @@ pub const Type = union(enum) {
                         .name = comptime_struct_decl.name,
                         .type = info(@TypeOf(@field(T, comptime_struct_decl.name))),
                         .value = &S.value,
-                        .is_pub = comptime_struct_decl.is_pub,
                     };
                 }
 

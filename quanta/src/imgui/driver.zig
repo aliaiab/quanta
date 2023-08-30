@@ -12,12 +12,12 @@ pub fn init() !void {
 
     io.ConfigFlags |= imgui.ImGuiConfigFlags_DockingEnable;
 
-    window.window.setMouseButtonCallback(mouseButtonCallback);
-    window.window.setKeyCallback(keyCallback);
-    window.window.setScrollCallback(scrollCallback);
-    window.window.setCursorPosCallback(cursorPosCallback);
-    window.window.setCharCallback(charCallback);
-    window.window.setFocusCallback(focusedCallback);
+    window.self.real_window.impl.glfw_window.setMouseButtonCallback(mouseButtonCallback);
+    window.self.real_window.impl.glfw_window.setKeyCallback(keyCallback);
+    window.self.real_window.impl.glfw_window.setScrollCallback(scrollCallback);
+    window.self.real_window.impl.glfw_window.setCursorPosCallback(cursorPosCallback);
+    window.self.real_window.impl.glfw_window.setCharCallback(charCallback);
+    window.self.real_window.impl.glfw_window.setFocusCallback(focusedCallback);
 
     cursors[imgui.ImGuiMouseCursor_Arrow] = glfw.Cursor.createStandard(glfw.Cursor.Shape.arrow) orelse return error.FailedToCreateCursor;
     cursors[imgui.ImGuiMouseCursor_ResizeAll] = glfw.Cursor.createStandard(glfw.Cursor.Shape.resize_all) orelse return error.FailedToCreateCursor;

@@ -96,7 +96,7 @@ pub fn init() !void {
     state.gpa = std.heap.GeneralPurposeAllocator(.{}){};
     state.allocator = if (builtin.mode == .Debug) state.gpa.allocator() else std.heap.c_allocator;
 
-    try window.init(1600, 900, "Quanta Example");
+    try window.init(state.allocator, 1600, 900, "Quanta Example");
 
     {
         var pipeline_cache_data: []u8 = &[_]u8{};
@@ -324,7 +324,7 @@ pub fn deinit() void {
     defer log.info("Exiting gracefully", .{});
     defer if (builtin.mode == .Debug) std.debug.assert(state.gpa.deinit() != .leak);
 
-    defer window.deinit();
+    defer window.deinit(state.allocator);
     defer GraphicsContext.deinit();
 
     defer if (enable_pipeline_cache) {

@@ -12,7 +12,7 @@ pub fn build(builder: *std.build.Builder) !void {
     comptime {
         const current_zig_version = builtin.zig_version;
 
-        const min_zig_version = std.SemanticVersion.parse("0.11.0-dev.4059+17255bed4") catch unreachable;
+        const min_zig_version = std.SemanticVersion.parse("0.12.0-dev.176+c429bb5d2") catch unreachable;
         const order = current_zig_version.order(min_zig_version);
 
         if (!(order == .eq or order == .gt)) {
@@ -118,6 +118,8 @@ pub fn build(builder: *std.build.Builder) !void {
     {
         const test_step = builder.step("test", "Run the tests");
 
-        test_step.dependOn(&quanta_test.step);
+        const run_quanta_tests = builder.addRunArtifact(quanta_test);
+
+        test_step.dependOn(&run_quanta_tests.step);
     }
 }

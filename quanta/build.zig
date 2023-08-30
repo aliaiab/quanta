@@ -1,6 +1,6 @@
 const std = @import("std");
 const GlslCompileStep = @import("src/asset/build_steps/GlslCompileStep.zig");
-const glfw = @import("lib/mach-glfw/build.zig");
+const glfw = @import("mach_glfw");
 const zgltf = @import("lib/zgltf/build.zig");
 
 pub fn build(builder: *std.Build) !void {
@@ -47,11 +47,16 @@ pub const Context = struct {
 
         const options = builder.addOptions();
 
+        const mach_glfw_dep = builder.dependency("mach_glfw", .{
+            .target = target,
+            .optimize = mode,
+        });
+
         var module = builder.createModule(.{
             .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/src/main.zig" })),
             .dependencies = &.{
                 .{ .name = "options", .module = options.createModule() },
-                .{ .name = "glfw", .module = glfw.module(builder) },
+                .{ .name = "glfw", .module = mach_glfw_dep.module("mach-glfw") },
                 .{ .name = "zgltf", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zgltf/src/main.zig" })) }) },
                 .{ .name = "zigimg", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zigimg/zigimg.zig" })) }) },
                 .{ .name = "zalgebra", .module = builder.createModule(.{ .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/lib/zalgebra/src/main.zig" })) }) },
@@ -81,7 +86,7 @@ pub const Context = struct {
             .optimize = mode,
         });
 
-        asset_compiler.main_pkg_path = "quanta/src/";
+        asset_compiler.main_pkg_path = .{ .path = "quanta/src/" };
 
         asset_compiler.addModule("zon", builder.createModule(.{
             .source_file = std.build.FileSource.relative(builder.pathJoin(&.{ relative_path, "quanta/src/zon.zig" })),
@@ -253,8 +258,8 @@ pub const Context = struct {
 
 ///Links the c depencencies into step
 pub fn link(builder: *std.Build, step: *std.Build.CompileStep, package_path: []const u8) !void {
-    step.addIncludePath(builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/" }));
-    step.addIncludePath(builder.pathJoin(&.{ package_path, "quanta/lib/ImGuizmo/" }));
+    step.addIncludePath(.{ .path = builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/" }) });
+    step.addIncludePath(.{ .path = builder.pathJoin(&.{ package_path, "quanta/lib/ImGuizmo/" }) });
     step.addCSourceFiles(&[_][]const u8{
         builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/imgui.cpp" }),
         builder.pathJoin(&.{ package_path, "quanta/lib/cimgui/imgui/imgui_draw.cpp" }),
@@ -267,7 +272,13 @@ pub fn link(builder: *std.Build, step: *std.Build.CompileStep, package_path: []c
     }, &[_][]const u8{});
     step.linkLibCpp();
     //TODO: static link xcb, relying on system headers and libraries is not acceptable long term
-    step.linkSystemLibraryNeeded("xcb");
+    builder.addSearchPrefix("/usr/lib/");
+    // step.linkSystemLibrary2("xcb", .{
+    //     .needed = true,
+    //     .search_strategy = .mode_first,
+    //     .use_pkg_config = .yes,
+    // });
 
-    try glfw.link(builder, step, .{});
+    try glfw.link(builder, step);
+    // linkGlfw(builder, step);
 }

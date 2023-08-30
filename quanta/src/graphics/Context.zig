@@ -39,6 +39,7 @@ pub const InstanceDispatch = vk.InstanceWrapper(.{
     .getPhysicalDeviceFeatures = true,
     .createDebugUtilsMessengerEXT = enable_debug_messenger,
     .destroyDebugUtilsMessengerEXT = enable_debug_messenger,
+    .createXcbSurfaceKHR = true,
 });
 
 pub const DeviceDispatch = vk.DeviceWrapper(.{
@@ -264,14 +265,44 @@ optional_extensions: OptionalExtensions,
 ///Required *device* extensions
 pub const RequiredExtensions = struct {
     khr_swapchain: [:0]const u8 = vk.extension_info.khr_swapchain.name,
+    ext_descriptor_buffer: [:0]const u8 = vk.extension_info.ext_descriptor_buffer.name,
 };
 
 ///Optional *device* extensions
 ///If the extension is supported at runtime, it is kept as non-null, otherwise it's set to null
 pub const OptionalExtensions = struct {
     ext_memory_budget: ?[:0]const u8 = vk.extension_info.ext_memory_budget.name,
-    ext_descriptor_buffer: ?[:0]const u8 = vk.extension_info.ext_descriptor_buffer.name,
 };
+
+fn createSurface() !vk.SurfaceKHR {
+    var surface: vk.SurfaceKHR = .null_handle;
+
+    const windowing = @import("../windowing.zig");
+
+    switch (windowing.backend) {
+        .glfw => {
+            _ = glfw.createWindowSurface(
+                self.instance,
+                window.self.real_window.impl.glfw_window,
+                @as(?*vk.AllocationCallbacks, @ptrCast(&self.allocation_callbacks)),
+                &surface,
+            );
+
+            try glfw.getErrorCode();
+        },
+        .xcb => {
+            surface = try self.vki.createXcbSurfaceKHR(self.instance, &vk.XcbSurfaceCreateInfoKHR{
+                .connection = @ptrCast(window.self.real_window.impl.connection),
+                .window = window.self.real_window.impl.window,
+            }, &self.allocation_callbacks);
+        },
+        else => @compileError("Backend unsupported"),
+    }
+
+    std.debug.assert(surface != .null_handle);
+
+    return surface;
+}
 
 pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void {
     self.allocator = allocator;
@@ -414,9 +445,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
 
     errdefer if (enable_debug_messenger) self.vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, &self.allocation_callbacks);
 
-    // self.vki.createXcbSurfaceKHR(, p_create_info: *const XcbSurfaceCreateInfoKHR, p_allocator: ?*const AllocationCallbacks)
-
-    _ = glfw.createWindowSurface(self.instance, window.window, @as(?*vk.AllocationCallbacks, @ptrCast(&self.allocation_callbacks)), &self.surface);
+    self.surface = try createSurface();
     errdefer self.vki.destroySurfaceKHR(self.instance, self.surface, &self.allocation_callbacks);
 
     var device_extensions_buffer: [std.meta.fields(RequiredExtensions).len + std.meta.fields(OptionalExtensions).len][*:0]const u8 = undefined;
