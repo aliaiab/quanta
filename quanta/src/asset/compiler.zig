@@ -8,6 +8,11 @@ pub const CompilerContext = struct {
     assets: std.ArrayListUnmanaged(Archive.AssetDescription),
 
     pub fn deinit(self: *CompilerContext) void {
+        for (self.assets.items) |asset| {
+            self.allocator.free(asset.name);
+            self.allocator.free(asset.source_data);
+        }
+
         self.assets.deinit(self.allocator);
 
         self.* = undefined;
@@ -101,7 +106,7 @@ pub const AssetCompilerInfo = struct {
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    // defer std.debug.assert(gpa.deinit() != .leak);
+    defer if (false) std.debug.assert(gpa.deinit() != .leak);
 
     const allocator = gpa.allocator();
 

@@ -31,3 +31,6 @@
 [submodule "quanta/lib/spvine"]
 	path = quanta/lib/spvine
 	url = https://github.com/zkburke/spvine.git
+[submodule "quanta/lib/tracy"]
+	path = quanta/lib/tracy
+	url = https://github.com/wolfpld/tracy.git

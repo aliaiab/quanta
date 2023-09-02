@@ -9,7 +9,13 @@ pub fn init(
     const title_z = try allocator.dupeZ(u8, title);
     defer allocator.free(title_z);
 
-    if (!glfw.init(.{})) return error.glfwFailure;
+    if (!glfw.init(.{})) {
+        const glfw_error = glfw.getError().?.description;
+
+        std.log.err("glfw error: {s}", .{glfw_error});
+
+        return error.glfwFailure;
+    }
 
     var self = GlfwWindow{
         .glfw_window = glfw.Window.create(
