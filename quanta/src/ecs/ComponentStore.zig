@@ -141,7 +141,7 @@ pub const ChunkPool = struct {
     ///To max_free_chunks
     pub fn init(allocator: std.mem.Allocator, max_free_chunks: usize) !ChunkPool {
         var pool = ChunkPool{
-            .free_lists = .{},
+            .free_lists = std.mem.zeroes([11]ChunkPool.FreeList),
             .chunk_ptrs = &.{},
         };
 
@@ -780,7 +780,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
         blocks: std.ArrayListUnmanaged(CachedBlock),
 
         pub fn init(component_store: *const ComponentStore) @This() {
-            var self = @This(){
+            const self = @This(){
                 .component_store = component_store,
                 .archetype_index = 1,
                 .chunk_index = 0,
@@ -797,7 +797,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
         }
 
         pub const Block = block: {
-            comptime var fields: [required_component_slice.len + 1]std.builtin.Type.StructField = undefined;
+            var fields: [required_component_slice.len + 1]std.builtin.Type.StructField = undefined;
 
             fields[0] = .{
                 .name = "entities",
@@ -827,7 +827,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
         };
 
         pub const CachedBlock = block: {
-            comptime var fields: [required_component_slice.len + 2]std.builtin.Type.StructField = undefined;
+            var fields: [required_component_slice.len + 2]std.builtin.Type.StructField = undefined;
 
             fields[0] = .{
                 .name = "entity_count",
@@ -971,7 +971,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             //     return null;
             // }
 
-            var archetype_index: ArchetypeIndex = self.nextArchetype() orelse return null;
+            const archetype_index: ArchetypeIndex = self.nextArchetype() orelse return null;
             var archetype: *const Archetype = &self.component_store.archetypes.items[archetype_index];
 
             if (self.chunk_index >= archetype.chunks.items.len) {
@@ -1004,12 +1004,14 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             return block;
         }
 
-        fn componentName(comptime T: type) []const u8 {
+        fn componentName(comptime T: type) [:0]const u8 {
             const full_type_name = @typeName(T);
 
             const index_of_name = std.mem.lastIndexOf(u8, full_type_name, &.{'.'}).? + 1;
 
-            return full_type_name[index_of_name..];
+            const name: [full_type_name.len - index_of_name:0]u8 = full_type_name[index_of_name..].*;
+
+            return &name;
         }
     };
 }
@@ -1443,9 +1445,9 @@ fn archetypeGetOrAllocateChunk(
         return chunk_index;
     }
 
-    var next_free_chunk_index = archetype.next_free_chunk_index;
+    const next_free_chunk_index = archetype.next_free_chunk_index;
 
-    var next_free_chunk: *Chunk = &archetype.chunks.items[next_free_chunk_index];
+    const next_free_chunk: *Chunk = &archetype.chunks.items[next_free_chunk_index];
 
     const free_row_count = next_free_chunk.max_row_count - next_free_chunk.row_count;
 
@@ -1547,7 +1549,7 @@ fn archetypeRemoveRow(
         const src_start = column.offset + (chunk.row_count * column.element_size) - column.element_size;
         const src = chunk.data.?[src_start .. src_start + column.element_size];
 
-        std.mem.copy(u8, dst, src);
+        @memcpy(dst, src);
     }
 
     const entities = chunk.entities();
@@ -1593,7 +1595,7 @@ fn archetypeCopyRow(
         const src_start = src_column.offset + src_row.row_index * src_column.element_size;
         const src = src_chunk.data.?[src_start .. src_start + src_column.element_size];
 
-        std.mem.copy(u8, dst, src);
+        @memcpy(dst, src);
     }
 }
 
@@ -1680,8 +1682,11 @@ fn archetypeMoveRow(
         const src_end_start = source_column.offset + (source_chunk.row_count * source_column.element_size) - source_column.element_size;
         const src_end = source_chunk.data.?[src_end_start .. src_end_start + source_column.element_size];
 
-        std.mem.copy(u8, dst, src);
-        std.mem.copy(u8, src, src_end);
+        @memcpy(dst, src);
+        @setRuntimeSafety(false);
+        // @memcpy(src, src_end);
+
+        std.mem.copyForwards(u8, src_end, src);
     }
 
     const entities = source_chunk.entities();

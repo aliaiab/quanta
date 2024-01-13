@@ -52,9 +52,9 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
         id.array_length = 1;
     }
 
-    var local_size_x_id: ?u32 = null;
-    var local_size_y_id: ?u32 = null;
-    var local_size_z_id: ?u32 = null;
+    const local_size_x_id: ?u32 = null;
+    const local_size_y_id: ?u32 = null;
+    const local_size_z_id: ?u32 = null;
 
     var word_index: usize = 5;
 

@@ -2,7 +2,7 @@ const std = @import("std");
 
 const AppCompileStep = @This();
 const Step = std.Build.Step;
-const FileSource = std.Build.FileSource;
+const FileSource = std.Build.LazyPath;
 const CrossTarget = std.zig.CrossTarget;
 
 pub const base_id: Step.Id = .custom;
@@ -15,8 +15,8 @@ version: ?std.SemanticVersion,
 target: CrossTarget,
 optimize: std.builtin.Mode,
 mode: AppMode,
-app_compile_step: *std.Build.CompileStep,
-app_runner_compile_step: *std.Build.CompileStep,
+app_compile_step: *std.Build.Step.Compile,
+app_runner_compile_step: *std.Build.Step.Compile,
 cwd: []const u8,
 
 pub const AppMode = enum {

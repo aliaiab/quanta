@@ -1,5 +1,5 @@
 const std = @import("std");
-const Renderer3D = @import("../../renderer/Renderer3D.zig");
+const Renderer3D = @import("quanta").renderer.Renderer3D;
 const zalgebra = @import("zalgebra");
 const png = @import("png.zig");
 const zgltf = @import("zgltf");
@@ -663,7 +663,7 @@ fn quantiseUV(uv: @Vector(2, f32)) Renderer3D.VertexUV {
 
 fn quantiseFloat(comptime T: type, float: f32) T {
     if (@typeInfo(T).Int.signedness == .unsigned) {
-        const normalized = std.math.fabs(std.math.clamp(float, -1, 1));
+        const normalized = @abs(std.math.clamp(float, -1, 1));
 
         return @intFromFloat(normalized * std.math.maxInt(T));
     } else {

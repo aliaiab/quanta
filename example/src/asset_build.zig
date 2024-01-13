@@ -90,7 +90,7 @@ pub fn main() !void {
         // return;
     }
 
-    const test_scene = try gltf.importZgltf(allocator, "example/src/assets/test_scene/test_scene.gltf");
+    const test_scene = try gltf.importZgltf(allocator, "example/src/assets/shambler/scene.gltf");
     defer gltf.importFree(test_scene, allocator);
 
     const test_scene_encoded = try gltf.encode(allocator, test_scene);

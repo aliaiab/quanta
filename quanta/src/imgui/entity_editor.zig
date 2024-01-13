@@ -1,8 +1,9 @@
 const std = @import("std");
-const quanta = @import("../main.zig");
+const quanta = @import("../root.zig");
 const imgui = quanta.imgui.cimgui;
 const imguizmo = quanta.imgui.guizmo;
 const widgets = quanta.imgui.widgets;
+const Window = quanta.windowing.Window;
 const ecs = quanta.ecs;
 const zalgebra = quanta.math.zalgebra;
 const ComponentStore = ecs.ComponentStore;
@@ -14,6 +15,7 @@ pub fn entitySelector(
     commands: *CommandBuffer,
     camera: quanta.renderer.Renderer3D.Camera,
     selected_entities: *std.ArrayList(Entity),
+    window: *Window,
 ) !void {
     {
         const len = selected_entities.items.len;
@@ -62,7 +64,7 @@ pub fn entitySelector(
         }, .{});
 
         const camera_view = camera.getView();
-        const camera_projection = camera.getProjectionNonInverse();
+        const camera_projection = camera.getProjectionNonInverse(window);
         const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
 
         var found_entity: ?quanta.ecs.ComponentStore.Entity = null;
@@ -95,7 +97,7 @@ pub fn entitySelector(
                 selected_entities.clearAndFree();
             }
 
-            var contains_entity: bool = block: for (selected_entities.items) |selected_entity| {
+            const contains_entity: bool = block: for (selected_entities.items) |selected_entity| {
                 if (selected_entity == found_entity.?) {
                     break :block true;
                 }

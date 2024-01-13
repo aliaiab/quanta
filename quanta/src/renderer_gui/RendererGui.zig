@@ -2,7 +2,7 @@ const RendererGui = @This();
 
 const std = @import("std");
 const graphics = @import("../graphics.zig");
-const window = @import("../windowing.zig").window;
+const Window = @import("../windowing.zig").Window;
 const zalgebra = @import("../math.zig").zalgebra;
 const imgui = @import("../imgui.zig").cimgui;
 
@@ -28,7 +28,7 @@ allocator: std.mem.Allocator = undefined,
 rectangle_pipeline: graphics.GraphicsPipeline = undefined,
 mesh_pipeline: graphics.GraphicsPipeline = undefined,
 command_buffers: [2]graphics.CommandBuffer = undefined,
-color_target_image: *const graphics.Image = undefined,
+color_target_image: ?*const graphics.Image = null,
 rectangles: std.ArrayListUnmanaged(Rectangle) = .{},
 scissors: std.ArrayListUnmanaged([4]u16) = .{},
 rectangles_buffer: graphics.Buffer = undefined,
@@ -226,7 +226,7 @@ pub fn drawRectangle(rectangle: Rectangle) void {
     self.rectangles.append(self.allocator, rectangle) catch unreachable;
 }
 
-pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
+pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData, window: *Window) !void {
     if (draw_data.CmdListsCount == 0 or !draw_data.Valid) return;
 
     const command_buffer = &self.command_buffers[0];
@@ -300,14 +300,35 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
 
         //#Color Pass 1: main
         {
-            command_buffer.beginRenderPass(0, 0, window.getWidth(), window.getHeight(), &[_]graphics.CommandBuffer.Attachment{.{
-                .image = self.color_target_image,
-            }}, null);
+            const color_target_image = self.color_target_image.?;
+
+            command_buffer.beginRenderPass(
+                0,
+                0,
+                color_target_image.width,
+                color_target_image.height,
+                &[_]graphics.CommandBuffer.Attachment{.{
+                    .image = color_target_image,
+                }},
+                null,
+            );
             defer command_buffer.endRenderPass();
 
             command_buffer.setGraphicsPipeline(self.mesh_pipeline);
-            command_buffer.setViewport(0, @as(f32, @floatFromInt(window.getHeight())), @as(f32, @floatFromInt(window.getWidth())), -@as(f32, @floatFromInt(window.getHeight())), 0, 1);
-            command_buffer.setScissor(0, 0, window.getWidth(), window.getHeight());
+            command_buffer.setViewport(
+                0,
+                @as(f32, @floatFromInt(color_target_image.height)),
+                @as(f32, @floatFromInt(color_target_image.width)),
+                -@as(f32, @floatFromInt(color_target_image.height)),
+                0,
+                1,
+            );
+            command_buffer.setScissor(
+                0,
+                0,
+                color_target_image.width,
+                color_target_image.height,
+            );
 
             // const projection = zalgebra.orthographic(0, @intToFloat(f32, window.getWidth()), 0, @intToFloat(f32, window.getHeight()), 0, 1);
 
@@ -339,7 +360,15 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData) !void {
                         .texture_index = @as(u32, @intCast(@intFromPtr(command.TextureId))),
                     });
 
-                    command_buffer.setScissor(@as(u32, @intFromFloat(@max(command.ClipRect.x, 0))), @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))), @as(u32, @intFromFloat(@min(command.ClipRect.z, @as(f32, @floatFromInt(window.getWidth()))))) - @as(u32, @intFromFloat(@max(command.ClipRect.x, 0))), @as(u32, @intFromFloat(@min(command.ClipRect.w, @as(f32, @floatFromInt(window.getHeight()))))) - @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))));
+                    const window_width = @as(f32, @floatFromInt(window.getWidth()));
+                    const window_height = @as(f32, @floatFromInt(window.getHeight()));
+
+                    command_buffer.setScissor(
+                        @as(u32, @intFromFloat(@max(command.ClipRect.x, 0))),
+                        @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))),
+                        @as(u32, @intFromFloat(@min(command.ClipRect.z, window_width))) -| @as(u32, @intFromFloat(@max(command.ClipRect.x, 0))),
+                        @as(u32, @intFromFloat(@min(command.ClipRect.w, window_height))) -| @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))),
+                    );
                     command_buffer.drawIndexed(command.ElemCount, 1, @as(u32, @intCast(index_offset)) + command.IdxOffset, @as(i32, @intCast(vertex_offset)) + @as(i32, @intCast(command.VtxOffset)), 0);
                 }
 

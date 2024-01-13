@@ -4,3 +4,4 @@ pub const build_steps = @import("asset/build_steps.zig");
 pub const importers = @import("asset/importers.zig");
 pub const CubeMap = @import("asset/CubeMap.zig");
 pub const metadata = @import("asset/metadata.zig");
+pub const compiler = @import("asset/compiler.zig");

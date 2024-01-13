@@ -1,10 +1,15 @@
-# Quanta 
+# Quanta
 
-A data oriented game engine/framework for desktop platforms written in and for zig
+A data oriented game engine/framework/library for desktop platforms written in
+and for zig.
 
-### Required Dependencies: 
+This is an unfinished, experimental project which satisfies my semi-academic
+interest in game engine design. It is not yet fully useable.
+
+### Required System Dependencies:
+
 - Git
-- Zig 0.11.0-dev.2157+f56f3c582
+- Zig 0.12.0-dev.176+c429bb5d2
 - LunarG vulkan-sdk
 
 **1. Build the example assets**

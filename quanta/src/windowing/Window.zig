@@ -6,7 +6,7 @@ pub inline fn init(
     height: u16,
     title: []const u8,
 ) !Window {
-    var self = Window{
+    const self = Window{
         .impl = try Impl.init(allocator, width, height, title),
     };
 
@@ -58,17 +58,24 @@ pub inline fn getKey(self: *Window, key: windowing.Key) windowing.Action {
     return self.impl.getKey(key);
 }
 
+pub inline fn grabMouse(self: *Window) void {
+    return self.impl.grabMouse();
+}
+
+pub inline fn ungrabMouse(self: *Window) void {
+    return self.impl.ungrabMouse();
+}
+
 pub inline fn getMouseButton(self: *Window, key: windowing.MouseButton) windowing.Action {
     return self.impl.getMouseButton(key);
 }
 
-pub inline fn getCursorPosition(self: *Window) @Vector(2, u16) {
+pub inline fn getCursorPosition(self: *Window) @Vector(2, i16) {
     return self.impl.getCursorPosition();
 }
 
 ///Implementation structure
 pub const Impl = switch (windowing.backend) {
-    .glfw => @import("glfw/GlfwWindow.zig"),
     .wayland => @compileError("Wayland not supported"),
     .xcb => @import("xcb/XcbWindow.zig"),
     .win32 => @compileError("Win32 not supported"),

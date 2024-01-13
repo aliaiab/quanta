@@ -7,12 +7,12 @@ pub fn init(window: windowing.Window) !WindowSurface {
 
     switch (windowing.backend) {
         .glfw => {
-            _ = glfw.createWindowSurface(
-                self.instance,
-                window.window,
-                @as(?*vk.AllocationCallbacks, @ptrCast(&self.allocation_callbacks)),
-                &self.surface,
-            );
+            // _ = glfw.createWindowSurface(
+            //     self.instance,
+            //     window.window,
+            //     @as(?*vk.AllocationCallbacks, @ptrCast(&self.allocation_callbacks)),
+            //     &self.surface,
+            // );
         },
         .xcb => {
             self.surface = try Context.self.vki.createXcbSurfaceKHR(Context.self.instance, &vk.XcbSurfaceCreateInfoKHR{
@@ -34,6 +34,6 @@ pub fn deinit(self: *WindowSurface) void {
 const WindowSurface = @This();
 const std = @import("std");
 const windowing = @import("../windowing.zig");
-const glfw = @import("glfw");
+// const glfw = @import("glfw");
 const Context = @import("Context.zig");
 const vk = @import("vk.zig");

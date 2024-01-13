@@ -114,8 +114,8 @@ pub fn drawBoundingBox(
 }
 
 pub fn drawLine(model_view_projection: zalgebra.Mat4, viewport: *imgui.ImGuiViewport, line: [2]@Vector(3, f32)) void {
-    var p0 = worldToScreenPos(line[0], model_view_projection, viewport) orelse return;
-    var p1 = worldToScreenPos(line[1], model_view_projection, viewport) orelse return;
+    const p0 = worldToScreenPos(line[0], model_view_projection, viewport) orelse return;
+    const p1 = worldToScreenPos(line[1], model_view_projection, viewport) orelse return;
 
     const draw_list = imgui.igGetBackgroundDrawList_ViewportPtr(viewport);
 
@@ -165,7 +165,7 @@ fn lineClipNormalized(line: [2]@Vector(3, f32)) ?[2]@Vector(3, f32) {
     var outcode_0 = lineComputeOutCodeNormalized(line[0]);
     var outcode_1 = lineComputeOutCodeNormalized(line[1]);
 
-    var new_line = line;
+    const new_line = line;
 
     while (true) {
         if (outcode_0 == OutCode.inside and outcode_1 == OutCode.inside) {

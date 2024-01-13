@@ -324,8 +324,19 @@ pub const Attachment = struct {
     };
 };
 
-pub fn beginRenderPass(self: CommandBuffer, offset_x: i32, offset_y: i32, width: u32, height: u32, color_attachments: []const Attachment, depth_attachment: ?Attachment) void {
+pub fn beginRenderPass(
+    self: CommandBuffer,
+    offset_x: i32,
+    offset_y: i32,
+    width: u32,
+    height: u32,
+    color_attachments: []const Attachment,
+    depth_attachment: ?Attachment,
+) void {
     var color_attachment_infos: [8]vk.RenderingAttachmentInfo = undefined;
+
+    var max_width: u32 = std.math.maxInt(u32);
+    var max_height: u32 = std.math.maxInt(u32);
 
     for (color_attachments, 0..) |color_attachment, i| {
         color_attachment_infos[i] = .{
@@ -344,6 +355,9 @@ pub fn beginRenderPass(self: CommandBuffer, offset_x: i32, offset_y: i32, width:
                 } },
             } else .{ .color = .{ .float_32 = .{ 0, 0, 0, 0 } } },
         };
+
+        max_width = @min(max_width, color_attachment.image.width);
+        max_height = @min(max_height, color_attachment.image.height);
     }
 
     var depth_attachment_info: vk.RenderingAttachmentInfo = undefined;
@@ -365,11 +379,17 @@ pub fn beginRenderPass(self: CommandBuffer, offset_x: i32, offset_y: i32, width:
                 } },
             } else .{ .color = .{ .float_32 = .{ 0, 0, 0, 0 } } },
         };
+
+        max_width = @min(max_width, depth_attachment.?.image.width);
+        max_height = @min(max_height, depth_attachment.?.image.height);
     }
 
     Context.self.vkd.cmdBeginRendering(self.handle, &.{
         .flags = .{},
-        .render_area = .{ .offset = .{ .x = offset_x, .y = offset_y }, .extent = .{ .width = width, .height = height } },
+        .render_area = .{ .offset = .{ .x = offset_x, .y = offset_y }, .extent = .{
+            .width = @min(width, max_width),
+            .height = @min(height, max_height),
+        } },
         .layer_count = 1,
         .view_mask = 0,
         .color_attachment_count = @as(u32, @intCast(color_attachments.len)),

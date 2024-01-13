@@ -40,7 +40,7 @@ pub fn initData(
         const mapped = try source_buffer.map(u8);
         defer source_buffer.unmap();
 
-        std.mem.copy(u8, mapped, data);
+        @memcpy(mapped[0..data.len], data);
     }
 
     var command_buffer = try CommandBuffer.init(.graphics);

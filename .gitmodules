@@ -16,9 +16,6 @@
 [submodule "quanta/lib/ImGuizmo"]
 	path = quanta/lib/ImGuizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo.git
-[submodule "quanta/lib/mach-glfw"]
-	path = quanta/lib/mach-glfw
-	url = https://github.com/hexops/mach-glfw.git
 [submodule "quanta/lib/shaderc"]
 	path = quanta/lib/shaderc
 	url = https://github.com/google/shaderc.git

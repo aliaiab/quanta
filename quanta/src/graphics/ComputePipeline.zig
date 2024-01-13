@@ -50,7 +50,7 @@ pub fn init(
 
     //This should be close to optimal for most work loads, but not all
     //This isn't a silver bullet, just a very sensible default
-    var optimal_local_size: u32 = switch (dispatch_type) {
+    const optimal_local_size: u32 = switch (dispatch_type) {
         .@"1d" => Context.self.physical_device_subgroup_properties.subgroup_size * 2,
         .@"2d" => Context.self.physical_device_subgroup_properties.subgroup_size,
         .@"3d" => Context.self.physical_device_subgroup_properties.subgroup_size / 4,

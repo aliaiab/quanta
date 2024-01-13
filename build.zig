@@ -1,48 +1,107 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const glfw = @import("quanta/lib/mach-glfw/build.zig");
+const quanta = @import("quanta/src/root.zig");
+const GlslCompileStep = @import("quanta/src/asset/build_steps/GlslCompileStep.zig");
 
-const quanta = @import("quanta/src/main.zig");
-const quanta_build = @import("quanta/build.zig");
+pub fn build(builder: *std.Build) !void {
+    const target = builder.standardTargetOptions(.{});
+    const optimize = builder.standardOptimizeOption(.{});
 
-const asset_build = quanta.asset.build;
+    const renderer_tri_vert_spv_module = GlslCompileStep.compileModule(builder, optimize, .vertex, "quanta/src/renderer/tri.vert.glsl", "tri.vert.spv");
+    const renderer_tri_frag_spv_module = GlslCompileStep.compileModule(builder, optimize, .fragment, "quanta/src/renderer/tri.frag.glsl", "tri.frag.spv");
+    const renderer_sky_vert_spv_module = GlslCompileStep.compileModule(builder, optimize, .vertex, "quanta/src/renderer/sky.vert.glsl", "sky.vert.spv");
+    const renderer_sky_frag_spv_module = GlslCompileStep.compileModule(builder, optimize, .fragment, "quanta/src/renderer/sky.frag.glsl", "sky.frag.spv");
+    const renderer_depth_vert_spv_module = GlslCompileStep.compileModule(builder, optimize, .vertex, "quanta/src/renderer/depth.vert.glsl", "depth.vert.spv");
+    const renderer_depth_frag_spv_module = GlslCompileStep.compileModule(builder, optimize, .fragment, "quanta/src/renderer/depth.frag.glsl", "depth.frag.spv");
+    const renderer_pre_depth_cull_comp_module = GlslCompileStep.compileModule(builder, optimize, .compute, "quanta/src/renderer/pre_depth_cull.comp.glsl", "pre_depth_cull.comp.spv");
+    const renderer_post_depth_cull_comp_module = GlslCompileStep.compileModule(builder, optimize, .compute, "quanta/src/renderer/post_depth_cull.comp.glsl", "post_depth_cull.comp.spv");
+    const renderer_depth_reduce_comp_module = GlslCompileStep.compileModule(builder, optimize, .compute, "quanta/src/renderer/depth_reduce.comp.glsl", "depth_reduce.comp.spv");
+    const renderer_color_resolve_comp_module = GlslCompileStep.compileModule(builder, optimize, .compute, "quanta/src/renderer/color_resolve.comp.glsl", "color_resolve.comp.spv");
 
-pub fn build(builder: *std.build.Builder) !void {
-    comptime {
-        const current_zig_version = builtin.zig_version;
+    const renderer_gui_rectangle_vert_module = GlslCompileStep.compileModule(builder, optimize, .vertex, "quanta/src/renderer_gui/rectangle.vert.glsl", "rectangle.vert.spv");
+    const renderer_gui_rectangle_frag_module = GlslCompileStep.compileModule(builder, optimize, .fragment, "quanta/src/renderer_gui/rectangle.frag.glsl", "rectangle.frag.spv");
+    const renderer_gui_mesh_vert_module = GlslCompileStep.compileModule(builder, optimize, .vertex, "quanta/src/renderer_gui/mesh.vert.glsl", "mesh.vert.spv");
+    const renderer_gui_mesh_frag_module = GlslCompileStep.compileModule(builder, optimize, .fragment, "quanta/src/renderer_gui/mesh.frag.glsl", "mesh.frag.spv");
 
-        const min_zig_version = std.SemanticVersion.parse("0.12.0-dev.176+c429bb5d2") catch unreachable;
-        const order = current_zig_version.order(min_zig_version);
+    const options = builder.addOptions();
 
-        if (!(order == .eq or order == .gt)) {
-            @compileError(std.fmt.comptimePrint("Your Zig version v{} does not meet the minimum build requirement of v{}", .{ current_zig_version, min_zig_version }));
-        }
-    }
+    const quanta_module = builder.createModule(.{
+        .root_source_file = .{ .path = "quanta/src/root.zig" },
+        .imports = &.{
+            .{ .name = "options", .module = options.createModule() },
+            .{ .name = "zgltf", .module = builder.createModule(.{ .root_source_file = .{ .path = "quanta/lib/zgltf/src/main.zig" } }) },
+            .{ .name = "zigimg", .module = builder.createModule(.{ .root_source_file = .{ .path = "quanta/lib/zigimg/zigimg.zig" } }) },
+            .{ .name = "zalgebra", .module = builder.createModule(.{ .root_source_file = .{ .path = "quanta/lib/zalgebra/src/main.zig" } }) },
+            .{ .name = "spvine", .module = builder.createModule(.{ .root_source_file = .{ .path = "quanta/lib/spvine/src/main.zig" } }) },
+            .{ .name = "renderer_tri_vert.spv", .module = renderer_tri_vert_spv_module },
+            .{ .name = "renderer_tri_frag.spv", .module = renderer_tri_frag_spv_module },
+            .{ .name = "renderer_depth_vert.spv", .module = renderer_depth_vert_spv_module },
+            .{ .name = "renderer_depth_frag.spv", .module = renderer_depth_frag_spv_module },
+            .{ .name = "renderer_sky_vert.spv", .module = renderer_sky_vert_spv_module },
+            .{ .name = "renderer_sky_frag.spv", .module = renderer_sky_frag_spv_module },
+            .{ .name = "renderer_pre_depth_cull_comp.spv", .module = renderer_pre_depth_cull_comp_module },
+            .{ .name = "renderer_post_depth_cull_comp.spv", .module = renderer_post_depth_cull_comp_module },
+            .{ .name = "renderer_depth_reduce_comp.spv", .module = renderer_depth_reduce_comp_module },
+            .{ .name = "renderer_color_resolve_comp.spv", .module = renderer_color_resolve_comp_module },
+            .{ .name = "renderer_gui_rectangle_vert.spv", .module = renderer_gui_rectangle_vert_module },
+            .{ .name = "renderer_gui_rectangle_frag.spv", .module = renderer_gui_rectangle_frag_module },
+            .{ .name = "renderer_gui_mesh_vert.spv", .module = renderer_gui_mesh_vert_module },
+            .{ .name = "renderer_gui_mesh_frag.spv", .module = renderer_gui_mesh_frag_module },
+        },
+        .link_libcpp = true,
+        .link_libc = true,
+        .target = target,
+    });
 
-    var target = builder.standardTargetOptions(.{});
+    quanta_module.addImport("quanta", quanta_module);
 
-    const mode = builder.standardOptimizeOption(.{});
+    quanta_module.addIncludePath(.{ .path = "quanta/lib/cimgui/imgui/" });
+    quanta_module.addIncludePath(.{ .path = "quanta/lib/ImGuizmo/" });
+    quanta_module.addCSourceFiles(.{
+        .files = &[_][]const u8{
+            "quanta/lib/cimgui/imgui/imgui.cpp",
+            "quanta/lib/cimgui/imgui/imgui_draw.cpp",
+            "quanta/lib/cimgui/imgui/imgui_tables.cpp",
+            "quanta/lib/cimgui/imgui/imgui_widgets.cpp",
+            "quanta/lib/cimgui/imgui/imgui_demo.cpp",
+            "quanta/lib/cimgui/cimgui.cpp",
+            "quanta/lib/ImGuizmo/ImGuizmo.cpp",
+            "quanta/src/imgui/guizmo.cpp",
+        },
+        .flags = &[_][]const u8{},
+    });
+    //TODO: dynamically load instead of linking
+    quanta_module.linkSystemLibrary("xcb", .{});
+    quanta_module.linkSystemLibrary("xkbcommon", .{});
+    quanta_module.linkSystemLibrary("xkbcommon-x11", .{});
 
-    const quanta_build_context = try quanta_build.Context.init(builder, target, mode, "");
+    const asset_compiler = builder.addExecutable(.{
+        .name = "asset_compiler",
+        .root_source_file = .{ .path = "quanta/src/asset/compiler_main.zig" },
+        .target = builder.host,
+        .optimize = optimize,
+    });
 
-    const quanta_module = quanta_build_context.module;
+    asset_compiler.root_module.addImport("quanta", quanta_module);
 
-    const quanta_test = try quanta_build.addTest(builder);
+    const run_asset_compiler = builder.addRunArtifact(asset_compiler);
+    _ = run_asset_compiler;
+
+    const include_tracy = builder.option(bool, "include_tracy", "Include and compile the tracy client into the application") orelse false;
 
     //example asset build
     {
         const exe = builder.addExecutable(.{
             .name = "example_assets",
-            .root_source_file = std.build.FileSource.relative("example/src/asset_build.zig"),
-            .target = std.zig.CrossTarget.fromTarget(builder.host.target),
-            .optimize = mode,
+            .root_source_file = std.Build.LazyPath.relative("example/src/asset_build.zig"),
+            .target = builder.host,
+            .optimize = optimize,
         });
 
         builder.installArtifact(exe);
 
-        exe.addModule("quanta", quanta_module);
-        try quanta_build.link(builder, exe, "");
+        exe.root_module.addImport("quanta", quanta_module);
 
         const run_cmd = builder.addRunArtifact(exe);
 
@@ -54,69 +113,50 @@ pub fn build(builder: *std.build.Builder) !void {
 
     //example
     {
-        var example_target = target;
-
-        if (mode == .ReleaseFast or mode == .ReleaseSmall or mode == .ReleaseSafe) {
-            //TODO: Would use musl, but there seems to be an issue with mach-glfw/glfw
-            example_target.abi = std.Target.Abi.gnu;
-        }
+        const example_target = target;
 
         const exe = builder.addExecutable(.{
             .name = "example",
-            .root_source_file = std.build.FileSource.relative("example/src/main.zig"),
+            .root_source_file = .{ .path = "example/src/main.zig" },
             .target = example_target,
-            .optimize = mode,
+            .optimize = optimize,
+            .strip = optimize == .ReleaseFast or optimize == .ReleaseSmall,
         });
 
         builder.installArtifact(exe);
 
-        exe.addModule("quanta", quanta_module);
-        try quanta_build.link(builder, exe, "");
+        exe.root_module.addImport("quanta", quanta_module);
 
-        if (mode == .ReleaseFast or mode == .ReleaseSmall) {
-            exe.strip = true;
+        if (include_tracy) {
+            exe.addCSourceFile(.{
+                .file = .{ .path = "quanta/lib/tracy/public/TracyClient.cpp" },
+                .flags = &.{"-DTRACY_ENABLE"},
+            });
         }
 
         const run_cmd = builder.addRunArtifact(exe);
 
         run_cmd.step.dependOn(builder.getInstallStep());
-        run_cmd.step.dependOn(&quanta_build_context.run_asset_compiler.step);
+        // run_cmd.step.dependOn(&run_asset_compiler.step);
 
         if (builder.args) |args| {
             run_cmd.addArgs(args);
         }
 
-        run_cmd.cwd = "zig-out/bin/";
+        run_cmd.cwd = .{ .path = "zig-out/bin/" };
 
         const run_step = builder.step("run_example", "Run the example application");
         run_step.dependOn(&run_cmd.step);
     }
 
-    //example app
-    {
-        const app = quanta.app.AppCompileStep.create(builder, .{
-            .name = "example_app",
-            .root_source_file = std.build.FileSource.relative("example/src/main.zig"),
-            .target = target,
-            .optimize = mode,
-            .mode = .dynamic,
-            .cwd = "zig-out/",
-            .quanta_module = quanta_module,
-        });
-
-        try quanta_build.link(builder, app.app_compile_step, "");
-
-        const run_step = app.run();
-
-        run_step.step.dependOn(builder.getInstallStep());
-
-        const run_cmd = builder.step("run_example_app", "Run the example application (quanta.app)");
-
-        run_cmd.dependOn(&run_step.step);
-    }
-
     {
         const test_step = builder.step("test", "Run the tests");
+
+        const quanta_test = builder.addTest(.{
+            .name = "test",
+            .root_source_file = std.Build.LazyPath.relative("quanta/src/root.zig"),
+            .optimize = .Debug,
+        });
 
         const run_quanta_tests = builder.addRunArtifact(quanta_test);
 

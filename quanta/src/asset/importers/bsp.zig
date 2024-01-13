@@ -271,7 +271,7 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !ImportResult {
         const face_surfedges: []const i32 = surfedges[@as(usize, @intCast(face.firstedge)) .. @as(usize, @intCast(face.firstedge)) + @as(usize, @intCast(face.numedges))];
 
         for (face_surfedges, 0..) |surf_edge, i| {
-            const edge_index = std.math.absCast(surf_edge);
+            const edge_index = @abs(surf_edge);
             const edge: Edge = edges[edge_index];
 
             const index_index = (current_surfedge + i) * 2;

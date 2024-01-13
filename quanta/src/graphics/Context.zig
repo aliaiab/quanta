@@ -2,8 +2,7 @@ const Context = @This();
 const builtin = @import("builtin");
 const std = @import("std");
 const vk = @import("vk.zig");
-const window = @import("../windowing.zig").window;
-const glfw = @import("glfw");
+const Window = @import("../windowing.zig").Window;
 const log = @import("../log.zig").log;
 
 pub const enable_khronos_validation = builtin.mode == .Debug;
@@ -56,7 +55,6 @@ pub const DeviceDispatch = vk.DeviceWrapper(.{
     .getSwapchainImagesKHR = true,
     .createSwapchainKHR = true,
     .destroySwapchainKHR = true,
-    .acquireNextImageKHR = true,
     .deviceWaitIdle = true,
     .waitForFences = true,
     .resetFences = true,
@@ -139,6 +137,8 @@ pub const DeviceDispatch = vk.DeviceWrapper(.{
     .getQueryPoolResults = true,
     .getBufferDeviceAddress = true,
     .getDescriptorEXT = true,
+    .waitSemaphores = true,
+    .acquireNextImage2KHR = true,
 });
 
 var vkGetInstanceProcAddr: vk.PfnGetInstanceProcAddr = undefined;
@@ -274,26 +274,16 @@ pub const OptionalExtensions = struct {
     ext_memory_budget: ?[:0]const u8 = vk.extension_info.ext_memory_budget.name,
 };
 
-fn createSurface() !vk.SurfaceKHR {
+fn createSurface(window: *Window) !vk.SurfaceKHR {
     var surface: vk.SurfaceKHR = .null_handle;
 
     const windowing = @import("../windowing.zig");
 
     switch (windowing.backend) {
-        .glfw => {
-            _ = glfw.createWindowSurface(
-                self.instance,
-                window.self.real_window.impl.glfw_window,
-                @as(?*vk.AllocationCallbacks, @ptrCast(&self.allocation_callbacks)),
-                &surface,
-            );
-
-            try glfw.getErrorCode();
-        },
         .xcb => {
             surface = try self.vki.createXcbSurfaceKHR(self.instance, &vk.XcbSurfaceCreateInfoKHR{
-                .connection = @ptrCast(window.self.real_window.impl.connection),
-                .window = window.self.real_window.impl.window,
+                .connection = @ptrCast(window.impl.connection),
+                .window = window.impl.window,
             }, &self.allocation_callbacks);
         },
         else => @compileError("Backend unsupported"),
@@ -304,7 +294,7 @@ fn createSurface() !vk.SurfaceKHR {
     return surface;
 }
 
-pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void {
+pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: []const u8) !void {
     self.allocator = allocator;
     self.required_extensions = .{};
     self.optional_extensions = .{};
@@ -445,7 +435,7 @@ pub fn init(allocator: std.mem.Allocator, pipeline_cache_data: []const u8) !void
 
     errdefer if (enable_debug_messenger) self.vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, &self.allocation_callbacks);
 
-    self.surface = try createSurface();
+    self.surface = try createSurface(window);
     errdefer self.vki.destroySurfaceKHR(self.instance, self.surface, &self.allocation_callbacks);
 
     var device_extensions_buffer: [std.meta.fields(RequiredExtensions).len + std.meta.fields(OptionalExtensions).len][*:0]const u8 = undefined;

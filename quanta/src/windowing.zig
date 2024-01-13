@@ -1,11 +1,10 @@
 ///The backend used to implement windowing, known at compile time
-pub const backend: Backend = .glfw;
+pub const backend: Backend = .xcb;
 
 pub const Backend = enum {
     wayland,
     win32,
     xcb,
-    glfw,
 };
 
 pub const Key = enum {
@@ -148,9 +147,8 @@ pub const Action = enum {
     release,
     /// The key or mouse button was pressed.
     press,
-    /// The key was held down until it repeated.
-    repeat,
+    /// The key was held down.
+    down,
 };
 
-pub const window = @import("windowing/window.zig");
 pub const Window = @import("windowing/Window.zig");

@@ -37,7 +37,7 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !Import {
             write_pixel.a = 255;
         }
     } else {
-        std.mem.copy(u8, self.data, image.pixels.asBytes());
+        @memcpy(self.data, image.pixels.asBytes());
     }
 
     return self;

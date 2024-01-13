@@ -5,7 +5,7 @@ pub fn parse(comptime T: type, allocator: std.mem.Allocator, source: [:0]const u
         std.log.info("field: {s} = {any}", .{ key, value });
     }
 
-    var data = try structLiteralAsType(T, allocator, root_value.struct_literal);
+    const data = try structLiteralAsType(T, allocator, root_value.struct_literal);
 
     return data;
 }
@@ -121,7 +121,7 @@ fn arrayValueAsType(comptime T: type, allocator: std.mem.Allocator, array: Value
 }
 
 fn arrayValueAsSliceType(comptime T: type, allocator: std.mem.Allocator, array: Value.Array) !T {
-    var data = try allocator.alloc(std.meta.Child(T), array.len);
+    const data = try allocator.alloc(std.meta.Child(T), array.len);
     errdefer allocator.free(data);
 
     for (array, data) |value, *data_value| {
@@ -300,7 +300,7 @@ const Value = union(enum) {
         var array_init_buffer: [2]std.zig.Ast.Node.Index = undefined;
         const array_init = ast.fullArrayInit(&array_init_buffer, node_index).?;
 
-        var values: Value.Array = try allocator.alloc(Value, array_init.ast.elements.len);
+        const values: Value.Array = try allocator.alloc(Value, array_init.ast.elements.len);
         errdefer allocator.free(values);
 
         for (values, array_init.ast.elements) |*value, element_node| {

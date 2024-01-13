@@ -1,7 +1,7 @@
 const Renderer3D = @This();
 
 const std = @import("std");
-const window = @import("../windowing/window.zig");
+const Window = @import("../windowing/Window.zig");
 const graphics = @import("../graphics.zig");
 const GraphicsContext = graphics.Context;
 const Image = graphics.Image;
@@ -67,7 +67,6 @@ const DrawCommand = extern struct {
 pub var self: Renderer3D = undefined;
 
 allocator: std.mem.Allocator,
-swapchain: *graphics.Swapchain,
 radiance_color_image: graphics.Image,
 depth_image: graphics.Image,
 depth_pyramid: graphics.Image,
@@ -156,10 +155,7 @@ fn getImageMipLevels(width: u32, height: u32) u32 {
     return result;
 }
 
-fn initFrameImages(window_width: u32, window_height: u32) !void {
-    const render_width = window_width;
-    const render_height = window_height;
-
+fn initFrameImages(render_width: u32, render_height: u32) !void {
     self.radiance_color_image = try Image.init(.@"2d", render_width, render_height, 1, 1, vk.Format.r16g16b16a16_sfloat, vk.ImageLayout.attachment_optimal, .{
         .color_attachment_bit = true,
         .storage_bit = true,
@@ -222,9 +218,8 @@ fn deinitFrameImages() void {
     defer self.shadow_image.deinit();
 }
 
-pub fn init(allocator: std.mem.Allocator, swapchain: *graphics.Swapchain) !void {
+pub fn init(allocator: std.mem.Allocator) !void {
     self.allocator = allocator;
-    self.swapchain = swapchain;
     self.vertex_offset = 0;
     self.index_offset = 0;
     self.vertex_position_offset = 0;
@@ -242,7 +237,7 @@ pub fn init(allocator: std.mem.Allocator, swapchain: *graphics.Swapchain) !void 
     self.depth_reduce_sampler = try graphics.Sampler.init(.nearest, .nearest, .repeat, .repeat, .repeat, .min);
     errdefer self.depth_reduce_sampler.deinit();
 
-    try initFrameImages(window.getWidth(), window.getHeight());
+    try initFrameImages(1920, 1080);
     errdefer deinitFrameImages();
 
     self.command_buffers = try allocator.alloc(graphics.CommandBuffer, 2);
@@ -494,7 +489,7 @@ pub const Camera = struct {
     exposure: f32,
 
     ///Returns a non-inverse z projection matrix
-    pub fn getProjectionNonInverse(camera: Camera) [4][4]f32 {
+    pub fn getProjectionNonInverse(camera: Camera, window: *Window) [4][4]f32 {
         const aspect_ratio: f32 = @as(f32, @floatFromInt(window.getWidth())) / @as(f32, @floatFromInt(window.getHeight()));
         const near_plane: f32 = 0.01;
         const fov: f32 = camera.fov;
@@ -726,11 +721,11 @@ fn getFrustumCorners(view_projection: zalgebra.Mat4) [8][3]f32 {
     return points;
 }
 
-pub fn endSceneRender(scene: SceneHandle) void {
-    endRenderInternal(scene) catch unreachable;
+pub fn endSceneRender(scene: SceneHandle, swapchain: graphics.Swapchain, window: *Window) void {
+    endRenderInternal(scene, swapchain, window) catch unreachable;
 }
 
-fn endRenderInternal(scene: SceneHandle) !void {
+fn endRenderInternal(scene: SceneHandle, swapchain: graphics.Swapchain, window: *Window) !void {
     const scene_data: *Scene = &self.scenes.items[@intFromEnum(scene)];
 
     if (self.image_staging_fence.getStatus() == true) {
@@ -763,8 +758,8 @@ fn endRenderInternal(scene: SceneHandle) !void {
         self.index_staging_buffers.clearRetainingCapacity();
     }
 
-    const image_index = self.swapchain.image_index;
-    const image = self.swapchain.swap_images[image_index];
+    const image_index = swapchain.image_index;
+    const image = swapchain.swap_images[image_index];
     const command_buffer = &self.command_buffers[0];
 
     const aspect_ratio: f32 = @as(f32, @floatFromInt(window.getWidth())) / @as(f32, @floatFromInt(window.getHeight()));
@@ -860,6 +855,8 @@ fn endRenderInternal(scene: SceneHandle) !void {
     color_image.view = image.view;
     color_image.handle = image.image;
     color_image.aspect_mask = .{ .color_bit = true };
+    color_image.width = swapchain.extent.width;
+    color_image.height = swapchain.extent.height;
 
     if (!self.first_frame) {
         self.command_buffers[1].wait_fence.wait();
@@ -919,11 +916,11 @@ fn endRenderInternal(scene: SceneHandle) !void {
             });
 
             var near_face: [4]f32 = .{ 0, 0, 0, 0 };
-            var far_face: [4]f32 = .{ 0, 0, 0, 0 };
-            var right_face: [4]f32 = .{ 0, 0, 0, 0 };
-            var left_face: [4]f32 = .{ 0, 0, 0, 0 };
-            var top_face: [4]f32 = .{ 0, 0, 0, 0 };
-            var bottom_face: [4]f32 = .{ 0, 0, 0, 0 };
+            const far_face: [4]f32 = .{ 0, 0, 0, 0 };
+            const right_face: [4]f32 = .{ 0, 0, 0, 0 };
+            const left_face: [4]f32 = .{ 0, 0, 0, 0 };
+            const top_face: [4]f32 = .{ 0, 0, 0, 0 };
+            const bottom_face: [4]f32 = .{ 0, 0, 0, 0 };
 
             // extractPlanesFromProjmat(view_projection.data, view_projection.data, &left_face, &right_face, &bottom_face, &top_face, &near_face, &far_face);
 
@@ -970,14 +967,33 @@ fn endRenderInternal(scene: SceneHandle) !void {
                 .destination_layout = .attachment_optimal,
             });
 
-            command_buffer.beginRenderPass(0, 0, self.shadow_image.width, self.shadow_image.height, &.{}, .{
-                .image = &self.shadow_image,
-                .clear = .{ .depth = 0 },
-            });
+            command_buffer.beginRenderPass(
+                0,
+                0,
+                self.shadow_image.width,
+                self.shadow_image.height,
+                &.{},
+                .{
+                    .image = &self.shadow_image,
+                    .clear = .{ .depth = 0 },
+                },
+            );
             defer command_buffer.endRenderPass();
 
-            command_buffer.setViewport(0, @as(f32, @floatFromInt(self.shadow_image.width)), @as(f32, @floatFromInt(self.shadow_image.width)), -@as(f32, @floatFromInt(self.shadow_image.height)), 0, 1);
-            command_buffer.setScissor(0, 0, self.shadow_image.width, self.shadow_image.height);
+            command_buffer.setViewport(
+                0,
+                @as(f32, @floatFromInt(self.shadow_image.height)),
+                @as(f32, @floatFromInt(self.shadow_image.width)),
+                -@as(f32, @floatFromInt(self.shadow_image.height)),
+                0,
+                1,
+            );
+            command_buffer.setScissor(
+                0,
+                0,
+                self.shadow_image.width,
+                self.shadow_image.height,
+            );
             command_buffer.setGraphicsPipeline(self.shadow_pipeline);
             command_buffer.setIndexBuffer(self.index_buffer, .u32);
             command_buffer.setPushData(DepthPassPushConstants, .{
@@ -997,14 +1013,28 @@ fn endRenderInternal(scene: SceneHandle) !void {
                 .destination_layout = .attachment_optimal,
             });
 
-            command_buffer.beginRenderPass(0, 0, window.getWidth(), window.getHeight(), &.{}, .{
-                .image = &self.depth_image,
-                .clear = .{ .depth = 0 },
-            });
+            command_buffer.beginRenderPass(
+                0,
+                0,
+                self.depth_image.width,
+                self.depth_image.height,
+                &.{},
+                .{
+                    .image = &self.depth_image,
+                    .clear = .{ .depth = 0 },
+                },
+            );
             defer command_buffer.endRenderPass();
 
-            command_buffer.setViewport(0, @as(f32, @floatFromInt(window.getHeight())), @as(f32, @floatFromInt(window.getWidth())), -@as(f32, @floatFromInt(window.getHeight())), 0, 1);
-            command_buffer.setScissor(0, 0, window.getWidth(), window.getHeight());
+            command_buffer.setViewport(
+                0,
+                @as(f32, @floatFromInt(self.depth_image.height)),
+                @as(f32, @floatFromInt(self.depth_image.width)),
+                -@as(f32, @floatFromInt(self.depth_image.height)),
+                0,
+                1,
+            );
+            command_buffer.setScissor(0, 0, self.depth_image.width, self.depth_image.height);
             command_buffer.setGraphicsPipeline(self.depth_pipeline);
             command_buffer.setIndexBuffer(self.index_buffer, .u32);
             command_buffer.setPushData(DepthPassPushConstants, .{
@@ -1138,15 +1168,37 @@ fn endRenderInternal(scene: SceneHandle) !void {
                 .destination_layout = vk.ImageLayout.general,
             });
 
-            command_buffer.beginRenderPass(0, 0, window.getWidth(), window.getHeight(), &[_]graphics.CommandBuffer.Attachment{.{ .image = &self.radiance_color_image, .clear = if (!scene_data.environment_enabled) .{ .color = .{ 0, 0, 0, 1 } } else null }}, .{
-                .image = &self.depth_image,
-                .clear = null,
-                .store = false,
-            });
+            command_buffer.beginRenderPass(
+                0,
+                0,
+                self.radiance_color_image.width,
+                self.radiance_color_image.height,
+                &[_]graphics.CommandBuffer.Attachment{.{
+                    .image = &self.radiance_color_image,
+                    .clear = if (!scene_data.environment_enabled) .{ .color = .{ 0, 0, 0, 1 } } else null,
+                }},
+                .{
+                    .image = &self.depth_image,
+                    .clear = null,
+                    .store = false,
+                },
+            );
             defer command_buffer.endRenderPass();
 
-            command_buffer.setViewport(0, @as(f32, @floatFromInt(window.getHeight())), @as(f32, @floatFromInt(window.getWidth())), -@as(f32, @floatFromInt(window.getHeight())), 0, 1);
-            command_buffer.setScissor(0, 0, window.getWidth(), window.getHeight());
+            command_buffer.setViewport(
+                0,
+                @as(f32, @floatFromInt(self.radiance_color_image.height)),
+                @as(f32, @floatFromInt(self.radiance_color_image.width)),
+                -@as(f32, @floatFromInt(self.radiance_color_image.height)),
+                0,
+                1,
+            );
+            command_buffer.setScissor(
+                0,
+                0,
+                self.radiance_color_image.width,
+                self.radiance_color_image.height,
+            );
 
             command_buffer.setGraphicsPipeline(self.color_pipeline);
             command_buffer.setIndexBuffer(self.index_buffer, .u32);
@@ -1205,7 +1257,7 @@ fn endRenderInternal(scene: SceneHandle) !void {
 
             command_buffer.setComputePipeline(self.color_resolve_pipeline);
             command_buffer.setPushData(ColorResolvePushData, .{ .exposure = self.camera.exposure });
-            command_buffer.computeDispatch(self.radiance_color_image.width, self.radiance_color_image.height, 1);
+            command_buffer.computeDispatch(color_image.width, color_image.height, 1);
         }
 
         command_buffer.imageBarrier(color_image, .{
@@ -1220,12 +1272,24 @@ fn endRenderInternal(scene: SceneHandle) !void {
         });
     }
 
+    const timeline_submit_info: vk.TimelineSemaphoreSubmitInfo = .{
+        .wait_semaphore_value_count = 1,
+        .p_wait_semaphore_values = &[_]u64{
+            0,
+        },
+        .signal_semaphore_value_count = 0,
+        .p_signal_semaphore_values = &[_]u64{
+            1,
+        },
+    };
+    _ = timeline_submit_info;
+
     try GraphicsContext.self.vkd.queueSubmit2(GraphicsContext.self.graphics_queue, 1, &[_]vk.SubmitInfo2{.{
         .flags = .{},
         .wait_semaphore_info_count = 1,
         .p_wait_semaphore_infos = &[_]vk.SemaphoreSubmitInfo{.{
-            .semaphore = image.image_acquired,
-            .value = 0,
+            .semaphore = image.image_acquired.handle,
+            .value = 1,
             .stage_mask = .{
                 .color_attachment_output_bit = true,
             },
@@ -1238,8 +1302,8 @@ fn endRenderInternal(scene: SceneHandle) !void {
         }},
         .signal_semaphore_info_count = 1,
         .p_signal_semaphore_infos = &[_]vk.SemaphoreSubmitInfo{.{
-            .semaphore = image.render_finished,
-            .value = 0,
+            .semaphore = image.render_finished.handle,
+            .value = 1,
             .stage_mask = .{
                 .color_attachment_output_bit = true,
             },

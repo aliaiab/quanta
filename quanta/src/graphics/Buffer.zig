@@ -28,7 +28,7 @@ pub fn initData(comptime T: type, data: []const T, usage: Usage) !Buffer {
         const use_host_memory = false;
 
         if (use_host_memory and std.mem.isAligned(@intFromPtr(data.ptr), 0b1000)) {
-            var buffer = try initDataHostMemory(.staging, @as([*]const u8, @ptrCast(data.ptr))[0 .. data.len * @sizeOf(T)]);
+            const buffer = try initDataHostMemory(.staging, @as([*]const u8, @ptrCast(data.ptr))[0 .. data.len * @sizeOf(T)]);
 
             return buffer;
         } else {

@@ -134,7 +134,7 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void {
         self.generated_file.path = null;
     }
 
-    const result = try std.process.Child.exec(.{
+    const result = try std.process.Child.run(.{
         .allocator = step.owner.allocator,
         .argv = args_list.items,
     });
@@ -154,15 +154,15 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void {
 }
 
 pub fn compileModule(
-    builder: *std.build.Builder,
+    builder: *std.Build,
     mode: std.builtin.OptimizeMode,
     stage: GlslCompileStep.ShaderStage,
     input: []const u8,
     output: []const u8,
-) *std.build.Module {
+) *std.Build.Module {
     const step = GlslCompileStep.create(builder, input, input, output, stage, mode);
 
-    return builder.createModule(.{ .source_file = std.build.FileSource{ .generated = &step.generated_file } });
+    return builder.createModule(.{ .root_source_file = std.Build.LazyPath{ .generated = &step.generated_file } });
 }
 
 pub fn getIncludes(

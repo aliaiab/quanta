@@ -8,16 +8,16 @@ pub inline fn rayAABBIntersection(
     box_min: @Vector(3, f32),
     box_max: @Vector(3, f32),
 ) ?struct { t_min: f32, t_max: f32 } {
-    var inv_ray_direction = @as(@Vector(3, f32), @splat(1)) / ray_direction;
+    const inv_ray_direction = @as(@Vector(3, f32), @splat(1)) / ray_direction;
 
-    var tx1: f32 = (box_min[0] - ray_origin[0]) * inv_ray_direction[0];
-    var tx2: f32 = (box_max[0] - ray_origin[0]) * inv_ray_direction[0];
+    const tx1: f32 = (box_min[0] - ray_origin[0]) * inv_ray_direction[0];
+    const tx2: f32 = (box_max[0] - ray_origin[0]) * inv_ray_direction[0];
 
     var t_min: f32 = @min(tx1, tx2);
     var t_max: f32 = @max(tx1, tx2);
 
-    var ty1: f32 = (box_min[1] - ray_origin[1]) * inv_ray_direction[1];
-    var ty2: f32 = (box_max[1] - ray_origin[1]) * inv_ray_direction[1];
+    const ty1: f32 = (box_min[1] - ray_origin[1]) * inv_ray_direction[1];
+    const ty2: f32 = (box_max[1] - ray_origin[1]) * inv_ray_direction[1];
 
     t_min = @max(t_min, @min(ty1, ty2));
     t_max = @min(t_max, @max(ty1, ty2));
