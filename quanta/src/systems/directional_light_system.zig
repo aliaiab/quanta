@@ -4,7 +4,7 @@ const ComponentStore = @import("../ecs/ComponentStore.zig");
 const Renderer3D = @import("../renderer.zig").Renderer3D;
 const zalgebra = @import("zalgebra");
 
-const Rotation = components.Rotation;
+const Orientation = components.Orientation;
 const DirectionalLight = components.DirectionalLight;
 const Visibility = components.Visibility;
 
@@ -15,14 +15,14 @@ pub fn run(
     const without = ComponentStore.filterWithout;
 
     var query = component_store.query(.{
-        Rotation,
+        Orientation,
         DirectionalLight,
     }, .{
         without(Visibility),
     });
 
     while (query.nextBlock()) |block| {
-        for (block.Rotation, block.DirectionalLight) |rotation, light| {
+        for (block.Orientation, block.DirectionalLight) |rotation, light| {
             Renderer3D.scenePushDirectionalLight(scene, .{
                 .direction = zalgebra.Vec3.norm(.{ .data = .{ rotation.x, rotation.y, rotation.z } }).data,
                 .intensity = light.intensity,

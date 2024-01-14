@@ -32,7 +32,7 @@ pub const Position = struct {
     z: f32,
 };
 
-pub const Rotation = struct {
+pub const Orientation = struct {
     x: f32,
     y: f32,
     z: f32,

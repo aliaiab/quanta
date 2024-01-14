@@ -212,7 +212,7 @@ pub fn init() !void {
 
         _ = try state.ecs_scene.entityCreate(.{
             quanta.components.Position{ .x = translation.x(), .y = translation.y(), .z = translation.z() },
-            quanta.components.Rotation{ .x = rotation.x(), .y = rotation.y(), .z = rotation.z() },
+            quanta.components.Orientation{ .x = rotation.x(), .y = rotation.y(), .z = rotation.z() },
             quanta.components.NonUniformScale{ .x = scale.x(), .y = scale.y(), .z = scale.z() },
             quanta.components.RendererMesh{ .mesh = state.test_scene_meshes[i], .material = state.test_scene_materials[sub_mesh.material_index] },
         });
@@ -223,7 +223,7 @@ pub fn init() !void {
     state.delta_time = target_frame_time;
 
     _ = try state.ecs_scene.entityCreate(.{
-        quanta_components.Rotation{ .x = -0.5, .y = -1, .z = -0.3 },
+        quanta_components.Orientation{ .x = -0.5, .y = -1, .z = -0.3 },
         quanta_components.DirectionalLight{
             .intensity = 1,
             .diffuse = .{
@@ -518,88 +518,11 @@ pub fn update() !quanta.app.UpdateResult {
                 &state.window,
             );
 
-            // //Selection
-            // if (window.getMouseDown(.left) and !state.mouse_pressed_last_Frame and !imguizmo.ImGuizmo_IsUsing() and !imguizmo.ImGuizmo_IsOver() and !imgui.igIsAnyItemFocused()) {
-            //     const mouse_pos = window.getMousePos();
-
-            //     log.info("mouse_pos = {d}, {d}", .{ mouse_pos[0], mouse_pos[1] });
-
-            //     const view_projection = zalgebra.Mat4.mul(
-            //         .{ .data = state.camera.getView() },
-            //         .{ .data = state.camera.getProjectionNonInverse() },
-            //     );
-
-            //     const inverse_view_projection = view_projection.inv();
-
-            //     const normalized_pos = [2]f32{
-            //         ((mouse_pos[0] / @intToFloat(f32, window.getWidth())) * 2) - 1,
-            //         (((mouse_pos[1] - @intToFloat(f32, window.getHeight())) / @intToFloat(f32, window.getHeight())) * 2) - 1,
-            //     };
-
-            //     const world_space_pos = inverse_view_projection.mulByVec4(.{ .data = .{ normalized_pos[0], normalized_pos[1], 0, 1 } });
-
-            //     log.info("world_space_pos (ray_origin) = {d}, {d}, {d}", .{
-            //         world_space_pos.data[0] / 1000.0,
-            //         world_space_pos.data[1] / 1000.0,
-            //         world_space_pos.data[2] / 1000.0,
-            //     });
-
-            //     log.info("world_space_pos (ray_dir) = {d}, {d}, {d}", .{
-            //         state.camera_front[0],
-            //         state.camera_front[1],
-            //         state.camera_front[2],
-            //     });
-
-            //     const ray_origin = @Vector(3, f32){
-            //         world_space_pos.data[0] / 1000.0,
-            //         world_space_pos.data[1] / 1000.0,
-            //         world_space_pos.data[2] / 1000.0,
-            //     };
-
-            //     const ray_length = 1000;
-
-            //     const ray_direction = @Vector(3, f32){
-            //         state.camera_front[0] * ray_length,
-            //         state.camera_front[1] * ray_length,
-            //         state.camera_front[2] * ray_length,
-            //     };
-
-            //     const intersection = quanta.physics.intersection;
-
-            //     var query = state.ecs_scene.query(.{
-            //         quanta.components.Position,
-            //         quanta.components.NonUniformScale,
-            //         quanta.components.RendererMesh,
-            //     }, .{});
-
-            //     var found_entity: ?quanta.ecs.ComponentStore.Entity = null;
-            //     var closest_t_max: f32 = std.math.inf_f32;
-
-            //     if (false) while (query.nextBlock()) |block| {
-            //         for (block.Position, block.NonUniformScale, block.RendererMesh, 0..) |position, scale, mesh, i| {
-            //             const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
-
-            //             const position_vector = @Vector(3, f32){ position.x, position.y, position.z };
-
-            //             const bounding_min = position_vector + (mesh_box.min * @Vector(3, f32){ scale.x, scale.y, scale.z });
-            //             const bounding_max = position_vector + (mesh_box.max * @Vector(3, f32){ scale.x, scale.y, scale.z });
-
-            //             if (intersection.rayAABBIntersection(ray_origin, ray_direction, bounding_min, bounding_max)) |hit| {
-            //                 {
-            //                     found_entity = block.entities[i];
-            //                 }
-
-            //                 closest_t_max = @min(closest_t_max, hit.t_max - hit.t_min);
-            //             }
-            //         }
-            //     };
-            // }
-
             const primary_selected_entity = if (state.selected_entities.items.len != 0) state.selected_entities.items[0] else quanta.ecs.ComponentStore.Entity.nil;
 
             if (state.selected_entities.items.len != 0 and state.ecs_scene.entityHasComponent(primary_selected_entity, quanta.components.Position)) {
                 const entity_position = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.Position) orelse unreachable;
-                const entity_rotation = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.Rotation);
+                const entity_rotation = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.Orientation);
                 const entity_scale = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.NonUniformScale);
 
                 imguizmo.ImGuizmo_SetImGuiContext(imgui.igGetCurrentContext());
@@ -660,7 +583,7 @@ pub fn update() !quanta.app.UpdateResult {
 
                 for (state.selected_entities.items) |selected_entity| {
                     const selected_position = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.Position);
-                    const selected_rotation = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.Rotation);
+                    const selected_rotation = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.Orientation);
                     const selected_scale = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.NonUniformScale);
 
                     if (selected_position != null) {

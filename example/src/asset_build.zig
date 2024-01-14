@@ -64,7 +64,7 @@ pub fn main() !void {
         .mapped_data_size = environment_map.data.len,
     });
 
-    {
+    if (false) {
         const ZonTest = struct {
             optimize: std.builtin.OptimizeMode,
             scale: f32 = 1,
@@ -81,11 +81,11 @@ pub fn main() !void {
             optional: ?bool = null,
         };
 
-        const zon_test = try asset.metadata.load(ZonTest, allocator, "example/src/assets/dragon/DragonAttenuation.gltf.zon");
+        const zon_test = try asset.metadata.load(ZonTest, allocator, "example/src/assets/light_test/light_test.gltf.zon");
         defer asset.metadata.loadFree(ZonTest, allocator, zon_test);
 
-        std.log.info("zon_test: {any}", .{zon_test});
-        std.log.info("zon_test.struct_init.lol = {s}", .{zon_test.struct_init.lol});
+        // std.log.info("zon_test: {any}", .{zon_test});
+        // std.log.info("zon_test.struct_init.lol = {s}", .{zon_test.struct_init.lol});
 
         // return;
     }

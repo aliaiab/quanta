@@ -26,7 +26,7 @@ pub fn build(builder: *std.Build) !void {
 
     const options = builder.addOptions();
 
-    const quanta_module = builder.createModule(.{
+    const quanta_module = builder.addModule("quanta", .{
         .root_source_file = .{ .path = "quanta/src/root.zig" },
         .imports = &.{
             .{ .name = "options", .module = options.createModule() },

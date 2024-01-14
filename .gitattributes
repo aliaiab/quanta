@@ -6,4 +6,3 @@
 # *.glb filter=lfs diff=lfs merge=lfs -text
 # *.bin filter=lfs diff=lfs merge=lfs -text
 # *.bsp filter=lfs diff=lfs merge=lfs -text
-. text !filter !merge !diff

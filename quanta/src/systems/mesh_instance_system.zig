@@ -6,7 +6,7 @@ const zalgebra = @import("zalgebra");
 
 const Position = components.Position;
 const RendererMesh = components.RendererMesh;
-const Rotation = components.Rotation;
+const Orientation = components.Orientation;
 const NonUniformScale = components.NonUniformScale;
 
 pub fn run(
@@ -21,7 +21,7 @@ pub fn run(
                 Position,
                 RendererMesh,
             },
-            .{ without(Rotation), without(NonUniformScale) },
+            .{ without(Orientation), without(NonUniformScale) },
         );
 
         while (query.nextBlock()) |block| {
@@ -37,14 +37,14 @@ pub fn run(
         var query = component_store.query(
             .{
                 Position,
-                Rotation,
+                Orientation,
                 RendererMesh,
             },
             .{without(NonUniformScale)},
         );
 
         while (query.nextBlock()) |block| {
-            for (block.Position, block.Rotation, block.RendererMesh) |position, rotation, mesh| {
+            for (block.Position, block.Orientation, block.RendererMesh) |position, rotation, mesh| {
                 const transform_translate = zalgebra.Mat4.fromTranslate(.{ .data = .{ position.x, position.y, position.z } });
                 const transform_rotate = zalgebra.Mat4.fromEulerAngles(.{ .data = .{ rotation.x, rotation.y, rotation.z } });
                 const transform = transform_translate.mul(transform_rotate);
@@ -58,7 +58,7 @@ pub fn run(
         var query = component_store.query(
             .{
                 Position,
-                Rotation,
+                Orientation,
                 NonUniformScale,
                 RendererMesh,
             },
@@ -66,7 +66,7 @@ pub fn run(
         );
 
         while (query.nextBlock()) |block| {
-            for (block.Position, block.Rotation, block.NonUniformScale, block.RendererMesh) |position, rotation, scale, mesh| {
+            for (block.Position, block.Orientation, block.NonUniformScale, block.RendererMesh) |position, rotation, scale, mesh| {
                 const transform_translate = zalgebra.Mat4.fromTranslate(.{ .data = .{ position.x, position.y, position.z } });
                 const transform_rotate = zalgebra.Mat4.fromEulerAngles(.{ .data = .{ rotation.x, rotation.y, rotation.z } });
                 const transform_scale = zalgebra.Mat4.fromScale(.{ .data = .{ scale.x, scale.y, scale.z } });
