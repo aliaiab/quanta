@@ -1,37 +1,42 @@
+window_system: *XcbWindowSystem,
+xcb_library: *xcb_loader.Library,
 width: u16,
 height: u16,
-connection: *xcb.xcb_connection_t,
-screen: *xcb.xcb_screen_t,
-window: xcb.xcb_window_t,
-wm_delete_window_cookie: [*c]xcb.xcb_intern_atom_reply_t,
+connection: *xcb_loader.Connection,
+screen: *xcb_loader.Screen,
+window: xcb_loader.Window,
+wm_delete_window_atom: xcb_loader.Atom,
 xkb_context: *xkb.xkb_context,
 xkb_state: *xkb.xkb_state,
 xkb_keymap: *xkb.xkb_keymap,
-hidden_cursor: xkb.xcb_cursor_t,
-
+hidden_cursor: xcb_loader.Cursor,
 key_map: [std.enums.values(windowing.Key).len]bool,
 previous_key_map: [std.enums.values(windowing.Key).len]bool,
-
 mouse_map: [std.enums.values(windowing.MouseButton).len]bool,
-
 mouse_position: @Vector(2, i16) = .{ 0, 0 },
 last_mouse_position: @Vector(2, i16) = .{ 0, 0 },
 mouse_grabbed: bool = false,
 
+//'raw' mouse motion
+mouse_motion: @Vector(2, i16) = .{ 0, 0 },
+
 pub fn init(
     allocator: std.mem.Allocator,
+    window_system: *XcbWindowSystem,
     width: u16,
     height: u16,
     title: []const u8,
 ) !XcbWindow {
     _ = allocator;
+
     var self = XcbWindow{
-        .connection = undefined,
+        .window_system = window_system,
+        .connection = window_system.connection,
         .screen = undefined,
-        .window = 0,
+        .window = undefined,
         .width = width,
         .height = height,
-        .wm_delete_window_cookie = undefined,
+        .wm_delete_window_atom = undefined,
         .xkb_context = undefined,
         .xkb_state = undefined,
         .xkb_keymap = undefined,
@@ -39,17 +44,14 @@ pub fn init(
         .previous_key_map = std.mem.zeroes([std.enums.values(windowing.Key).len]bool),
         .mouse_map = std.mem.zeroes([std.enums.values(windowing.MouseButton).len]bool),
         .hidden_cursor = undefined,
+        .xcb_library = &window_system.xcb_library,
     };
 
-    self.connection = xcb.xcb_connect(null, null).?;
+    const setup = self.xcb_library.getSetup(self.connection).?;
 
-    const setup = xcb.xcb_get_setup(self.connection);
+    const iter = self.xcb_library.setupRootsIterator(setup);
 
-    const iter = xcb.xcb_setup_roots_iterator(setup);
-
-    self.screen = @ptrCast(iter.data);
-
-    self.window = xcb.xcb_generate_id(self.connection);
+    self.screen = &iter.data[0];
 
     const values = [_]u32{
         xcb.XCB_EVENT_MASK_EXPOSURE | xcb.XCB_EVENT_MASK_BUTTON_PRESS |
@@ -60,10 +62,9 @@ pub fn init(
             xcb.XCB_EVENT_MASK_ENTER_WINDOW | xcb.XCB_EVENT_MASK_FOCUS_CHANGE | xcb.XCB_EVENT_MASK_OWNER_GRAB_BUTTON | xcb.XCB_EVENT_MASK_POINTER_MOTION_HINT,
     };
 
-    _ = xcb.xcb_create_window(
+    self.window = self.xcb_library.createWindow(
         self.connection,
         xcb.XCB_COPY_FROM_PARENT,
-        self.window,
         self.screen.root,
         0,
         0,
@@ -76,51 +77,69 @@ pub fn init(
         &values,
     );
 
-    _ = xcb.xcb_change_property(
+    _ = self.xcb_library.changeProperty(
         self.connection,
         xcb.XCB_PROP_MODE_REPLACE,
         self.window,
-        xcb.XCB_ATOM_WM_NAME,
-        xcb.XCB_ATOM_STRING,
+        .wm_name,
+        .string,
         8,
         @intCast(title.len),
         title.ptr,
     );
 
-    const wm_delete_window_cookie_name = "WM_DELETE_WINDOW";
+    const protocols_atom = self.xcb_library.internAtom(self.connection, false, "WM_PROTOCOLS");
+    const delete_window_atom = self.xcb_library.internAtom(self.connection, false, "WM_DELETE_WINDOW");
 
-    const cookie0 = xcb.xcb_intern_atom(self.connection, 1, 12, "WM_PROTOCOLS");
-    const reply0 = xcb.xcb_intern_atom_reply(self.connection, cookie0, null);
+    self.wm_delete_window_atom = delete_window_atom.atom;
 
-    const cookie = xcb.xcb_intern_atom(self.connection, 0, wm_delete_window_cookie_name.len + 1, wm_delete_window_cookie_name);
-    self.wm_delete_window_cookie = xcb.xcb_intern_atom_reply(self.connection, cookie, null);
-
-    _ = xcb.xcb_change_property(self.connection, xcb.XCB_PROP_MODE_REPLACE, self.window, reply0.*.atom, 4, 32, 1, &reply0.*.atom);
+    self.xcb_library.changeProperty(
+        self.connection,
+        xcb.XCB_PROP_MODE_REPLACE,
+        self.window,
+        protocols_atom.atom,
+        .atom,
+        32,
+        1,
+        &delete_window_atom.atom,
+    );
 
     self.xkb_context = xkb.xkb_context_new(xkb.XKB_CONTEXT_NO_FLAGS).?;
     self.xkb_keymap = xkb.xkb_keymap_new_from_names(self.xkb_context, null, xkb.XKB_KEYMAP_COMPILE_NO_FLAGS).?;
     self.xkb_state = xkb.xkb_state_new(self.xkb_keymap).?;
 
-    const hidden_cursor_pixmap = xcb.xcb_generate_id(self.connection);
+    const hidden_cursor_pixmap = self.xcb_library.createPixmap(
+        self.connection,
+        1,
+        @enumFromInt(@intFromEnum(self.window)),
+        1,
+        1,
+    );
 
-    _ = xcb.xcb_create_pixmap(self.connection, 1, hidden_cursor_pixmap, self.window, 1, 1);
+    self.hidden_cursor = self.xcb_library.createCursor(
+        self.connection,
+        hidden_cursor_pixmap,
+        hidden_cursor_pixmap,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    );
 
-    self.hidden_cursor = xcb.xcb_generate_id(self.connection);
+    self.xcb_library.freePixmap(self.connection, hidden_cursor_pixmap);
 
-    _ = xcb.xcb_create_cursor(self.connection, self.hidden_cursor, hidden_cursor_pixmap, hidden_cursor_pixmap, 0, 0, 0, 0, 0, 0, 0, 0);
-    _ = xcb.xcb_free_pixmap(self.connection, hidden_cursor_pixmap);
-
-    _ = xcb.xcb_set_close_down_mode(self.connection, xcb.XCB_CLOSE_DOWN_DESTROY_ALL);
-
-    _ = xcb.xcb_map_window(self.connection, self.window);
-    _ = xcb.xcb_flush(self.connection);
+    self.xcb_library.mapWindow(self.connection, self.window);
+    _ = self.xcb_library.flush(self.connection);
 
     return self;
 }
 
 pub fn deinit(self: *XcbWindow, allocator: std.mem.Allocator) void {
     _ = allocator;
-    xcb.xcb_disconnect(self.connection);
     xkb.xkb_context_unref(self.xkb_context);
     xkb.xkb_state_unref(self.xkb_state);
     xkb.xkb_keymap_unref(self.xkb_keymap);
@@ -133,52 +152,40 @@ pub fn pollEvents(self: *XcbWindow) !bool {
     self.previous_key_map = self.key_map;
 
     {
-        const cookie = xcb.xcb_query_pointer(self.connection, self.window);
+        const reply = self.xcb_library.queryPointer(self.connection, self.window);
+        _ = reply; // autofix
 
-        const reply = xcb.xcb_query_pointer_reply(self.connection, cookie, null);
-        _ = reply;
-
-        // self.mouse_position = .{ @abs(reply.*.win_x), @abs(reply.*.win_y) };
+        // self.mouse_position = .{ reply.win_x, reply.win_y };
     }
 
     {
-        const cookie = xcb.xcb_get_geometry(self.connection, self.window);
-        const reply = xcb.xcb_get_geometry_reply(self.connection, cookie, null);
+        // const cookie = xcb.xcb_get_geometry(self.connection, self.window);
+        // const reply = xcb.xcb_get_geometry_reply(self.connection, cookie, null);
 
-        self.width = reply.*.width;
-        self.height = reply.*.height;
+        // self.width = reply.*.width;
+        // self.height = reply.*.height;
     }
 
-    while (@as(?*xcb.xcb_generic_event_t, @ptrCast(xcb.xcb_poll_for_event(self.connection)))) |event| {
-        switch (event.response_type & ~@as(u8, 0x80)) {
-            xcb.XCB_BUTTON_PRESS => {
-                const button_press_event: *xcb.xcb_button_press_event_t = @ptrCast(event);
-
-                const position: @Vector(2, u16) = .{ @abs(button_press_event.event_x), @abs(button_press_event.event_y) };
-
-                std.log.info("XCB: button pressed at {}", .{position});
-
-                switch (button_press_event.detail) {
-                    xcb.XCB_BUTTON_INDEX_1 => self.mouse_map[@intFromEnum(windowing.MouseButton.left)] = true,
-                    xcb.XCB_BUTTON_INDEX_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.right)] = true,
-                    xcb.XCB_BUTTON_INDEX_3 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = true,
+    while (self.xcb_library.pollForEvent(self.connection)) |event| {
+        switch (event) {
+            .button_press => |button_press| {
+                switch (button_press.detail) {
+                    .index_1 => self.mouse_map[@intFromEnum(windowing.MouseButton.left)] = true,
+                    .index_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.right)] = true,
+                    .index_3 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = true,
                     else => {},
                 }
             },
-            xcb.XCB_BUTTON_RELEASE => {
-                const button_release_event: *xcb.xcb_button_release_event_t = @ptrCast(event);
-
-                switch (button_release_event.detail) {
-                    xcb.XCB_BUTTON_INDEX_1 => self.mouse_map[@intFromEnum(windowing.MouseButton.left)] = false,
-                    xcb.XCB_BUTTON_INDEX_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.right)] = false,
-                    xcb.XCB_BUTTON_INDEX_3 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = false,
+            .button_release => |button_release| {
+                switch (button_release.detail) {
+                    .index_1 => self.mouse_map[@intFromEnum(windowing.MouseButton.left)] = false,
+                    .index_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.right)] = false,
+                    .index_3 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = false,
                     else => {},
                 }
             },
-            xcb.XCB_KEY_PRESS => {
-                const key_event: *xcb.xcb_key_press_event_t = @ptrCast(event);
-
-                const keysym = xkb.xkb_state_key_get_one_sym(self.xkb_state, key_event.detail);
+            .key_press => |key_press| {
+                const keysym = xkb.xkb_state_key_get_one_sym(self.xkb_state, key_press.detail);
 
                 switch (keysym) {
                     xkb.XKB_KEY_space => self.key_map[@intFromEnum(windowing.Key.space)] = true,
@@ -304,10 +311,8 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                     else => {},
                 }
             },
-            xcb.XCB_KEY_RELEASE => {
-                const key_event: *xcb.xcb_key_release_event_t = @ptrCast(event);
-
-                const keysym = xkb.xkb_state_key_get_one_sym(self.xkb_state, key_event.detail);
+            .key_release => |key_release| {
+                const keysym = xkb.xkb_state_key_get_one_sym(self.xkb_state, key_release.detail);
 
                 switch (keysym) {
                     xkb.XKB_KEY_space => self.key_map[@intFromEnum(windowing.Key.space)] = false,
@@ -433,62 +438,69 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                     else => {},
                 }
             },
-            xcb.XCB_CLIENT_MESSAGE => {
-                const client_message_event: *xcb.xcb_client_message_event_t = @ptrCast(event);
+            .motion_notify => |motion_notify| {
+                const last_mouse_position = self.mouse_position;
+                self.last_mouse_position = last_mouse_position;
 
-                if (client_message_event.data.data32[0] == self.wm_delete_window_cookie.*.atom) {
-                    std.log.info("lfklakflakf", .{});
+                const S = struct {
+                    pub var warped: bool = false;
+                };
+
+                var warped: bool = false;
+
+                // if (motion_notify.event_x != self.getWidth() / 2 or motion_notify.event_y != self.getHeight() / 2) {
+                if (self.mouse_grabbed) {
+                    const predicted_position = self.mouse_position + self.mouse_motion;
+
+                    const warped_last = S.warped;
+                    _ = warped_last; // autofix
+
+                    if (predicted_position[0] <= 0 or predicted_position[1] <= 0 or
+                        predicted_position[0] >= self.getWidth() - 1 or predicted_position[1] >= self.getHeight() - 1)
+                    {
+                        self.xcb_library.warpPointer(
+                            self.connection,
+                            self.window,
+                            self.window,
+                            motion_notify.event_x,
+                            motion_notify.event_y,
+                            self.getWidth(),
+                            self.getHeight(),
+                            @intCast(self.getWidth() / 2),
+                            @intCast(self.getHeight() / 2),
+                            // self.last_mouse_position[0] - self.mouse_motion[0],
+                            // self.last_mouse_position[1] - self.mouse_motion[1],
+                        );
+
+                        warped = true;
+                    }
+
+                    self.mouse_position = .{ motion_notify.event_x, motion_notify.event_y };
+                    // self.mouse_motion = self.mouse_position - self.last_mouse_position;
+
+                    // self.mouse_position += .{ motion_notify.event_x - self.last_mouse_position[0], motion_notify.event_y - self.last_mouse_position[1] };
+                } else {
+                    self.mouse_position = .{ motion_notify.event_x, motion_notify.event_y };
+                }
+
+                if (!S.warped) {
+                    self.mouse_motion = self.mouse_position - self.last_mouse_position;
+                } else {
+                    // self.mouse_motion = .{ 0, 0 };
+                }
+
+                S.warped = warped;
+            },
+            .enter_notify => {},
+            .leave_notify => {},
+            .configure_notify => {},
+            .client_message => |client_message| {
+                if (client_message.data.data32[0] == @intFromEnum(self.wm_delete_window_atom)) {
                     return true;
                 }
             },
-            xcb.XCB_ENTER_NOTIFY => {
-                const enter_event: *xcb.xcb_enter_notify_event_t = @ptrCast(event);
-
-                self.last_mouse_position = self.mouse_position;
-                self.mouse_position = .{ enter_event.event_x, enter_event.event_y };
-            },
-            xcb.XCB_MOTION_NOTIFY => {
-                const motion_event: *xcb.xcb_motion_notify_event_t = @ptrCast(event);
-
-                std.log.info("event xy = {}, {}", .{ motion_event.event_x, motion_event.event_y });
-                std.log.info("root xy = {}, {}", .{ motion_event.event_x, motion_event.root_y });
-
-                self.last_mouse_position = self.mouse_position;
-
-                if (self.mouse_grabbed) {
-                    if (motion_event.event_x <= 0) {
-                        // _ = xcb.xcb_warp_pointer(self.connection, self.window, self.window, motion_event.event_x, motion_event.event_y, self.getWidth(), self.getHeight(), motion_event.event_x + 100, motion_event.event_y);
-                    }
-
-                    // const dxdy = @Vector(2, i16){ motion_event.event_x, motion_event.event_y } - self.last_mouse_position;
-
-                    // self.mouse_position += dxdy;
-                    self.mouse_position = .{ motion_event.event_x, motion_event.event_y };
-                } else {
-                    self.mouse_position = .{ motion_event.event_x, motion_event.event_y };
-                }
-
-                // self.last_mouse_position = .{ motion_event.event_x, motion_event.event_y };
-            },
-            xcb.XCB_MOTION_HINT => {
-                std.log.info("motion hint", .{});
-            },
-            xcb.XCB_DESTROY_NOTIFY => {},
-            // xcb.XCB_RESIZE_REQUEST => {
-            //     const resize_request_event: *xcb.xcb_resize_request_event_t = @ptrCast(event);
-
-            //     self.width = resize_request_event.width;
-            //     self.height = resize_request_event.height;
-            // },
-            // xcb.XCB_CONFIGURE_NOTIFY => {
-            //     const configure_notify_event: *xcb.xcb_configure_notify_event_t = @ptrCast(event);
-
-            //     self.width = configure_notify_event.width;
-            //     self.height = configure_notify_event.height;
-            // },
             else => {},
         }
-        std.c.free(event);
     }
 
     return false;
@@ -500,35 +512,30 @@ pub fn shouldClose(self: *XcbWindow) bool {
 
 pub fn getWidth(self: XcbWindow) u16 {
     //TODO: store the width properly instead of querying the window system every time these functions are called
+    const reply = self.xcb_library.getGeometry(self.connection, @enumFromInt(@intFromEnum(self.window)));
 
-    const cookie = xcb.xcb_get_geometry(self.connection, self.window);
-    const reply = xcb.xcb_get_geometry_reply(self.connection, cookie, null);
-
-    return reply.*.width;
+    return reply.width;
 }
 
 pub fn getHeight(self: XcbWindow) u16 {
-    const cookie = xcb.xcb_get_geometry(self.connection, self.window);
-    const reply = xcb.xcb_get_geometry_reply(self.connection, cookie, null);
+    const reply = self.xcb_library.getGeometry(self.connection, @enumFromInt(@intFromEnum(self.window)));
 
-    return reply.*.height;
+    return reply.height;
 }
 
-pub fn grabMouse(self: *XcbWindow) void {
-    const cookie = xcb.xcb_grab_pointer(self.connection, 1, self.screen.root, xcb.XCB_EVENT_MASK_BUTTON_PRESS | xcb.XCB_EVENT_MASK_BUTTON_RELEASE | xcb.XCB_EVENT_MASK_POINTER_MOTION, xcb.XCB_GRAB_MODE_ASYNC, xcb
-        .XCB_GRAB_MODE_ASYNC, self.window, 0, xcb.XCB_CURRENT_TIME);
+pub fn grabCursor(self: *XcbWindow) void {
+    _ = self.xcb_library.grabPointer(self.connection, 1, self.screen.root, xcb.XCB_EVENT_MASK_BUTTON_PRESS | xcb.XCB_EVENT_MASK_BUTTON_RELEASE | xcb.XCB_EVENT_MASK_POINTER_MOTION, xcb.XCB_GRAB_MODE_ASYNC, xcb
+        .XCB_GRAB_MODE_ASYNC, self.window, @enumFromInt(0), xcb.XCB_CURRENT_TIME);
 
-    _ = xcb.xcb_grab_pointer_reply(self.connection, cookie, null);
-
-    _ = xcb.xcb_change_window_attributes(self.connection, self.window, xcb.XCB_CW_CURSOR, &self.hidden_cursor);
+    self.xcb_library.changeWindowAttributes(self.connection, self.window, xcb.XCB_CW_CURSOR, &self.hidden_cursor);
 
     self.mouse_grabbed = true;
 }
 
-pub fn ungrabMouse(self: *XcbWindow) void {
-    _ = xcb.xcb_ungrab_pointer(self.connection, xcb.XCB_CURRENT_TIME);
-    //setting the cursor id to zero seems to restore the cursor, but this may need to change
-    _ = xcb.xcb_change_window_attributes(self.connection, self.window, xcb.XCB_CW_CURSOR, &@as(u32, 0));
+pub fn ungrabCursor(self: *XcbWindow) void {
+    self.xcb_library.ungrabPointer(self.connection, xcb.XCB_CURRENT_TIME);
+
+    self.xcb_library.changeWindowAttributes(self.connection, self.window, xcb.XCB_CW_CURSOR, &@as(u32, 0));
 
     self.mouse_grabbed = false;
 }
@@ -565,10 +572,16 @@ pub fn getMouseButton(self: *XcbWindow, key: windowing.MouseButton) windowing.Ac
     return .release;
 }
 
+pub fn getMouseMotion(self: *XcbWindow) @Vector(2, i16) {
+    return self.mouse_motion;
+}
+
 const XcbWindow = @This();
-const xcb = @import("xcb.zig");
+const XcbWindowSystem = @import("XcbWindowSystem.zig");
 const std = @import("std");
 const windowing = @import("../../windowing.zig");
 const Key = windowing.Key;
 const Action = windowing.Action;
 const xkb = @import("xkbcommon.zig");
+const xcb = @import("xcb.zig");
+const xcb_loader = @import("xcb_loader.zig");

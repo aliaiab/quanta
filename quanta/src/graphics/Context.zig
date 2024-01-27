@@ -1,10 +1,3 @@
-const Context = @This();
-const builtin = @import("builtin");
-const std = @import("std");
-const vk = @import("vk.zig");
-const Window = @import("../windowing.zig").Window;
-const log = @import("../log.zig").log;
-
 pub const enable_khronos_validation = builtin.mode == .Debug;
 pub const enable_debug_messenger = enable_khronos_validation;
 pub const vulkan_version = std.SemanticVersion{
@@ -238,7 +231,7 @@ physical_device_properties: vk.PhysicalDeviceProperties,
 physical_device_subgroup_properties: vk.PhysicalDeviceSubgroupProperties,
 physical_device_features: vk.PhysicalDeviceFeatures,
 physical_device_memory_properties: vk.PhysicalDeviceMemoryProperties,
-surface: vk.SurfaceKHR,
+surface: WindowSurface,
 surface_capabilities: vk.SurfaceCapabilitiesKHR,
 surface_format: vk.SurfaceFormatKHR,
 surface_present_mode: vk.PresentModeKHR,
@@ -273,26 +266,6 @@ pub const RequiredExtensions = struct {
 pub const OptionalExtensions = struct {
     ext_memory_budget: ?[:0]const u8 = vk.extension_info.ext_memory_budget.name,
 };
-
-fn createSurface(window: *Window) !vk.SurfaceKHR {
-    var surface: vk.SurfaceKHR = .null_handle;
-
-    const windowing = @import("../windowing.zig");
-
-    switch (windowing.backend) {
-        .xcb => {
-            surface = try self.vki.createXcbSurfaceKHR(self.instance, &vk.XcbSurfaceCreateInfoKHR{
-                .connection = @ptrCast(window.impl.connection),
-                .window = window.impl.window,
-            }, &self.allocation_callbacks);
-        },
-        else => @compileError("Backend unsupported"),
-    }
-
-    std.debug.assert(surface != .null_handle);
-
-    return surface;
-}
 
 pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: []const u8) !void {
     self.allocator = allocator;
@@ -435,8 +408,8 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
     errdefer if (enable_debug_messenger) self.vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, &self.allocation_callbacks);
 
-    self.surface = try createSurface(window);
-    errdefer self.vki.destroySurfaceKHR(self.instance, self.surface, &self.allocation_callbacks);
+    self.surface = try WindowSurface.init(window);
+    errdefer self.surface.deinit();
 
     var device_extensions_buffer: [std.meta.fields(RequiredExtensions).len + std.meta.fields(OptionalExtensions).len][*:0]const u8 = undefined;
     var device_extension_count: usize = 0;
@@ -591,7 +564,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
                     self.transfer_family_index = @as(u32, @intCast(queue_family_index));
                 }
 
-                const surface_supported = try self.vki.getPhysicalDeviceSurfaceSupportKHR(physical_device, @as(u32, @intCast(queue_family_index)), self.surface);
+                const surface_supported = try self.vki.getPhysicalDeviceSurfaceSupportKHR(physical_device, @as(u32, @intCast(queue_family_index)), self.surface.surface);
 
                 if (surface_supported == vk.TRUE) {
                     self.present_family_index = @as(u32, @intCast(queue_family_index));
@@ -628,25 +601,25 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
             self.vki.getPhysicalDeviceMemoryProperties2(physical_device, &physical_device_memory_properties);
 
             self.physical_device_memory_properties = physical_device_memory_properties.memory_properties;
-            self.surface_capabilities = try self.vki.getPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, self.surface);
+            self.surface_capabilities = try self.vki.getPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, self.surface.surface);
 
             var surface_format_count: u32 = 0;
 
-            _ = try self.vki.getPhysicalDeviceSurfaceFormatsKHR(physical_device, self.surface, &surface_format_count, null);
+            _ = try self.vki.getPhysicalDeviceSurfaceFormatsKHR(physical_device, self.surface.surface, &surface_format_count, null);
 
             const surface_formats = try self.allocator.alloc(vk.SurfaceFormatKHR, surface_format_count);
             defer self.allocator.free(surface_formats);
 
-            _ = try self.vki.getPhysicalDeviceSurfaceFormatsKHR(physical_device, self.surface, &surface_format_count, surface_formats.ptr);
+            _ = try self.vki.getPhysicalDeviceSurfaceFormatsKHR(physical_device, self.surface.surface, &surface_format_count, surface_formats.ptr);
 
             var surface_present_mode_count: u32 = 0;
 
-            _ = try self.vki.getPhysicalDeviceSurfacePresentModesKHR(physical_device, self.surface, &surface_present_mode_count, null);
+            _ = try self.vki.getPhysicalDeviceSurfacePresentModesKHR(physical_device, self.surface.surface, &surface_present_mode_count, null);
 
             const surface_present_modes = try self.allocator.alloc(vk.PresentModeKHR, surface_present_mode_count);
             defer self.allocator.free(surface_present_modes);
 
-            _ = try self.vki.getPhysicalDeviceSurfacePresentModesKHR(physical_device, self.surface, &surface_present_mode_count, surface_present_modes.ptr);
+            _ = try self.vki.getPhysicalDeviceSurfacePresentModesKHR(physical_device, self.surface.surface, &surface_present_mode_count, surface_present_modes.ptr);
 
             if (surface_formats.len == 0 or surface_present_modes.len == 0) {
                 continue;
@@ -849,7 +822,7 @@ pub fn deinit() void {
     defer self.vulkan_loader.close();
     defer self.vki.destroyInstance(self.instance, &self.allocation_callbacks);
     defer if (enable_debug_messenger) self.vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, &self.allocation_callbacks);
-    defer self.vki.destroySurfaceKHR(self.instance, self.surface, &self.allocation_callbacks);
+    defer self.surface.deinit();
     defer self.vkd.destroyDevice(self.device, &self.allocation_callbacks);
     defer if (self.graphics_command_pool != .null_handle) self.vkd.destroyCommandPool(self.device, self.graphics_command_pool, &self.allocation_callbacks);
     defer if (self.present_command_pool != .null_handle) self.vkd.destroyCommandPool(self.device, self.present_command_pool, &self.allocation_callbacks);
@@ -1263,3 +1236,11 @@ pub fn getPipelineCacheData() ![]const u8 {
 
     return data;
 }
+
+const Context = @This();
+const builtin = @import("builtin");
+const std = @import("std");
+const vk = @import("vk.zig");
+const Window = @import("../windowing.zig").Window;
+const log = @import("../log.zig").log;
+const WindowSurface = @import("WindowSurface.zig");

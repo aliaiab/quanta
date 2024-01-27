@@ -72,9 +72,7 @@ pub fn build(builder: *std.Build) !void {
         .flags = &[_][]const u8{},
     });
     //TODO: dynamically load instead of linking
-    quanta_module.linkSystemLibrary("xcb", .{});
     quanta_module.linkSystemLibrary("xkbcommon", .{});
-    quanta_module.linkSystemLibrary("xkbcommon-x11", .{});
 
     const asset_compiler = builder.addExecutable(.{
         .name = "asset_compiler",

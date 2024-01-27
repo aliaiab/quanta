@@ -41,6 +41,7 @@ const log = std.log.scoped(.example);
 var state: struct {
     gpa: std.heap.GeneralPurposeAllocator(.{}) = .{},
     allocator: std.mem.Allocator = undefined,
+    window_system: windowing.WindowSystem = undefined,
     window: windowing.Window = undefined,
     swapchain: graphics.Swapchain = undefined,
     asset_archive_blob: []align(std.mem.page_size) u8 = undefined,
@@ -60,7 +61,7 @@ var state: struct {
         .translation = .{ 0, 3, 12.5 },
         .target = .{ 0, 0, 0 },
         .fov = 60,
-        .exposure = 1,
+        .exposure = 2.8,
     },
 
     camera_position: @Vector(3, f32) = .{ 8.7, 5.7, 0.9 },
@@ -94,7 +95,10 @@ pub fn init() !void {
     state.gpa = std.heap.GeneralPurposeAllocator(.{}){};
     state.allocator = if (builtin.mode == .Debug) state.gpa.allocator() else std.heap.c_allocator;
 
-    state.window = try windowing.Window.init(state.allocator, 1600, 900, "Quanta Example");
+    state.window_system = try windowing.WindowSystem.init();
+    errdefer state.window_system.deinit();
+
+    state.window = try state.window_system.createWindow(state.allocator, 1600, 900, "Quanta Example");
     errdefer state.window.deinit(state.allocator);
 
     {
@@ -116,7 +120,7 @@ pub fn init() !void {
 
     state.swapchain = try Swapchain.init(
         state.allocator,
-        GraphicsContext.self.surface,
+        GraphicsContext.self.surface.surface,
     );
 
     try Renderer3D.init(state.allocator);
@@ -207,12 +211,32 @@ pub fn init() !void {
     for (test_scene_import.sub_meshes, 0..) |sub_mesh, i| {
         const decomposed = zalgebra.Mat4.decompose(.{ .data = sub_mesh.transform });
         const translation = decomposed.t;
-        const rotation = decomposed.r.extractEulerAngles();
+
+        var rotation: @Vector(3, f32) = undefined;
+
+        {
+            const quaternion = decomposed.r;
+
+            const yaw = std.math.atan2(
+                2 * (quaternion.y * quaternion.z + quaternion.w * quaternion.x),
+                quaternion.w * quaternion.w - quaternion.x * quaternion.x - quaternion.y * quaternion.y + quaternion.z * quaternion.z,
+            );
+            const pitch = std.math.asin(
+                -2 * (quaternion.x * quaternion.z - quaternion.w * quaternion.y),
+            );
+            const roll = std.math.atan2(
+                2 * (quaternion.x * quaternion.y + quaternion.w * quaternion.z),
+                quaternion.w * quaternion.w + quaternion.x * quaternion.x - quaternion.y * quaternion.y - quaternion.z * quaternion.z,
+            );
+
+            rotation = .{ zalgebra.toDegrees(yaw), zalgebra.toDegrees(pitch), zalgebra.toDegrees(roll) };
+        }
+
         const scale = decomposed.s;
 
         _ = try state.ecs_scene.entityCreate(.{
             quanta.components.Position{ .x = translation.x(), .y = translation.y(), .z = translation.z() },
-            quanta.components.Orientation{ .x = rotation.x(), .y = rotation.y(), .z = rotation.z() },
+            quanta.components.Orientation{ .x = rotation[0], .y = rotation[1], .z = rotation[2] },
             quanta.components.NonUniformScale{ .x = scale.x(), .y = scale.y(), .z = scale.z() },
             quanta.components.RendererMesh{ .mesh = state.test_scene_meshes[i], .material = state.test_scene_materials[sub_mesh.material_index] },
         });
@@ -333,6 +357,7 @@ pub fn deinit() void {
     defer log.info("Exiting gracefully", .{});
     defer if (builtin.mode == .Debug) std.debug.assert(state.gpa.deinit() != .leak);
 
+    defer state.window_system.deinit();
     defer state.window.deinit(state.allocator);
     defer GraphicsContext.deinit();
 
@@ -374,16 +399,12 @@ pub fn update() !quanta.app.UpdateResult {
         state.camera_enable = !state.camera_enable;
 
         if (state.camera_enable) {
-            // state.window.setInputMode(.cursor, .disabled);
-            state.window.grabMouse();
+            state.window.grabCursor();
         } else {
-            // state.window.setInputMode(.cursor, .normal);
-            state.window.ungrabMouse();
+            state.window.ungrabCursor();
         }
 
         state.camera_enable_changed = true;
-
-        std.log.info("tab pressedeeeeed", .{});
     }
 
     if (state.window.getKey(.tab) == .release) {
@@ -395,8 +416,15 @@ pub fn update() !quanta.app.UpdateResult {
         const x_position: f32 = @floatFromInt(state.window.getCursorPosition()[0]);
         const y_position: f32 = @floatFromInt(state.window.getCursorPosition()[1]);
 
-        const x_offset = x_position - state.last_mouse_x;
-        const y_offset = state.last_mouse_y - y_position;
+        const mouse_motion: @Vector(2, f32) = @floatFromInt(state.window.getMouseMotion());
+
+        std.log.info("mouse_motion = {}", .{mouse_motion});
+
+        // const x_offset = x_position - state.last_mouse_x;
+        // const y_offset = state.last_mouse_y - y_position;
+
+        const x_offset: f32 = mouse_motion[0];
+        const y_offset: f32 = -mouse_motion[1];
 
         state.last_mouse_x = x_position;
         state.last_mouse_y = y_position;
@@ -575,7 +603,26 @@ pub fn update() !quanta.app.UpdateResult {
 
                 const position = decomposed.t.data;
                 const scale = decomposed.s.data;
-                const rotation = decomposed.r.extractEulerAngles().data;
+
+                var rotation: @Vector(3, f32) = undefined;
+
+                {
+                    const quaternion = decomposed.r;
+
+                    const yaw = std.math.atan2(
+                        2 * (quaternion.y * quaternion.z + quaternion.w * quaternion.x),
+                        quaternion.w * quaternion.w - quaternion.x * quaternion.x - quaternion.y * quaternion.y + quaternion.z * quaternion.z,
+                    );
+                    const pitch = std.math.asin(
+                        -2 * (quaternion.x * quaternion.z - quaternion.w * quaternion.y),
+                    );
+                    const roll = std.math.atan2(
+                        2 * (quaternion.x * quaternion.y + quaternion.w * quaternion.z),
+                        quaternion.w * quaternion.w + quaternion.x * quaternion.x - quaternion.y * quaternion.y - quaternion.z * quaternion.z,
+                    );
+
+                    rotation = .{ zalgebra.toDegrees(yaw), zalgebra.toDegrees(pitch), zalgebra.toDegrees(roll) };
+                }
 
                 const position_change = position - @Vector(3, f32){ entity_position.x, entity_position.y, entity_position.z };
                 const scale_change = if (entity_scale != null) scale - @Vector(3, f32){ entity_scale.?.x, entity_scale.?.y, entity_scale.?.z } else @Vector(3, f32){ 0, 0, 0 };
