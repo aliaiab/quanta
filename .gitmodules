@@ -10,9 +10,6 @@
 [submodule "quanta/lib/vulkan-zig"]
 	path = quanta/lib/vulkan-zig
 	url = https://github.com/Snektron/vulkan-zig.git
-[submodule "quanta/lib/zgltf"]
-	path = quanta/lib/zgltf
-	url = https://github.com/thedoctorquantum/zgltf
 [submodule "quanta/lib/ImGuizmo"]
 	path = quanta/lib/ImGuizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo.git
@@ -31,3 +28,6 @@
 [submodule "quanta/lib/tracy"]
 	path = quanta/lib/tracy
 	url = https://github.com/wolfpld/tracy.git
+[submodule "quanta/lib/zgltf"]
+	path = quanta/lib/zgltf
+	url = https://github.com/zkburke/zgltf.git
