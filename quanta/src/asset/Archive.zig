@@ -1,4 +1,5 @@
 image: []u8,
+asset_name_hashes: []u64,
 assets: []AssetHeader,
 asset_content: []u8,
 
@@ -13,8 +14,6 @@ pub const AssetHeader = extern struct {
     source_data_size: u64,
     mapped_data_size: u64,
     mapped_data_alignment: u32,
-    ///TODO: put it in its own array DOD style, to accelerate name lookups
-    name_hash: u64,
 };
 
 pub const AssetMappedRegion = extern struct {};
@@ -34,6 +33,13 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
     var image_size: usize = @sizeOf(Header);
 
     image_size = std.mem.alignForward(usize, image_size, @alignOf(AssetHeader));
+
+    const name_hashes_offset = image_size;
+
+    image_size += @sizeOf(u64) * assets.len;
+
+    const asset_headers_offset = image_size;
+
     image_size += @sizeOf(AssetHeader) * assets.len;
 
     var source_content_size: usize = 0;
@@ -50,6 +56,9 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
     const image = try allocator.alignedAlloc(u8, @alignOf(Header), image_size);
     errdefer allocator.free(image);
 
+    const name_hashes: [*]u64 = @alignCast(@ptrCast(image.ptr + name_hashes_offset));
+    const asset_headers: [*]AssetHeader = @alignCast(@ptrCast(image.ptr + asset_headers_offset));
+
     //In order for builds to be reproducable, images must set padding bytes to a known value
     @memset(image, 0xaa);
 
@@ -60,8 +69,7 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
 
     image_offset = std.mem.alignForward(usize, image_offset, @alignOf(AssetHeader));
 
-    const asset_header_offset = image_offset;
-
+    image_offset += assets.len * @sizeOf(u64);
     image_offset += assets.len * @sizeOf(AssetHeader);
 
     header.asset_count = @as(u32, @intCast(assets.len));
@@ -69,7 +77,7 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
     var current_content_offset: usize = image_offset;
 
     for (assets, 0..) |asset, i| {
-        const asset_header = @as(*AssetHeader, @ptrCast(@alignCast(image.ptr + asset_header_offset + i * @sizeOf(AssetHeader))));
+        const asset_header = &asset_headers[i];
 
         current_content_offset = std.mem.alignForward(usize, current_content_offset, asset.source_data_alignment);
 
@@ -77,7 +85,8 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
         asset_header.source_data_offset = @as(u32, @intCast(current_content_offset));
         asset_header.mapped_data_size = @as(u32, @intCast(asset.mapped_data_size));
         asset_header.mapped_data_alignment = 1;
-        asset_header.name_hash = hashAssetName(asset.name);
+
+        name_hashes[i] = hashAssetName(asset.name);
 
         @memcpy(image[asset_header.source_data_offset .. asset_header.source_data_offset + asset.source_data.len], asset.source_data[0..]);
 
@@ -94,6 +103,7 @@ pub fn decode(allocator: std.mem.Allocator, image: []u8) !Archive {
         .image = image,
         .assets = &.{},
         .asset_content = &.{},
+        .asset_name_hashes = &.{},
     };
 
     var image_offset: usize = 0;
@@ -103,6 +113,10 @@ pub fn decode(allocator: std.mem.Allocator, image: []u8) !Archive {
     image_offset += @sizeOf(Header);
 
     image_offset = std.mem.alignForward(usize, image_offset, @alignOf(AssetHeader));
+
+    archive.asset_name_hashes = @as([*]u64, @ptrCast(@alignCast(image.ptr + image_offset)))[0..header.asset_count];
+
+    image_offset += @sizeOf(u64) * header.asset_count;
 
     archive.assets = @as([*]AssetHeader, @ptrCast(@alignCast(image.ptr + image_offset)))[0..header.asset_count];
 
@@ -124,8 +138,8 @@ pub fn getAssetDataFromName(self: Archive, comptime name: []const u8) error{
 }![]u8 {
     const hash = comptime hashAssetName(name);
 
-    for (self.assets, 0..) |header, index| {
-        if (hash == header.name_hash) {
+    for (self.asset_name_hashes, 0..) |asset_name_hash, index| {
+        if (hash == asset_name_hash) {
             return self.getAssetData(@enumFromInt(index));
         }
     }
