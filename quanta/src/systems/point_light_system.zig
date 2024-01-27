@@ -1,7 +1,7 @@
 const std = @import("std");
 const components = @import("../components.zig");
 const ComponentStore = @import("../ecs/ComponentStore.zig");
-const Renderer3D = @import("../renderer.zig").Renderer3D;
+const Renderer3D = @import("../renderer_3d.zig").Renderer3D;
 const zalgebra = @import("zalgebra");
 
 const Position = components.Position;

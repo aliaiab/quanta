@@ -1,6 +1,6 @@
 const std = @import("std");
 const log = std.log.scoped(.bsp);
-const Renderer3D = @import("../../renderer/Renderer3D.zig");
+const Renderer3D = @import("../../renderer_3d/Renderer3D.zig");
 
 pub const Lump = extern struct {
     fileofs: i32, // offset into file (bytes)

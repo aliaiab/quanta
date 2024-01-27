@@ -13,7 +13,7 @@ const Entity = ecs.ComponentStore.Entity;
 pub fn entitySelector(
     ecs_scene: *ComponentStore,
     commands: *CommandBuffer,
-    camera: quanta.renderer.Renderer3D.Camera,
+    camera: quanta.renderer_3d.Renderer3D.Camera,
     selected_entities: *std.ArrayList(Entity),
     window: *Window,
 ) !void {

@@ -2,16 +2,16 @@ pub fn build(builder: *std.Build) !void {
     const target = builder.standardTargetOptions(.{});
     const optimize = builder.standardOptimizeOption(.{});
 
-    const renderer_tri_vert_spv_module = GlslCompileStep.compileModule(builder, optimize, .vertex, builder.pathFromRoot("quanta/src/renderer/tri.vert.glsl"), "tri.vert.spv");
-    const renderer_tri_frag_spv_module = GlslCompileStep.compileModule(builder, optimize, .fragment, builder.pathFromRoot("quanta/src/renderer/tri.frag.glsl"), "tri.frag.spv");
-    const renderer_sky_vert_spv_module = GlslCompileStep.compileModule(builder, optimize, .vertex, builder.pathFromRoot("quanta/src/renderer/sky.vert.glsl"), "sky.vert.spv");
-    const renderer_sky_frag_spv_module = GlslCompileStep.compileModule(builder, optimize, .fragment, builder.pathFromRoot("quanta/src/renderer/sky.frag.glsl"), "sky.frag.spv");
-    const renderer_depth_vert_spv_module = GlslCompileStep.compileModule(builder, optimize, .vertex, builder.pathFromRoot("quanta/src/renderer/depth.vert.glsl"), "depth.vert.spv");
-    const renderer_depth_frag_spv_module = GlslCompileStep.compileModule(builder, optimize, .fragment, builder.pathFromRoot("quanta/src/renderer/depth.frag.glsl"), "depth.frag.spv");
-    const renderer_pre_depth_cull_comp_module = GlslCompileStep.compileModule(builder, optimize, .compute, builder.pathFromRoot("quanta/src/renderer/pre_depth_cull.comp.glsl"), "pre_depth_cull.comp.spv");
-    const renderer_post_depth_cull_comp_module = GlslCompileStep.compileModule(builder, optimize, .compute, builder.pathFromRoot("quanta/src/renderer/post_depth_cull.comp.glsl"), "post_depth_cull.comp.spv");
-    const renderer_depth_reduce_comp_module = GlslCompileStep.compileModule(builder, optimize, .compute, builder.pathFromRoot("quanta/src/renderer/depth_reduce.comp.glsl"), "depth_reduce.comp.spv");
-    const renderer_color_resolve_comp_module = GlslCompileStep.compileModule(builder, optimize, .compute, builder.pathFromRoot("quanta/src/renderer/color_resolve.comp.glsl"), "color_resolve.comp.spv");
+    const renderer_tri_vert_spv_module = GlslCompileStep.compileModule(builder, optimize, .vertex, builder.pathFromRoot("quanta/src/renderer_3d/tri.vert.glsl"), "tri.vert.spv");
+    const renderer_tri_frag_spv_module = GlslCompileStep.compileModule(builder, optimize, .fragment, builder.pathFromRoot("quanta/src/renderer_3d/tri.frag.glsl"), "tri.frag.spv");
+    const renderer_sky_vert_spv_module = GlslCompileStep.compileModule(builder, optimize, .vertex, builder.pathFromRoot("quanta/src/renderer_3d/sky.vert.glsl"), "sky.vert.spv");
+    const renderer_sky_frag_spv_module = GlslCompileStep.compileModule(builder, optimize, .fragment, builder.pathFromRoot("quanta/src/renderer_3d/sky.frag.glsl"), "sky.frag.spv");
+    const renderer_depth_vert_spv_module = GlslCompileStep.compileModule(builder, optimize, .vertex, builder.pathFromRoot("quanta/src/renderer_3d/depth.vert.glsl"), "depth.vert.spv");
+    const renderer_depth_frag_spv_module = GlslCompileStep.compileModule(builder, optimize, .fragment, builder.pathFromRoot("quanta/src/renderer_3d/depth.frag.glsl"), "depth.frag.spv");
+    const renderer_pre_depth_cull_comp_module = GlslCompileStep.compileModule(builder, optimize, .compute, builder.pathFromRoot("quanta/src/renderer_3d/pre_depth_cull.comp.glsl"), "pre_depth_cull.comp.spv");
+    const renderer_post_depth_cull_comp_module = GlslCompileStep.compileModule(builder, optimize, .compute, builder.pathFromRoot("quanta/src/renderer_3d/post_depth_cull.comp.glsl"), "post_depth_cull.comp.spv");
+    const renderer_depth_reduce_comp_module = GlslCompileStep.compileModule(builder, optimize, .compute, builder.pathFromRoot("quanta/src/renderer_3d/depth_reduce.comp.glsl"), "depth_reduce.comp.spv");
+    const renderer_color_resolve_comp_module = GlslCompileStep.compileModule(builder, optimize, .compute, builder.pathFromRoot("quanta/src/renderer_3d/color_resolve.comp.glsl"), "color_resolve.comp.spv");
 
     const renderer_gui_rectangle_vert_module = GlslCompileStep.compileModule(builder, optimize, .vertex, builder.pathFromRoot("quanta/src/renderer_gui/rectangle.vert.glsl"), "rectangle.vert.spv");
     const renderer_gui_rectangle_frag_module = GlslCompileStep.compileModule(builder, optimize, .fragment, builder.pathFromRoot("quanta/src/renderer_gui/rectangle.frag.glsl"), "rectangle.frag.spv");
