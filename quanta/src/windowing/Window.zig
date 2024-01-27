@@ -45,8 +45,8 @@ pub inline fn getCursorPosition(self: *Window) @Vector(2, i16) {
 }
 
 ///Returns the motion of the cursor within the bounds of the window
-pub inline fn getCursorMotion() @Vector(2, i16) {
-    @compileError("Not Implemented");
+pub inline fn getCursorMotion(self: *Window) @Vector(2, i16) {
+    return self.impl.getCursorMotion();
 }
 
 ///Confines the cursor to the bounds of the window and hides it
@@ -57,6 +57,22 @@ pub inline fn grabCursor(self: *Window) void {
 ///Releases the cursor from window confinement
 pub inline fn ungrabCursor(self: *Window) void {
     return self.impl.ungrabCursor();
+}
+
+pub inline fn isCursorGrabbed(self: *Window) bool {
+    return self.impl.isCursorGrabbed();
+}
+
+pub inline fn hideCursor(self: *Window) void {
+    return self.impl.hideCursor();
+}
+
+pub inline fn unhideCursor(self: *Window) void {
+    return self.impl.unhideCursor();
+}
+
+pub inline fn isCursorHidden(self: *Window) bool {
+    return self.impl.isCursorHidden();
 }
 
 ///Implementation structure

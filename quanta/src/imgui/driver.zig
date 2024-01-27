@@ -1,8 +1,3 @@
-const std = @import("std");
-const imgui = @import("cimgui.zig");
-const windowing = @import("../windowing.zig");
-const Window = windowing.Window;
-
 var time: i64 = 0;
 
 // var cursors: [imgui.ImGuiMouseCursor_COUNT]glfw.Cursor = undefined;
@@ -55,17 +50,16 @@ pub fn end() void {}
 fn updateMouseCursor(window: *Window) void {
     const io = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
-    // if (io.ConfigFlags & imgui.ImGuiConfigFlags_NoMouseCursorChange == 1 or window.getInputMode(.cursor) == @intFromEnum(glfw.Window.InputModeCursor.disabled)) {
-    //     return;
-    // }
+    if (io.ConfigFlags & imgui.ImGuiConfigFlags_NoMouseCursorChange == 1 or window.isCursorGrabbed()) {
+        return;
+    }
 
     const imgui_cursor = @as(usize, @intCast(imgui.igGetMouseCursor()));
 
     if (imgui_cursor == imgui.ImGuiMouseCursor_None or io.MouseDrawCursor) {
-        // window.setInputMode(.cursor, .hidden);
+        window.hideCursor();
     } else {
-        // window.setCursor(cursors[imgui_cursor]);
-        // window.setInputMode(.cursor, .normal);
+        window.unhideCursor();
     }
 
     const mouse_pos = window.getCursorPosition();
@@ -218,3 +212,8 @@ fn quantaToImGuiKey(key: windowing.Key) c_uint {
         else => imgui.ImGuiKey_None,
     };
 }
+
+const std = @import("std");
+const imgui = @import("cimgui.zig");
+const windowing = @import("../windowing.zig");
+const Window = windowing.Window;

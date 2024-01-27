@@ -15,7 +15,8 @@ previous_key_map: [std.enums.values(windowing.Key).len]bool,
 mouse_map: [std.enums.values(windowing.MouseButton).len]bool,
 mouse_position: @Vector(2, i16) = .{ 0, 0 },
 last_mouse_position: @Vector(2, i16) = .{ 0, 0 },
-mouse_grabbed: bool = false,
+cursor_grabbed: bool = false,
+cursor_hidden: bool = false,
 
 //'raw' mouse motion
 mouse_motion: @Vector(2, i16) = .{ 0, 0 },
@@ -449,7 +450,7 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                 var warped: bool = false;
 
                 // if (motion_notify.event_x != self.getWidth() / 2 or motion_notify.event_y != self.getHeight() / 2) {
-                if (self.mouse_grabbed) {
+                if (self.cursor_grabbed) {
                     const predicted_position = self.mouse_position + self.mouse_motion;
 
                     const warped_last = S.warped;
@@ -524,20 +525,39 @@ pub fn getHeight(self: XcbWindow) u16 {
 }
 
 pub fn grabCursor(self: *XcbWindow) void {
-    _ = self.xcb_library.grabPointer(self.connection, 1, self.screen.root, xcb.XCB_EVENT_MASK_BUTTON_PRESS | xcb.XCB_EVENT_MASK_BUTTON_RELEASE | xcb.XCB_EVENT_MASK_POINTER_MOTION, xcb.XCB_GRAB_MODE_ASYNC, xcb
-        .XCB_GRAB_MODE_ASYNC, self.window, @enumFromInt(0), xcb.XCB_CURRENT_TIME);
+    self.hideCursor();
 
     self.xcb_library.changeWindowAttributes(self.connection, self.window, xcb.XCB_CW_CURSOR, &self.hidden_cursor);
 
-    self.mouse_grabbed = true;
+    self.cursor_grabbed = true;
 }
 
 pub fn ungrabCursor(self: *XcbWindow) void {
     self.xcb_library.ungrabPointer(self.connection, xcb.XCB_CURRENT_TIME);
 
+    self.unhideCursor();
+
+    self.cursor_grabbed = false;
+}
+
+pub fn isCursorGrabbed(self: *XcbWindow) bool {
+    return self.cursor_grabbed;
+}
+
+pub fn hideCursor(self: *XcbWindow) void {
+    self.xcb_library.changeWindowAttributes(self.connection, self.window, xcb.XCB_CW_CURSOR, &self.hidden_cursor);
+
+    self.cursor_hidden = true;
+}
+
+pub fn unhideCursor(self: *XcbWindow) void {
     self.xcb_library.changeWindowAttributes(self.connection, self.window, xcb.XCB_CW_CURSOR, &@as(u32, 0));
 
-    self.mouse_grabbed = false;
+    self.cursor_hidden = false;
+}
+
+pub fn isCursorHidden(self: *XcbWindow) bool {
+    return self.cursor_hidden;
 }
 
 pub fn getCursorPosition(self: *XcbWindow) @Vector(2, i16) {
