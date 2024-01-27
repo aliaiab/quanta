@@ -13,24 +13,6 @@ pub inline fn shouldClose(self: *Window) bool {
     return self.impl.shouldClose();
 }
 
-pub inline fn getPosition(self: *Window) @Vector(2, u16) {
-    _ = self;
-    unreachable;
-}
-
-pub inline fn getBounds(self: *Window) @Vector(4, u16) {
-    const pos = self.getPosition();
-    const width = self.getWidth();
-    const height = self.getHeight();
-
-    return .{
-        pos[0],
-        pos[1],
-        width,
-        height,
-    };
-}
-
 ///Get the current width of the window
 pub inline fn getWidth(self: *Window) u16 {
     return self.impl.getWidth();
@@ -63,7 +45,9 @@ pub inline fn getCursorPosition(self: *Window) @Vector(2, i16) {
 }
 
 ///Returns the motion of the cursor within the bounds of the window
-pub inline fn getCursorMotion() @Vector(2, i16) {}
+pub inline fn getCursorMotion() @Vector(2, i16) {
+    @compileError("Not Implemented");
+}
 
 ///Confines the cursor to the bounds of the window and hides it
 pub inline fn grabCursor(self: *Window) void {

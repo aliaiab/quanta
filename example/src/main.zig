@@ -21,7 +21,6 @@ const quanta_components = quanta.components;
 const velocity_system = quanta.systems.velocity_system;
 const acceleration_system = quanta.systems.acceleration_system;
 
-const vk = quanta.graphics.vulkan;
 const graphics = quanta.graphics;
 const Renderer3D = quanta.renderer.Renderer3D;
 const RendererGui = quanta.renderer_gui.RendererGui;
@@ -417,8 +416,6 @@ pub fn update() !quanta.app.UpdateResult {
         const y_position: f32 = @floatFromInt(state.window.getCursorPosition()[1]);
 
         const mouse_motion: @Vector(2, f32) = @floatFromInt(state.window.getMouseMotion());
-
-        std.log.info("mouse_motion = {}", .{mouse_motion});
 
         // const x_offset = x_position - state.last_mouse_x;
         // const y_offset = state.last_mouse_y - y_position;

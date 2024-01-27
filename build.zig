@@ -1,9 +1,3 @@
-const std = @import("std");
-const builtin = @import("builtin");
-
-const quanta = @import("quanta/src/root.zig");
-const GlslCompileStep = @import("quanta/src/asset/build_steps/GlslCompileStep.zig");
-
 pub fn build(builder: *std.Build) !void {
     const target = builder.standardTargetOptions(.{});
     const optimize = builder.standardOptimizeOption(.{});
@@ -56,18 +50,18 @@ pub fn build(builder: *std.Build) !void {
 
     quanta_module.addImport("quanta", quanta_module);
 
-    quanta_module.addIncludePath(.{ .path = "quanta/lib/cimgui/imgui/" });
-    quanta_module.addIncludePath(.{ .path = "quanta/lib/ImGuizmo/" });
+    quanta_module.addIncludePath(.{ .path = builder.pathFromRoot("quanta/lib/cimgui/imgui/") });
+    quanta_module.addIncludePath(.{ .path = builder.pathFromRoot("quanta/lib/ImGuizmo/") });
     quanta_module.addCSourceFiles(.{
         .files = &[_][]const u8{
-            "quanta/lib/cimgui/imgui/imgui.cpp",
-            "quanta/lib/cimgui/imgui/imgui_draw.cpp",
-            "quanta/lib/cimgui/imgui/imgui_tables.cpp",
-            "quanta/lib/cimgui/imgui/imgui_widgets.cpp",
-            "quanta/lib/cimgui/imgui/imgui_demo.cpp",
-            "quanta/lib/cimgui/cimgui.cpp",
-            "quanta/lib/ImGuizmo/ImGuizmo.cpp",
-            "quanta/src/imgui/guizmo.cpp",
+            builder.pathFromRoot("quanta/lib/cimgui/imgui/imgui.cpp"),
+            builder.pathFromRoot("quanta/lib/cimgui/imgui/imgui_draw.cpp"),
+            builder.pathFromRoot("quanta/lib/cimgui/imgui/imgui_tables.cpp"),
+            builder.pathFromRoot("quanta/lib/cimgui/imgui/imgui_widgets.cpp"),
+            builder.pathFromRoot("quanta/lib/cimgui/imgui/imgui_demo.cpp"),
+            builder.pathFromRoot("quanta/lib/cimgui/cimgui.cpp"),
+            builder.pathFromRoot("quanta/lib/ImGuizmo/ImGuizmo.cpp"),
+            builder.pathFromRoot("quanta/src/imgui/guizmo.cpp"),
         },
         .flags = &[_][]const u8{},
     });
@@ -76,7 +70,7 @@ pub fn build(builder: *std.Build) !void {
 
     const asset_compiler = builder.addExecutable(.{
         .name = "asset_compiler",
-        .root_source_file = .{ .path = "quanta/src/asset/compiler_main.zig" },
+        .root_source_file = .{ .path = builder.pathFromRoot("quanta/src/asset/compiler_main.zig") },
         .target = builder.host,
         .optimize = optimize,
     });
@@ -115,7 +109,7 @@ pub fn build(builder: *std.Build) !void {
 
         const exe = builder.addExecutable(.{
             .name = "example",
-            .root_source_file = .{ .path = "example/src/main.zig" },
+            .root_source_file = .{ .path = builder.pathFromRoot("example/src/main.zig") },
             .target = example_target,
             .optimize = optimize,
             .strip = optimize == .ReleaseFast or optimize == .ReleaseSmall,
@@ -127,7 +121,7 @@ pub fn build(builder: *std.Build) !void {
 
         if (include_tracy) {
             exe.addCSourceFile(.{
-                .file = .{ .path = "quanta/lib/tracy/public/TracyClient.cpp" },
+                .file = .{ .path = builder.pathFromRoot("quanta/lib/tracy/public/TracyClient.cpp") },
                 .flags = &.{"-DTRACY_ENABLE"},
             });
         }
@@ -141,12 +135,13 @@ pub fn build(builder: *std.Build) !void {
             run_cmd.addArgs(args);
         }
 
-        run_cmd.cwd = .{ .path = "zig-out/bin/" };
+        run_cmd.cwd = .{ .path = builder.pathFromRoot("zig-out/bin/") };
 
         const run_step = builder.step("run_example", "Run the example application");
         run_step.dependOn(&run_cmd.step);
     }
 
+    //tests
     {
         const test_step = builder.step("test", "Run the tests");
 
@@ -161,3 +156,8 @@ pub fn build(builder: *std.Build) !void {
         test_step.dependOn(&run_quanta_tests.step);
     }
 }
+
+const std = @import("std");
+const builtin = @import("builtin");
+const quanta = @import("quanta/src/root.zig");
+const GlslCompileStep = quanta.asset.build_steps.GlslCompileStep;
