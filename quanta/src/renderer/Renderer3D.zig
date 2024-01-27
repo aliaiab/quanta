@@ -1,15 +1,3 @@
-const Renderer3D = @This();
-
-const std = @import("std");
-const Window = @import("../windowing/Window.zig");
-const graphics = @import("../graphics.zig");
-const GraphicsContext = graphics.Context;
-const Image = graphics.Image;
-const Sampler = graphics.Sampler;
-const vk = graphics.vulkan;
-const zalgebra = @import("zalgebra");
-const options = @import("options");
-
 const depth_reduce_comp_spv: []align(4) const u8 = @alignCast(@embedFile("renderer_depth_reduce_comp.spv"));
 
 const depth_vert_spv: []align(4) const u8 = @alignCast(@embedFile("renderer_depth_vert.spv"));
@@ -488,6 +476,8 @@ pub const Camera = struct {
     fov: f32,
     exposure: f32,
 
+    const Window = @import("../windowing/Window.zig");
+
     ///Returns a non-inverse z projection matrix
     pub fn getProjectionNonInverse(camera: Camera, window: *Window) [4][4]f32 {
         const aspect_ratio: f32 = @as(f32, @floatFromInt(window.getWidth())) / @as(f32, @floatFromInt(window.getHeight()));
@@ -721,11 +711,12 @@ fn getFrustumCorners(view_projection: zalgebra.Mat4) [8][3]f32 {
     return points;
 }
 
-pub fn endSceneRender(scene: SceneHandle, swapchain: graphics.Swapchain, window: *Window) void {
-    endRenderInternal(scene, swapchain, window) catch unreachable;
-}
-
-fn endRenderInternal(scene: SceneHandle, swapchain: graphics.Swapchain, window: *Window) !void {
+pub fn endSceneRender(
+    scene: SceneHandle,
+    target: graphics.Image,
+    target_aqcuired: graphics.Semaphore,
+    target_render_finished: graphics.Semaphore,
+) !void {
     const scene_data: *Scene = &self.scenes.items[@intFromEnum(scene)];
 
     if (self.image_staging_fence.getStatus() == true) {
@@ -758,11 +749,9 @@ fn endRenderInternal(scene: SceneHandle, swapchain: graphics.Swapchain, window: 
         self.index_staging_buffers.clearRetainingCapacity();
     }
 
-    const image_index = swapchain.image_index;
-    const image = swapchain.swap_images[image_index];
     const command_buffer = &self.command_buffers[0];
 
-    const aspect_ratio: f32 = @as(f32, @floatFromInt(window.getWidth())) / @as(f32, @floatFromInt(window.getHeight()));
+    const aspect_ratio: f32 = @as(f32, @floatFromInt(target.width)) / @as(f32, @floatFromInt(target.height));
     const near_plane: f32 = 0.01;
     const fov: f32 = self.camera.fov;
 
@@ -848,15 +837,6 @@ fn endRenderInternal(scene: SceneHandle, swapchain: graphics.Swapchain, window: 
     };
 
     primary_directional_light.view_projection = shadow_view_projection.data;
-
-    //sneaky hack due to our incomplete swapchain abstraction
-    var color_image: Image = undefined;
-
-    color_image.view = image.view;
-    color_image.handle = image.image;
-    color_image.aspect_mask = .{ .color_bit = true };
-    color_image.width = swapchain.extent.width;
-    color_image.height = swapchain.extent.height;
 
     if (!self.first_frame) {
         self.command_buffers[1].wait_fence.wait();
@@ -1151,7 +1131,7 @@ fn endRenderInternal(scene: SceneHandle, swapchain: graphics.Swapchain, window: 
 
         //Forward Color Pass
         {
-            command_buffer.imageBarrier(color_image, .{
+            command_buffer.imageBarrier(target, .{
                 .source_stage = .{ .all_commands = true },
                 .source_access = .{},
                 .destination_stage = .{ .color_attachment_output = true },
@@ -1239,7 +1219,7 @@ fn endRenderInternal(scene: SceneHandle, swapchain: graphics.Swapchain, window: 
             .destination_layout = vk.ImageLayout.shader_read_only_optimal,
         });
 
-        command_buffer.imageBarrier(color_image, .{
+        command_buffer.imageBarrier(target, .{
             .source_stage = .{},
             .source_access = .{},
             .source_layout = .undefined,
@@ -1253,14 +1233,14 @@ fn endRenderInternal(scene: SceneHandle, swapchain: graphics.Swapchain, window: 
         //Color resolve
         {
             self.color_resolve_pipeline.setDescriptorImageWithLayout(0, 0, self.radiance_color_image, .general);
-            self.color_resolve_pipeline.setDescriptorImageWithLayout(1, 0, color_image, .general);
+            self.color_resolve_pipeline.setDescriptorImageWithLayout(1, 0, target, .general);
 
             command_buffer.setComputePipeline(self.color_resolve_pipeline);
             command_buffer.setPushData(ColorResolvePushData, .{ .exposure = self.camera.exposure });
-            command_buffer.computeDispatch(color_image.width, color_image.height, 1);
+            command_buffer.computeDispatch(target.width, target.height, 1);
         }
 
-        command_buffer.imageBarrier(color_image, .{
+        command_buffer.imageBarrier(target, .{
             .source_stage = .{
                 .compute_shader = true,
             },
@@ -1288,7 +1268,7 @@ fn endRenderInternal(scene: SceneHandle, swapchain: graphics.Swapchain, window: 
         .flags = .{},
         .wait_semaphore_info_count = 1,
         .p_wait_semaphore_infos = &[_]vk.SemaphoreSubmitInfo{.{
-            .semaphore = image.image_acquired.handle,
+            .semaphore = target_aqcuired.handle,
             .value = 1,
             .stage_mask = .{
                 .color_attachment_output_bit = true,
@@ -1302,7 +1282,7 @@ fn endRenderInternal(scene: SceneHandle, swapchain: graphics.Swapchain, window: 
         }},
         .signal_semaphore_info_count = 1,
         .p_signal_semaphore_infos = &[_]vk.SemaphoreSubmitInfo{.{
-            .semaphore = image.render_finished.handle,
+            .semaphore = target_render_finished.handle,
             .value = 1,
             .stage_mask = .{
                 .color_attachment_output_bit = true,
@@ -1976,3 +1956,13 @@ pub const Statistics = struct {
 pub fn getStatistics() Statistics {
     return self.statistics;
 }
+
+const Renderer3D = @This();
+const std = @import("std");
+const graphics = @import("../graphics.zig");
+const GraphicsContext = graphics.Context;
+const Image = graphics.Image;
+const Sampler = graphics.Sampler;
+const vk = graphics.vulkan;
+const zalgebra = @import("zalgebra");
+const options = @import("options");

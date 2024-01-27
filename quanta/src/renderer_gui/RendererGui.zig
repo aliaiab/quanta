@@ -2,7 +2,6 @@ const RendererGui = @This();
 
 const std = @import("std");
 const graphics = @import("../graphics.zig");
-const Window = @import("../windowing.zig").Window;
 const zalgebra = @import("../math.zig").zalgebra;
 const imgui = @import("../imgui.zig").cimgui;
 
@@ -28,7 +27,6 @@ allocator: std.mem.Allocator = undefined,
 rectangle_pipeline: graphics.GraphicsPipeline = undefined,
 mesh_pipeline: graphics.GraphicsPipeline = undefined,
 command_buffers: [2]graphics.CommandBuffer = undefined,
-color_target_image: ?*const graphics.Image = null,
 rectangles: std.ArrayListUnmanaged(Rectangle) = .{},
 scissors: std.ArrayListUnmanaged([4]u16) = .{},
 rectangles_buffer: graphics.Buffer = undefined,
@@ -68,25 +66,6 @@ pub fn createTexture(data: []const u8, width: u32, height: u32) !TextureHandle {
 pub fn init(allocator: std.mem.Allocator, swapchain: graphics.Swapchain) !void {
     self.allocator = allocator;
     self.first_frame = true;
-    // self.rectangle_pipeline = try graphics.GraphicsPipeline.init(
-    //     allocator,
-    //     .{
-    //         .color_attachment_formats = &.{ swapchain.surface_format.format },
-    //         .vertex_shader_binary = @alignCast(4, @embedFile("spirv/rectangle.vert.spv")),
-    //         .fragment_shader_binary = @alignCast(4, @embedFile("spirv/rectangle.frag.spv")),
-    //         .depth_state = .{
-    //             .write_enabled = false,
-    //             .test_enabled = false,
-    //             .compare_op = .greater,
-    //         },
-    //         .rasterisation_state = .{
-    //             .polygon_mode = .fill,
-    //         },
-    //     },
-    //     null,
-    //     RectanglePipelinePushData,
-    // );
-    // errdefer self.rectangle_pipeline.deinit(self.allocator);
 
     self.mesh_pipeline = try graphics.GraphicsPipeline.init(
         allocator,
@@ -121,8 +100,6 @@ pub fn init(allocator: std.mem.Allocator, swapchain: graphics.Swapchain) !void {
 
     self.rectangles_buffer = try graphics.Buffer.init(4096 * @sizeOf(Rectangle), .storage);
     errdefer self.rectangles_buffer.deinit();
-
-    // self.rectangle_pipeline.setDescriptorBuffer(0, 0, self.rectangles_buffer);
 
     const max_vertices = 50_000;
     const max_indices = 50_000;
@@ -199,8 +176,7 @@ pub fn deinit() void {
     defer deinitImGui();
 }
 
-pub fn begin(color_target_image: *const graphics.Image) void {
-    self.color_target_image = color_target_image;
+pub fn begin() void {
     self.rectangles.clearRetainingCapacity();
     self.scissors.clearRetainingCapacity();
 }
@@ -226,7 +202,14 @@ pub fn drawRectangle(rectangle: Rectangle) void {
     self.rectangles.append(self.allocator, rectangle) catch unreachable;
 }
 
-pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData, window: *Window) !void {
+pub fn renderImGuiDrawData(
+    draw_data: *const imgui.ImDrawData,
+    target: graphics.Image,
+    target_aqcuired: graphics.Semaphore,
+    target_render_finished: graphics.Semaphore,
+) !void {
+    _ = target_aqcuired; // autofix
+    _ = target_render_finished; // autofix
     if (draw_data.CmdListsCount == 0 or !draw_data.Valid) return;
 
     const command_buffer = &self.command_buffers[0];
@@ -300,15 +283,13 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData, window: *Window) 
 
         //#Color Pass 1: main
         {
-            const color_target_image = self.color_target_image.?;
-
             command_buffer.beginRenderPass(
                 0,
                 0,
-                color_target_image.width,
-                color_target_image.height,
+                target.width,
+                target.height,
                 &[_]graphics.CommandBuffer.Attachment{.{
-                    .image = color_target_image,
+                    .image = &target,
                 }},
                 null,
             );
@@ -317,17 +298,17 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData, window: *Window) 
             command_buffer.setGraphicsPipeline(self.mesh_pipeline);
             command_buffer.setViewport(
                 0,
-                @as(f32, @floatFromInt(color_target_image.height)),
-                @as(f32, @floatFromInt(color_target_image.width)),
-                -@as(f32, @floatFromInt(color_target_image.height)),
+                @as(f32, @floatFromInt(target.height)),
+                @as(f32, @floatFromInt(target.width)),
+                -@as(f32, @floatFromInt(target.height)),
                 0,
                 1,
             );
             command_buffer.setScissor(
                 0,
                 0,
-                color_target_image.width,
-                color_target_image.height,
+                target.width,
+                target.height,
             );
 
             // const projection = zalgebra.orthographic(0, @intToFloat(f32, window.getWidth()), 0, @intToFloat(f32, window.getHeight()), 0, 1);
@@ -338,8 +319,8 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData, window: *Window) 
                 .{ 0.0, 0.0, -1.0, 0.0 },
                 .{ -1.0, 1.0, 0.0, 1.0 },
             };
-            ortho[0][0] /= @as(f32, @floatFromInt(window.getWidth()));
-            ortho[1][1] /= @as(f32, @floatFromInt(window.getHeight()));
+            ortho[0][0] /= @as(f32, @floatFromInt(target.width));
+            ortho[1][1] /= @as(f32, @floatFromInt(target.height));
 
             command_buffer.setIndexBuffer(self.indices_buffer, .u16);
 
@@ -360,8 +341,8 @@ pub fn renderImGuiDrawData(draw_data: *const imgui.ImDrawData, window: *Window) 
                         .texture_index = @as(u32, @intCast(@intFromPtr(command.TextureId))),
                     });
 
-                    const window_width = @as(f32, @floatFromInt(window.getWidth()));
-                    const window_height = @as(f32, @floatFromInt(window.getHeight()));
+                    const window_width = @as(f32, @floatFromInt(target.width));
+                    const window_height = @as(f32, @floatFromInt(target.height));
 
                     command_buffer.setScissor(
                         @as(u32, @intFromFloat(@max(command.ClipRect.x, 0))),

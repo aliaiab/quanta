@@ -477,17 +477,23 @@ pub fn update() !quanta.app.UpdateResult {
 
     quanta.systems.terminal_velocity_system.run(&state.ecs_scene);
 
-    const image_index = state.swapchain.image_index;
-    const image = state.swapchain.swap_images[image_index];
+    const image = state.swapchain.swap_images[state.swapchain.image_index];
 
     //sneaky hack due to our incomplete swapchain abstraction
-    var color_image: Image = undefined;
-
-    color_image.view = image.view;
-    color_image.handle = image.image;
-    color_image.aspect_mask = .{ .color_bit = true };
-    color_image.width = state.swapchain.extent.width;
-    color_image.height = state.swapchain.extent.height;
+    const color_image: Image = .{
+        .handle = image.image,
+        .type = .@"2d",
+        .view = image.view,
+        .memory_page = undefined,
+        .size = undefined,
+        .format = state.swapchain.surface_format.format,
+        .layout = .color_attachment_optimal,
+        .aspect_mask = .{ .color_bit = true },
+        .width = state.swapchain.extent.width,
+        .height = state.swapchain.extent.height,
+        .depth = 1,
+        .levels = 1,
+    };
 
     {
         try Renderer3D.beginSceneRender(
@@ -496,15 +502,23 @@ pub fn update() !quanta.app.UpdateResult {
             .{ .diffuse = packUnorm4x8(.{ 0.005, 0.005, 0.005, 1 }) },
             0,
         );
-        defer Renderer3D.endSceneRender(state.renderer_scene, state.swapchain, &state.window);
+        defer Renderer3D.endSceneRender(
+            state.renderer_scene,
+            color_image,
+            image.image_acquired,
+            image.render_finished,
+        ) catch unreachable;
 
         quanta.systems.mesh_instance_system.run(&state.ecs_scene, state.renderer_scene);
         quanta.systems.point_light_system.run(&state.ecs_scene, state.renderer_scene);
         quanta.systems.directional_light_system.run(&state.ecs_scene, state.renderer_scene);
     }
 
+    const enable_imgui = true;
+
     //imgui gui
-    if (true) {
+    if (enable_imgui) {
+        //Process UI logic
         {
             try quanta.imgui.driver.begin(&state.window);
             defer quanta.imgui.driver.end();
@@ -711,8 +725,13 @@ pub fn update() !quanta.app.UpdateResult {
         imgui.igRender();
 
         {
-            RendererGui.begin(&color_image);
-            RendererGui.renderImGuiDrawData(imgui.igGetDrawData(), &state.window) catch unreachable;
+            RendererGui.begin();
+            RendererGui.renderImGuiDrawData(
+                imgui.igGetDrawData(),
+                color_image,
+                image.image_acquired,
+                image.render_finished,
+            ) catch unreachable;
         }
     }
 
@@ -725,9 +744,7 @@ pub fn update() !quanta.app.UpdateResult {
     try state.swapchain.present();
     try state.swapchain.swap();
 
-    {
-        state.delta_time = @as(f32, @floatFromInt(std.time.nanoTimestamp() - time_begin)) / @as(f32, @floatFromInt(std.time.ns_per_ms));
-    }
+    state.delta_time = @as(f32, @floatFromInt(std.time.nanoTimestamp() - time_begin)) / @as(f32, @floatFromInt(std.time.ns_per_ms));
 
     return .pass;
 }

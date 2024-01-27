@@ -1,11 +1,3 @@
-const Image = @This();
-
-const std = @import("std");
-const vk = @import("vk.zig");
-const Context = @import("Context.zig");
-const CommandBuffer = @import("CommandBuffer.zig");
-const Buffer = @import("Buffer.zig");
-
 handle: vk.Image,
 type: Type,
 view: vk.ImageView,
@@ -256,3 +248,10 @@ pub fn destroyView(self: Image, view: Image.View) void {
 
     defer Context.self.vkd.destroyImageView(Context.self.device, view.handle, &Context.self.allocation_callbacks);
 }
+
+const Image = @This();
+const std = @import("std");
+const vk = @import("vk.zig");
+const Context = @import("Context.zig");
+const CommandBuffer = @import("CommandBuffer.zig");
+const Buffer = @import("Buffer.zig");

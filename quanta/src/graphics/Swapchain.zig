@@ -1,14 +1,3 @@
-const Swapchain = @This();
-const std = @import("std");
-const vk = @import("vk.zig");
-const Context = @import("Context.zig");
-const Semaphore = @import("Semaphore.zig");
-
-pub const PresentState = enum {
-    optimal,
-    suboptimal,
-};
-
 allocator: std.mem.Allocator,
 surface: vk.SurfaceKHR,
 surface_format: vk.SurfaceFormatKHR,
@@ -44,8 +33,6 @@ pub fn initRecycle(allocator: std.mem.Allocator, surface: vk.SurfaceKHR, old_han
         .concurrent
     else
         .exclusive;
-
-    std.log.info("swapchain image sharing mode: {}", .{sharing_mode});
 
     const handle = try Context.self.vkd.createSwapchainKHR(Context.self.device, &.{
         .flags = .{},
@@ -144,8 +131,6 @@ pub fn present(self: *Swapchain) !void {
     const surface_capabilities = try Context.self.vki.getPhysicalDeviceSurfaceCapabilitiesKHR(Context.self.physical_device, self.surface);
 
     if (self.extent.width != surface_capabilities.current_extent.width or self.extent.height != surface_capabilities.current_extent.height) {
-        std.log.err("Lol the surface and swapchain don't agree!!!: surface current extent: {}", .{surface_capabilities.current_extent});
-
         try Context.self.vkd.queueWaitIdle(Context.self.graphics_queue);
 
         try self.recreate();
@@ -300,3 +285,14 @@ fn findPresentMode(surface: vk.SurfaceKHR, allocator: std.mem.Allocator) !vk.Pre
 
     return .fifo_khr;
 }
+
+pub const PresentState = enum {
+    optimal,
+    suboptimal,
+};
+
+const Swapchain = @This();
+const std = @import("std");
+const vk = @import("vk.zig");
+const Context = @import("Context.zig");
+const Semaphore = @import("Semaphore.zig");
