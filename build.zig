@@ -72,13 +72,14 @@ pub fn build(builder: *std.Build) !void {
         .name = "asset_compiler",
         .root_source_file = .{ .path = builder.pathFromRoot("quanta/src/asset/compiler_main.zig") },
         .target = builder.host,
-        .optimize = optimize,
+        .optimize = .Debug,
     });
 
     asset_compiler.root_module.addImport("quanta", quanta_module);
 
     const run_asset_compiler = builder.addRunArtifact(asset_compiler);
-    _ = run_asset_compiler;
+
+    run_asset_compiler.addArg(builder.pathFromRoot("example/src/assets/"));
 
     const include_tracy = builder.option(bool, "include_tracy", "Include and compile the tracy client into the application") orelse false;
 
@@ -129,7 +130,7 @@ pub fn build(builder: *std.Build) !void {
         const run_cmd = builder.addRunArtifact(exe);
 
         run_cmd.step.dependOn(builder.getInstallStep());
-        // run_cmd.step.dependOn(&run_asset_compiler.step);
+        run_cmd.step.dependOn(&run_asset_compiler.step);
 
         if (builder.args) |args| {
             run_cmd.addArgs(args);
@@ -139,6 +140,10 @@ pub fn build(builder: *std.Build) !void {
 
         const run_step = builder.step("run_example", "Run the example application");
         run_step.dependOn(&run_cmd.step);
+
+        const compile_assets_step = builder.step("compile_assets", "Compile the assets for example");
+
+        compile_assets_step.dependOn(&run_asset_compiler.step);
     }
 
     //tests

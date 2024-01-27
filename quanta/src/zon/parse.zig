@@ -86,7 +86,7 @@ fn valueAsType(comptime T: type, allocator: std.mem.Allocator, value: Value) !T 
                         u8 => {
                             data = switch (value) {
                                 .array => try arrayValueAsSliceType(T, allocator, value.array),
-                                .string => try allocator.dupe(u8, value.string),
+                                .string => try allocator.dupe(u8, value.string[1 .. value.string.len - 1]),
                                 else => unreachable,
                             };
                         },

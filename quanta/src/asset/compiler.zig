@@ -1,6 +1,7 @@
 pub const CompilerContext = struct {
     allocator: std.mem.Allocator,
     compilers: []const AssetCompilerInfo,
+    directory_path: []const u8,
     ///Paths of files to compile
     file_paths: [][]const u8,
     assets: std.ArrayListUnmanaged(Archive.AssetDescription),
@@ -46,8 +47,10 @@ pub const CompilerContext = struct {
             if (std.mem.eql(u8, compiler.file_extension, extension)) {
                 const compiled_data = try compiler.compile(self, path, source_data, metadata);
 
+                const name = try std.fs.path.relative(self.allocator, self.directory_path, path);
+
                 try self.assets.append(self.allocator, .{
-                    .name = try self.allocator.dupe(u8, path),
+                    .name = name,
                     .source_data = compiled_data,
                     .source_data_alignment = @alignOf(u32),
                     .mapped_data_size = compiled_data.len,
@@ -56,6 +59,13 @@ pub const CompilerContext = struct {
                 return;
             }
         }
+    }
+
+    pub fn pathFromRoot(
+        self: CompilerContext,
+        path: []const u8,
+    ) ![]u8 {
+        return try std.fs.path.join(self.allocator, &.{ self.directory_path, path });
     }
 };
 
@@ -105,5 +115,4 @@ pub const AssetCompilerInfo = struct {
 const quanta = @import("quanta");
 const std = @import("std");
 const zon = quanta.zon;
-const importers = importers;
 const Archive = quanta.asset.Archive;

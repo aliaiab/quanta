@@ -1,5 +1,5 @@
 pub fn AssetPath(comptime T: ?type) type {
-    _ = T;
+    _ = T; // autofix
     return struct {
         path: []const u8,
     };
@@ -11,6 +11,8 @@ pub fn Asset(comptime T: ?type) type {
         type_index: u32 = std.math.maxInt(u32),
         ///Index into the asset array for this type
         index: u32 = std.math.maxInt(u32),
+
+        pub const AssetType = T;
 
         pub const nil = Asset(T){};
 
@@ -145,22 +147,15 @@ pub fn create(self: *AssetStorage, comptime T: type) Asset(T) {
     return handle.cast(T);
 }
 
-pub fn load(self: *AssetStorage, comptime T: type, name: []const u8) Asset(T) {
+///TODO: use inline parameters proposal for name: https://github.com/ziglang/zig/issues/7772
+pub fn load(self: *AssetStorage, comptime T: type, comptime name: []const u8) !Asset(T) {
+    const asset_data = try self.archive.getAssetDataFromName(name);
+
     const handle = self.create(T);
 
     const data = @constCast(self.get(T, handle).?);
 
-    //problem: getting asset descriptors from paths
-    //solution: some kind of asset descriptor path table
-
-    const asset_data = self.archive.getAssetDataFromName(name);
-
-    //Ideally we would schedule this load function and the io loading itself to
-    //another thread, but that requires a robust way to schedule jobs
-
-    self.asset_load_fns.items[handle.type_index](self, handle.toUntyped(), data, asset_data) catch {
-        //If the load function fails, then invalidate the handle somehow?
-    };
+    try self.asset_load_fns.items[handle.type_index](self, handle.toUntyped(), data, asset_data);
 
     return handle;
 }
