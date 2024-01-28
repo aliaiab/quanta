@@ -68,23 +68,6 @@ pub fn build(builder: *std.Build) !void {
     //TODO: dynamically load instead of linking
     quanta_module.linkSystemLibrary("xkbcommon", .{});
 
-    const asset_compiler = builder.addExecutable(.{
-        .name = "asset_compiler",
-        .root_source_file = .{ .path = builder.pathFromRoot("quanta/src/asset/compiler_main.zig") },
-        .target = builder.host,
-        .optimize = .Debug,
-    });
-
-    asset_compiler.root_module.addImport("quanta", quanta_module);
-
-    const run_asset_compiler = builder.addRunArtifact(asset_compiler);
-
-    run_asset_compiler.addArg(builder.pathFromRoot("example/src/assets/"));
-    run_asset_compiler.addArg(builder.pathFromRoot("zig-out/bin/"));
-    run_asset_compiler.addArg("example_assets_archive");
-
-    builder.installArtifact(asset_compiler);
-
     const include_tracy = builder.option(bool, "include_tracy", "Include and compile the tracy client into the application") orelse false;
 
     //example
@@ -103,6 +86,18 @@ pub fn build(builder: *std.Build) !void {
 
         exe.root_module.addImport("quanta", quanta_module);
 
+        const compile_assets = addAssetCompileStepNoDep(
+            builder,
+            quanta_module,
+            .{
+                .source_directory = builder.pathFromRoot("example/src/assets/"),
+                .install_directory = builder.pathFromRoot("zig-out/bin/"),
+                .artifact_name = "example_assets_archive",
+                .target = example_target,
+                .optimize = optimize,
+            },
+        );
+
         if (include_tracy) {
             exe.addCSourceFile(.{
                 .file = .{ .path = builder.pathFromRoot("quanta/lib/tracy/public/TracyClient.cpp") },
@@ -113,7 +108,7 @@ pub fn build(builder: *std.Build) !void {
         const run_cmd = builder.addRunArtifact(exe);
 
         run_cmd.step.dependOn(builder.getInstallStep());
-        run_cmd.step.dependOn(&run_asset_compiler.step);
+        run_cmd.step.dependOn(compile_assets.step);
 
         if (builder.args) |args| {
             run_cmd.addArgs(args);
@@ -126,7 +121,7 @@ pub fn build(builder: *std.Build) !void {
 
         const compile_assets_step = builder.step("compile_assets", "Compile the assets for example");
 
-        compile_assets_step.dependOn(&run_asset_compiler.step);
+        compile_assets_step.dependOn(compile_assets.step);
     }
 
     //tests
@@ -143,6 +138,91 @@ pub fn build(builder: *std.Build) !void {
 
         test_step.dependOn(&run_quanta_tests.step);
     }
+}
+
+pub const AssetCompileOptions = struct {
+    ///The directory containing source assets
+    source_directory: []const u8,
+    ///The directory to install the compiled archives
+    install_directory: []const u8,
+    ///The name of the compiled archive
+    artifact_name: []const u8,
+    ///The target platform that the assets will be built for
+    target: ?std.Build.ResolvedTarget = null,
+    ///The optimization level that the assets will be built with
+    optimize: ?std.builtin.OptimizeMode = null,
+};
+
+const AssetCompileStep = struct {
+    step: *std.Build.Step,
+    run_step: *std.Build.Step.Run,
+};
+
+pub fn addAssetCompileStep(
+    builder: *std.Build,
+    quanta_dependency: std.Build.Dependency,
+    config: AssetCompileOptions,
+) AssetCompileStep {
+    const quanta_module = quanta_dependency.module("quanta");
+
+    //TODO: allow user to override asset compiler
+    const asset_compiler = builder.addExecutable(.{
+        .name = "asset_compiler",
+        .root_source_file = quanta_dependency.path("quanta/src/asset/compiler_main.zig"),
+        .target = builder.host,
+        .optimize = .ReleaseSafe,
+    });
+
+    asset_compiler.root_module.addImport("quanta", quanta_module);
+
+    const run_asset_compiler = builder.addRunArtifact(asset_compiler);
+
+    const optimize = if (config.optimize) |opt| opt else .Debug;
+    const target = if (config.target) |targ| targ else builder.host;
+    _ = target; // autofix
+
+    run_asset_compiler.addArg(@tagName(optimize));
+
+    run_asset_compiler.addArg(config.source_directory);
+    run_asset_compiler.addArg(config.install_directory);
+    run_asset_compiler.addArg(config.artifact_name);
+
+    return .{
+        .step = &run_asset_compiler.step,
+        .run_step = run_asset_compiler,
+    };
+}
+
+///Custom asset compile step for quanta-example
+fn addAssetCompileStepNoDep(
+    builder: *std.Build,
+    quanta_module: *std.Build.Module,
+    config: AssetCompileOptions,
+) AssetCompileStep {
+    const asset_compiler = builder.addExecutable(.{
+        .name = "asset_compiler",
+        .root_source_file = std.Build.LazyPath.relative("quanta/src/asset/compiler_main.zig"),
+        .target = builder.host,
+        .optimize = .Debug,
+    });
+
+    asset_compiler.root_module.addImport("quanta", quanta_module);
+
+    const run_asset_compiler = builder.addRunArtifact(asset_compiler);
+
+    const optimize = if (config.optimize) |opt| opt else .Debug;
+    const target = if (config.target) |targ| targ else builder.host;
+    _ = target; // autofix
+
+    run_asset_compiler.addArg(@tagName(optimize));
+    run_asset_compiler.addArg(config.source_directory);
+    run_asset_compiler.addArg(config.install_directory);
+    run_asset_compiler.addArg(config.artifact_name);
+
+    return .{
+        .step = &run_asset_compiler.step,
+        .run_step = run_asset_compiler,
+    };
 }
 
 const std = @import("std");

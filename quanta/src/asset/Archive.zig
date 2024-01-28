@@ -197,13 +197,11 @@ pub fn decodeHeaderOnlyFromFile(allocator: std.mem.Allocator, file: std.fs.File)
 pub fn getAssetIndexFromName(self: Archive, name: []const u8) ?usize {
     const hash = hashAssetName(name);
 
-    for (self.asset_name_hashes, 0..) |asset_name_hash, index| {
+    return for (self.asset_name_hashes, 0..) |asset_name_hash, index| {
         if (hash == asset_name_hash) {
-            return index;
+            break index;
         }
-    }
-
-    return null;
+    } else null;
 }
 
 pub fn getAssetData(self: Archive, asset: AssetDescriptor) []u8 {

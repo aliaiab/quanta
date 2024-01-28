@@ -55,6 +55,10 @@ pub fn main() !void {
 
     _ = process_args.next();
 
+    const optimize_mode = process_args.next().?;
+
+    std.log.info("assets root optimize_mode = {s}", .{optimize_mode});
+
     //TODO: allow for multiple asset directories
     const asset_directory_path = process_args.next().?;
 
