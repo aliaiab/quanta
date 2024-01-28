@@ -49,6 +49,8 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (false) std.debug.assert(gpa.deinit() != .leak);
 
+    const allocator = gpa.allocator();
+
     var process_args = std.process.args();
 
     _ = process_args.next();
@@ -56,7 +58,40 @@ pub fn main() !void {
     //TODO: allow for multiple asset directories
     const asset_directory_path = process_args.next().?;
 
-    const allocator = gpa.allocator();
+    const install_directory = process_args.next().?;
+    const archive_name = process_args.next().?;
+
+    var previous_exists: bool = true;
+
+    const archive_path = try std.fs.path.join(allocator, &.{ install_directory, archive_name });
+    defer allocator.free(archive_path);
+
+    const asset_archive_file = std.fs.cwd().openFile(
+        archive_path,
+        .{ .mode = .read_write },
+    ) catch blk: {
+        previous_exists = false;
+
+        break :blk try std.fs.cwd().createFile(archive_path, .{});
+    };
+    defer asset_archive_file.close();
+
+    var previous_archive = Archive{
+        .image = &.{},
+        .assets = &.{},
+        .asset_content = &.{},
+        .asset_name_hashes = &.{},
+        .asset_content_hashes = &.{},
+    };
+
+    if (previous_exists) {
+        //TODO: only read headers and lazily load old artifacts
+        // var previous_archive = try Archive.decodeHeaderOnlyFromFile(allocator, asset_archive_file);
+        const archive_all = try asset_archive_file.readToEndAlloc(allocator, std.math.maxInt(usize));
+        previous_archive = try Archive.decode(allocator, archive_all);
+    }
+
+    defer if (previous_exists) previous_archive.decodeFree(allocator);
 
     const asset_compilers = [_]compiler.AssetCompilerInfo{
         compiler.AssetCompilerInfo.fromType(importers.gltf.Import),
@@ -69,6 +104,9 @@ pub fn main() !void {
         .file_paths = &.{},
         .assets = .{},
         .directory_path = asset_directory_path,
+        .hasher = std.Build.Cache.Hasher.init("ASSET" ++ [_]u8{0} ** 11),
+        .previous_archive = previous_archive,
+        .compiled_asset_count = 0,
     };
     defer context.deinit();
 
@@ -77,21 +115,16 @@ pub fn main() !void {
     sub_directory.close();
 
     for (context.assets.items, 0..) |asset_desc, i| {
-        std.log.info("Asset[{}] = {}", .{ i, asset_desc.mapped_data_size });
+        std.log.info("Asset[{}]: size = {}, content_hash = 0x{x}", .{
+            i,
+            asset_desc.mapped_data_size,
+            asset_desc.content_hash,
+        });
     }
 
-    std.log.info("Hello from asset compile!", .{});
+    std.log.info("Recompiled {} assets", .{context.compiled_asset_count});
 
     const asset_archive = try asset.Archive.encode(allocator, context.assets.items);
-
-    const install_directory = "zig-out/bin/assets/";
-    const archive_name = "example_assets_archive_2";
-
-    const asset_archive_file = std.fs.cwd().openFile(
-        install_directory ++ archive_name,
-        .{ .mode = .write_only },
-    ) catch try std.fs.cwd().createFile(install_directory ++ archive_name, .{});
-    defer asset_archive_file.close();
 
     try asset_archive_file.setEndPos(0);
     try asset_archive_file.seekTo(0);

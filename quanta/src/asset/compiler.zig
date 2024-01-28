@@ -2,14 +2,16 @@ pub const CompilerContext = struct {
     allocator: std.mem.Allocator,
     compilers: []const AssetCompilerInfo,
     directory_path: []const u8,
-    ///Paths of files to compile
     file_paths: [][]const u8,
     assets: std.ArrayListUnmanaged(Archive.AssetDescription),
+    compiled_asset_count: usize,
+    previous_archive: Archive,
+    hasher: Hasher,
 
     pub fn deinit(self: *CompilerContext) void {
         for (self.assets.items) |asset| {
             self.allocator.free(asset.name);
-            self.allocator.free(asset.source_data);
+            // if (asset.is_new) self.allocator.free(asset.source_data);
         }
 
         self.assets.deinit(self.allocator);
@@ -45,16 +47,56 @@ pub const CompilerContext = struct {
 
         for (self.compilers) |compiler| {
             if (std.mem.eql(u8, compiler.file_extension, extension)) {
-                const compiled_data = try compiler.compile(self, path, source_data, metadata);
+                self.hasher = std.Build.Cache.Hasher.init("ASSET" ++ [_]u8{0} ** 11);
+
+                //TODO: use parsed metadata representation instead of text
+                self.hasher.update(metadata);
+                self.hasher.update(source_data);
+
+                const hash = self.hasher.finalInt();
+
+                std.log.info("New Hash = 0x{x}", .{hash});
 
                 const name = try std.fs.path.relative(self.allocator, self.directory_path, path);
+
+                std.log.info("Name = {s}", .{name});
+
+                std.log.info("prev archive: asset_count = {}", .{self.previous_archive.asset_name_hashes.len});
+
+                //handle when the asset doesn't exist in the prev archive (the asset is new)
+                const old_asset_index = self.previous_archive.getAssetIndexFromName(name) orelse null;
+
+                const old_asset_content_hash = if (old_asset_index != null) self.previous_archive.asset_content_hashes[old_asset_index.?] else null;
+
+                //The asset contents are the same, don't compile---use the old one
+                if (old_asset_content_hash != null and old_asset_content_hash.? == hash) {
+                    std.log.info("Old Hash = 0x{x}", .{old_asset_content_hash.?});
+
+                    const previous_asset_header = self.previous_archive.assets[old_asset_index.?];
+
+                    try self.assets.append(self.allocator, .{
+                        .name = name,
+                        .source_data = self.previous_archive.image[previous_asset_header.source_data_offset .. previous_asset_header.source_data_offset + previous_asset_header.source_data_size],
+                        .source_data_alignment = previous_asset_header.mapped_data_alignment,
+                        .mapped_data_size = previous_asset_header.mapped_data_size,
+                        .content_hash = hash,
+                    });
+
+                    return;
+                }
+
+                const compiled_data = try compiler.compile(self, path, source_data, metadata);
 
                 try self.assets.append(self.allocator, .{
                     .name = name,
                     .source_data = compiled_data,
+                    //Specify alignment from Asset.compile() functions
                     .source_data_alignment = @alignOf(u32),
                     .mapped_data_size = compiled_data.len,
+                    .content_hash = hash,
                 });
+
+                self.compiled_asset_count += 1;
 
                 return;
             }
@@ -112,7 +154,8 @@ pub const AssetCompilerInfo = struct {
     }
 };
 
-const quanta = @import("quanta");
 const std = @import("std");
+const quanta = @import("quanta");
 const zon = quanta.zon;
 const Archive = quanta.asset.Archive;
+const Hasher = std.Build.Cache.Hasher;

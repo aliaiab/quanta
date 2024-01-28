@@ -80,29 +80,10 @@ pub fn build(builder: *std.Build) !void {
     const run_asset_compiler = builder.addRunArtifact(asset_compiler);
 
     run_asset_compiler.addArg(builder.pathFromRoot("example/src/assets/"));
+    run_asset_compiler.addArg(builder.pathFromRoot("zig-out/bin/assets/"));
+    run_asset_compiler.addArg("example_assets_archive_2");
 
     const include_tracy = builder.option(bool, "include_tracy", "Include and compile the tracy client into the application") orelse false;
-
-    //example asset build
-    {
-        const exe = builder.addExecutable(.{
-            .name = "example_assets",
-            .root_source_file = std.Build.LazyPath.relative("example/src/asset_build.zig"),
-            .target = builder.host,
-            .optimize = optimize,
-        });
-
-        builder.installArtifact(exe);
-
-        exe.root_module.addImport("quanta", quanta_module);
-
-        const run_cmd = builder.addRunArtifact(exe);
-
-        run_cmd.step.dependOn(builder.getInstallStep());
-
-        const run_step = builder.step("build_assets", "Build example assets");
-        run_step.dependOn(&run_cmd.step);
-    }
 
     //example
     {
