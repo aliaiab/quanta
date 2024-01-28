@@ -1,0 +1,4 @@
+.{
+    .optimize = .ReleaseFast,
+    .lod_count = 1,
+}

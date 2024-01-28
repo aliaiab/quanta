@@ -80,8 +80,8 @@ pub fn build(builder: *std.Build) !void {
     const run_asset_compiler = builder.addRunArtifact(asset_compiler);
 
     run_asset_compiler.addArg(builder.pathFromRoot("example/src/assets/"));
-    run_asset_compiler.addArg(builder.pathFromRoot("zig-out/bin/assets/"));
-    run_asset_compiler.addArg("example_assets_archive_2");
+    run_asset_compiler.addArg(builder.pathFromRoot("zig-out/bin/"));
+    run_asset_compiler.addArg("example_assets_archive");
 
     const include_tracy = builder.option(bool, "include_tracy", "Include and compile the tracy client into the application") orelse false;
 

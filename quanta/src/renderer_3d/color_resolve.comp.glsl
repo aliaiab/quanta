@@ -16,7 +16,6 @@ void main()
     ivec2 write_target_size = imageSize(write_target);
 
     if (
-        !(gl_GlobalInvocationID.x < target_size.x && gl_GlobalInvocationID.y < target_size.y) || 
         !(gl_GlobalInvocationID.x < write_target_size.x && gl_GlobalInvocationID.y < write_target_size.y)
     )
     {

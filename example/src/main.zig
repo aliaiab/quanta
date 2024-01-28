@@ -122,7 +122,7 @@ pub fn init() !void {
     try quanta.imgui.driver.init();
     try RendererGui.init(state.allocator, state.swapchain);
 
-    const asset_archive_file_path = "assets/example_assets_archive_2";
+    const asset_archive_file_path = "example_assets_archive";
 
     const asset_archive_fd = try std.os.open(asset_archive_file_path, std.os.O.RDONLY, std.os.S.IRUSR | std.os.S.IWUSR);
     defer std.os.close(asset_archive_fd);
@@ -140,7 +140,7 @@ pub fn init() !void {
     state.asset_storage = asset.AssetStorage.init(state.allocator, state.asset_archive);
     errdefer state.asset_storage.deinit();
 
-    const test_scene_handle = try state.asset_storage.load(gltf.Import, "light_test/light_test.gltf");
+    const test_scene_handle = try state.asset_storage.load(gltf.Import, "suzanne/Suzanne.gltf");
 
     const test_scene_import = state.asset_storage.get(gltf.Import, test_scene_handle).?;
 
