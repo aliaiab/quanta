@@ -54,14 +54,17 @@ pub fn init(
 
     self.screen = &iter.data[0];
 
-    const values = [_]u32{
-        xcb.XCB_EVENT_MASK_EXPOSURE | xcb.XCB_EVENT_MASK_BUTTON_PRESS |
-            xcb.XCB_EVENT_MASK_BUTTON_RELEASE | xcb.XCB_EVENT_MASK_POINTER_MOTION |
-            xcb.XCB_EVENT_MASK_ENTER_WINDOW | xcb.XCB_EVENT_MASK_LEAVE_WINDOW |
-            xcb.XCB_EVENT_MASK_KEY_PRESS | xcb.XCB_EVENT_MASK_KEY_RELEASE | xcb.XCB_EVENT_MASK_PROPERTY_CHANGE |
-            xcb.XCB_EVENT_MASK_STRUCTURE_NOTIFY | xcb.XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | xcb.XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | xcb.XCB_EVENT_MASK_VISIBILITY_CHANGE |
-            xcb.XCB_EVENT_MASK_ENTER_WINDOW | xcb.XCB_EVENT_MASK_FOCUS_CHANGE | xcb.XCB_EVENT_MASK_OWNER_GRAB_BUTTON | xcb.XCB_EVENT_MASK_POINTER_MOTION_HINT,
-    };
+    const xinput_extension_info = self.xcb_library.queryExtension(self.connection, "XInputExtension");
+
+    std.log.info("xinput_extension_info = {}", .{xinput_extension_info});
+
+    const values = [_]u32{xcb.XCB_EVENT_MASK_EXPOSURE | xcb.XCB_EVENT_MASK_BUTTON_PRESS |
+        xcb.XCB_EVENT_MASK_BUTTON_RELEASE | xcb.XCB_EVENT_MASK_POINTER_MOTION |
+        xcb.XCB_EVENT_MASK_ENTER_WINDOW | xcb.XCB_EVENT_MASK_LEAVE_WINDOW |
+        xcb.XCB_EVENT_MASK_KEY_PRESS | xcb.XCB_EVENT_MASK_KEY_RELEASE | xcb.XCB_EVENT_MASK_PROPERTY_CHANGE |
+        xcb.XCB_EVENT_MASK_STRUCTURE_NOTIFY | xcb.XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | xcb.XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | xcb.XCB_EVENT_MASK_VISIBILITY_CHANGE |
+        xcb_input.XCB_INPUT_XI_EVENT_MASK_RAW_MOTION | xcb_input.XCB_INPUT_XI_EVENT_MASK_MOTION | xcb_input.XCB_INPUT_XI_EVENT_MASK_RAW_KEY_PRESS |
+        xcb.XCB_EVENT_MASK_ENTER_WINDOW | xcb.XCB_EVENT_MASK_FOCUS_CHANGE | xcb.XCB_EVENT_MASK_OWNER_GRAB_BUTTON | xcb.XCB_EVENT_MASK_POINTER_MOTION_HINT};
 
     self.window = self.xcb_library.createWindow(
         self.connection,
@@ -76,6 +79,24 @@ pub fn init(
         self.screen.root_visual,
         xcb.XCB_CW_EVENT_MASK,
         &values,
+    );
+
+    const input_mask: extern struct {
+        head: xcb_input.xcb_input_event_mask_t,
+        mask: xcb_input.xcb_input_xi_event_mask_t,
+    } = .{
+        .head = .{
+            .deviceid = xcb_input.XCB_INPUT_DEVICE_ALL_MASTER,
+            .mask_len = 1,
+        },
+        .mask = xcb_input.XCB_INPUT_XI_EVENT_MASK_MOTION | xcb_input.XCB_INPUT_XI_EVENT_MASK_RAW_MOTION,
+    };
+
+    _ = xcb_input.xcb_input_xi_select_events_checked(
+        @ptrCast(self.connection),
+        @intFromEnum(self.window),
+        1,
+        &input_mask.head,
     );
 
     _ = self.xcb_library.changeProperty(
@@ -152,20 +173,10 @@ pub fn deinit(self: *XcbWindow, allocator: std.mem.Allocator) void {
 pub fn pollEvents(self: *XcbWindow) !bool {
     self.previous_key_map = self.key_map;
 
-    {
-        const reply = self.xcb_library.queryPointer(self.connection, self.window);
-        _ = reply; // autofix
+    const query_pointer = self.xcb_library.queryPointer(self.connection, self.window);
 
-        // self.mouse_position = .{ reply.win_x, reply.win_y };
-    }
-
-    {
-        // const cookie = xcb.xcb_get_geometry(self.connection, self.window);
-        // const reply = xcb.xcb_get_geometry_reply(self.connection, cookie, null);
-
-        // self.width = reply.*.width;
-        // self.height = reply.*.height;
-    }
+    self.mouse_position[0] = query_pointer.win_x;
+    self.mouse_position[1] = query_pointer.win_y;
 
     while (self.xcb_library.pollForEvent(self.connection)) |event| {
         switch (event) {
@@ -182,7 +193,9 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                     .index_1 => self.mouse_map[@intFromEnum(windowing.MouseButton.left)] = false,
                     .index_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.right)] = false,
                     .index_3 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = false,
-                    else => {},
+                    .index_4, .index_5 => {
+                        //Apparently should indicate scrolling
+                    },
                 }
             },
             .key_press => |key_press| {
@@ -237,8 +250,6 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                     xkb.XKB_KEY_backslash => self.key_map[@intFromEnum(windowing.Key.backslash)] = true,
                     xkb.XKB_KEY_botrightsqbracket => self.key_map[@intFromEnum(windowing.Key.right_bracket)] = true,
                     xkb.XKB_KEY_grave => self.key_map[@intFromEnum(windowing.Key.grave_accent)] = true,
-                    // world_1,
-                    // world_2,
                     xkb.XKB_KEY_Escape => self.key_map[@intFromEnum(windowing.Key.escape)] = true,
                     xkb.XKB_KEY_Return => self.key_map[@intFromEnum(windowing.Key.enter)] = true,
                     xkb.XKB_KEY_Tab => self.key_map[@intFromEnum(windowing.Key.tab)] = true,
@@ -447,6 +458,8 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                     pub var warped: bool = false;
                 };
 
+                std.log.info("motion_notify = {}", .{motion_notify});
+
                 var warped: bool = false;
 
                 // if (motion_notify.event_x != self.getWidth() / 2 or motion_notify.event_y != self.getHeight() / 2) {
@@ -459,19 +472,19 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                     if (predicted_position[0] <= 0 or predicted_position[1] <= 0 or
                         predicted_position[0] >= self.getWidth() - 1 or predicted_position[1] >= self.getHeight() - 1)
                     {
-                        self.xcb_library.warpPointer(
-                            self.connection,
-                            self.window,
-                            self.window,
-                            motion_notify.event_x,
-                            motion_notify.event_y,
-                            self.getWidth(),
-                            self.getHeight(),
-                            @intCast(self.getWidth() / 2),
-                            @intCast(self.getHeight() / 2),
-                            // self.last_mouse_position[0] - self.mouse_motion[0],
-                            // self.last_mouse_position[1] - self.mouse_motion[1],
-                        );
+                        // self.xcb_library.warpPointer(
+                        //     self.connection,
+                        //     self.window,
+                        //     self.window,
+                        //     motion_notify.event_x,
+                        //     motion_notify.event_y,
+                        //     self.getWidth(),
+                        //     self.getHeight(),
+                        //     @intCast(self.getWidth() / 2),
+                        //     @intCast(self.getHeight() / 2),
+                        //     // self.last_mouse_position[0] - self.mouse_motion[0],
+                        //     // self.last_mouse_position[1] - self.mouse_motion[1],
+                        // );
 
                         warped = true;
                     }
@@ -500,6 +513,9 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                     return true;
                 }
             },
+            .xinput_raw_mouse_motion => |raw_mouse_motion| {
+                std.log.info("xinput_raw_mouse_motion = {}", .{raw_mouse_motion});
+            },
             else => {},
         }
     }
@@ -527,7 +543,17 @@ pub fn getHeight(self: XcbWindow) u16 {
 pub fn grabCursor(self: *XcbWindow) void {
     self.hideCursor();
 
-    self.xcb_library.changeWindowAttributes(self.connection, self.window, xcb.XCB_CW_CURSOR, &self.hidden_cursor);
+    _ = self.xcb_library.grabPointer(
+        self.connection,
+        1,
+        self.screen.root,
+        xcb.XCB_EVENT_MASK_BUTTON_PRESS | xcb.XCB_EVENT_MASK_BUTTON_RELEASE | xcb.XCB_EVENT_MASK_POINTER_MOTION,
+        xcb.XCB_GRAB_MODE_ASYNC,
+        xcb.XCB_GRAB_MODE_ASYNC,
+        self.window,
+        @enumFromInt(0),
+        xcb.XCB_CURRENT_TIME,
+    );
 
     self.cursor_grabbed = true;
 }
@@ -596,12 +622,19 @@ pub fn getMouseMotion(self: *XcbWindow) @Vector(2, i16) {
     return self.mouse_motion;
 }
 
+pub fn isFocused(self: *XcbWindow) bool {
+    const focus = self.xcb_library.getInputFocus(self.connection);
+
+    return self.window == focus.focus;
+}
+
 const XcbWindow = @This();
 const XcbWindowSystem = @import("XcbWindowSystem.zig");
 const std = @import("std");
 const windowing = @import("../../windowing.zig");
 const Key = windowing.Key;
 const Action = windowing.Action;
-const xkb = @import("xkbcommon.zig");
 const xcb = @import("xcb.zig");
+const xkb = @import("xkbcommon.zig");
+const xcb_input = @import("xinput.zig");
 const xcb_loader = @import("xcb_loader.zig");

@@ -78,6 +78,10 @@ pub const Library = struct {
         query_pointer: *const fn (c: *Connection, window: Window) callconv(.C) QueryPointerCookie,
         query_pointer_reply: *const fn (c: *Connection, cookie: QueryPointerCookie, e: ?[*][*]GenericError) callconv(.C) *QueryPointerReply,
         warp_pointer: *const fn (c: *Connection, src_window: Window, dst_window: Window, src_x: i16, src_y: i16, src_width: u16, src_height: u16, dst_x: i16, dst_y: i16) callconv(.C) VoidCookie,
+        get_input_focus_unchecked: *const fn (c: *Connection) callconv(.C) GetInputFocusCookie,
+        get_input_focus_reply: *const fn (c: *Connection, cookie: GetInputFocusCookie, e: ?[*][*]GenericError) callconv(.C) *GetInputFocusReply,
+        query_extension: *const fn (c: *Connection, name_len: u16, name: [*]const u8) callconv(.C) QueryExtensionCookie,
+        query_extension_reply: *const fn (c: *Connection, cookie: QueryExtensionCookie, e: ?[*][*]GenericError) callconv(.C) *QueryExtensionReply,
     },
 
     dynamic_library: std.DynLib,
@@ -106,6 +110,12 @@ pub const Library = struct {
 
     pub inline fn disconnect(self: @This(), connection: *Connection) void {
         return self.functions.disconnect(connection);
+    }
+
+    pub inline fn queryExtension(self: @This(), connection: *Connection, name: []const u8) QueryExtensionReply {
+        const cookie = self.functions.query_extension(connection, @intCast(name.len), name.ptr);
+
+        return self.functions.query_extension_reply(connection, cookie, null).*;
     }
 
     pub inline fn getSetup(self: @This(), connection: *Connection) ?*const Setup {
@@ -352,6 +362,15 @@ pub const Library = struct {
             dst_y,
         );
     }
+
+    pub inline fn getInputFocus(
+        self: @This(),
+        connection: *Connection,
+    ) GetInputFocusReply {
+        const cookie = self.functions.get_input_focus_unchecked(connection);
+
+        return self.functions.get_input_focus_reply(connection, cookie, null).*;
+    }
 };
 
 pub const Connection = opaque {};
@@ -565,11 +584,40 @@ pub const QueryPointerReply = extern struct {
     pad0: [2]u8,
 };
 
-pub const GenericEvent = extern struct {
+pub const GetInputFocusCookie = extern struct {
+    sequence: u32,
+};
+
+pub const GetInputFocusReply = extern struct {
+    response_type: u8,
+    revert_to: u8,
+    sequence: u16,
+    length: u32,
+    focus: Window,
+};
+
+pub const QueryExtensionCookie = extern struct {
+    sequence: u32,
+};
+
+pub const QueryExtensionReply = extern struct {
     response_type: u8,
     pad0: u8,
     sequence: u16,
-    pad: [7]u32,
+    length: u32,
+    present: u8,
+    major_opcode: u8,
+    first_event: u8,
+    first_error: u8,
+};
+
+pub const GenericEvent = extern struct {
+    response_type: u8,
+    extension: u8,
+    sequence: u16,
+    length: u32,
+    event_type: u16,
+    pad0: [22]u8,
     full_sequence: u32,
 };
 
@@ -584,6 +632,7 @@ pub const Event = union(enum) {
     leave_notify: void,
     configure_notify: void,
     client_message: ClientMessage,
+    xinput_raw_mouse_motion: XInputRawMouseMotion,
 
     pub const ButtonPress = extern struct {
         response_type: u8,
@@ -699,7 +748,25 @@ pub const Event = union(enum) {
             data32: [5]u32,
         },
     };
+
+    pub const XInputRawMouseMotion = extern struct {
+        response_type: u8,
+        extension: u8,
+        sequence: u16,
+        length: u32,
+        event_type: u16,
+        deviceid: XInputDeviceId,
+        time: Timestamp,
+        detail: u32,
+        sourceid: XInputDeviceId,
+        valuators_len: u16,
+        flags: u32,
+        pad0: [4]u8,
+        full_sequence: u32,
+    };
 };
+
+pub const XInputDeviceId = u16;
 
 pub const Button = enum(u8) {
     index_1 = 1,
@@ -710,6 +777,8 @@ pub const Button = enum(u8) {
 };
 
 fn eventFromGenericEvent(generic_event: *GenericEvent) Event {
+    std.log.info("generic_event.extension = {}", .{generic_event.extension});
+
     switch (generic_event.response_type & ~@as(u8, 0x80)) {
         xcb_c.XCB_BUTTON_PRESS => {
             const event: *Event.ButtonPress = @ptrCast(generic_event);
@@ -762,6 +831,13 @@ fn eventFromGenericEvent(generic_event: *GenericEvent) Event {
                 .client_message = event.*,
             };
         },
+        xcb_input.XCB_INPUT_RAW_MOTION => {
+            const event: *Event.XInputRawMouseMotion = @ptrCast(generic_event);
+
+            return .{
+                .xinput_raw_mouse_motion = event.*,
+            };
+        },
         else => return .none,
     }
 
@@ -770,3 +846,4 @@ fn eventFromGenericEvent(generic_event: *GenericEvent) Event {
 
 const std = @import("std");
 const xcb_c = @import("xcb.zig");
+const xcb_input = @import("xinput.zig");

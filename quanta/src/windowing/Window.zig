@@ -75,6 +75,10 @@ pub inline fn isCursorHidden(self: *Window) bool {
     return self.impl.isCursorHidden();
 }
 
+pub inline fn isFocused(self: *Window) bool {
+    return self.impl.isFocused();
+}
+
 ///Implementation structure
 pub const Impl = switch (windowing.backend) {
     .wayland => @compileError("Wayland not supported"),

@@ -42,15 +42,32 @@ pub fn begin(window: *Window) !void {
 
     time = current_time;
 
-    updateMouseCursor(window);
+    imgui.ImGuiIO_AddFocusEvent(io, window.isFocused());
+
+    updateInputs(window);
 }
 
 pub fn end() void {}
 
-fn updateMouseCursor(window: *Window) void {
+fn updateInputs(window: *Window) void {
     const io = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
     if (io.ConfigFlags & imgui.ImGuiConfigFlags_NoMouseCursorChange == 1 or window.isCursorGrabbed()) {
+        imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Left, false);
+        imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Right, false);
+        imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Middle, false);
+
+        imgui.ImGuiIO_AddMousePosEvent(io, -1, -1);
+
+        imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Ctrl, false);
+        imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Shift, false);
+        imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Alt, false);
+        imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Super, false);
+
+        for (std.enums.values(windowing.Key)) |key| {
+            imgui.ImGuiIO_AddKeyEvent(io, quantaToImGuiKey(key), false);
+        }
+
         return;
     }
 
@@ -94,12 +111,6 @@ fn updateMouseCursor(window: *Window) void {
 //     const io = imgui.igGetIO();
 
 //     imgui.ImGuiIO_AddMouseWheelEvent(io, @as(f32, @floatCast(xoffset)), @as(f32, @floatCast(yoffset)));
-// }
-
-// fn focusedCallback(_: glfw.Window, focused: bool) void {
-//     const io = imgui.igGetIO();
-
-//     imgui.ImGuiIO_AddFocusEvent(io, focused);
 // }
 
 fn quantaToImGuiKey(key: windowing.Key) c_uint {

@@ -405,13 +405,13 @@ pub fn update() !quanta.app.UpdateResult {
         const x_position: f32 = @floatFromInt(state.window.getCursorPosition()[0]);
         const y_position: f32 = @floatFromInt(state.window.getCursorPosition()[1]);
 
-        const mouse_motion: @Vector(2, f32) = @floatFromInt(state.window.getMouseMotion());
+        // const mouse_motion: @Vector(2, f32) = @floatFromInt(state.window.getMouseMotion());
 
-        // const x_offset = x_position - state.last_mouse_x;
-        // const y_offset = state.last_mouse_y - y_position;
+        const x_offset = x_position - state.last_mouse_x;
+        const y_offset = state.last_mouse_y - y_position;
 
-        const x_offset: f32 = mouse_motion[0];
-        const y_offset: f32 = -mouse_motion[1];
+        // const x_offset: f32 = mouse_motion[0];
+        // const y_offset: f32 = -mouse_motion[1];
 
         state.last_mouse_x = x_position;
         state.last_mouse_y = y_position;
