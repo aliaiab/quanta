@@ -12,6 +12,8 @@ pub inline fn init() !WindowSystem {
 
 pub inline fn deinit(self: *WindowSystem) void {
     self.impl.deinit();
+
+    self.* = undefined;
 }
 
 pub inline fn createWindow(
@@ -29,7 +31,7 @@ pub inline fn createWindow(
 }
 
 ///Implementation structure
-pub const Impl = switch (windowing.backend) {
+const Impl = switch (windowing.backend) {
     .wayland => @compileError("Wayland not yet supported"),
     .xcb => @import("xcb/XcbWindowSystem.zig"),
     .win32 => @compileError("Win32 not yet supported"),

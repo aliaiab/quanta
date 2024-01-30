@@ -777,8 +777,6 @@ pub const Button = enum(u8) {
 };
 
 fn eventFromGenericEvent(generic_event: *GenericEvent) Event {
-    std.log.info("generic_event.extension = {}", .{generic_event.extension});
-
     switch (generic_event.response_type & ~@as(u8, 0x80)) {
         xcb_c.XCB_BUTTON_PRESS => {
             const event: *Event.ButtonPress = @ptrCast(generic_event);

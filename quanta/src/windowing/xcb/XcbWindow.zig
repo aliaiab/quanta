@@ -17,9 +17,11 @@ mouse_position: @Vector(2, i16) = .{ 0, 0 },
 last_mouse_position: @Vector(2, i16) = .{ 0, 0 },
 cursor_grabbed: bool = false,
 cursor_hidden: bool = false,
-
 //'raw' mouse motion
 mouse_motion: @Vector(2, i16) = .{ 0, 0 },
+text_buffer: [256]u8 = undefined,
+text_len: usize = 0,
+mouse_scroll: i32 = 0,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -155,6 +157,7 @@ pub fn init(
     self.xcb_library.freePixmap(self.connection, hidden_cursor_pixmap);
 
     self.xcb_library.mapWindow(self.connection, self.window);
+
     _ = self.xcb_library.flush(self.connection);
 
     return self;
@@ -178,6 +181,10 @@ pub fn pollEvents(self: *XcbWindow) !bool {
     self.mouse_position[0] = query_pointer.win_x;
     self.mouse_position[1] = query_pointer.win_y;
 
+    self.text_len = 0;
+
+    self.mouse_scroll = 0;
+
     while (self.xcb_library.pollForEvent(self.connection)) |event| {
         switch (event) {
             .button_press => |button_press| {
@@ -193,261 +200,34 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                     .index_1 => self.mouse_map[@intFromEnum(windowing.MouseButton.left)] = false,
                     .index_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.right)] = false,
                     .index_3 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = false,
-                    .index_4, .index_5 => {
-                        //Apparently should indicate scrolling
+                    .index_4 => {
+                        self.mouse_scroll += 1;
+                    },
+                    .index_5 => {
+                        self.mouse_scroll -= 1;
                     },
                 }
             },
             .key_press => |key_press| {
                 const keysym = xkb.xkb_state_key_get_one_sym(self.xkb_state, key_press.detail);
 
-                switch (keysym) {
-                    xkb.XKB_KEY_space => self.key_map[@intFromEnum(windowing.Key.space)] = true,
-                    xkb.XKB_KEY_apostrophe => self.key_map[@intFromEnum(windowing.Key.apostrophe)] = true,
-                    xkb.XKB_KEY_comma => self.key_map[@intFromEnum(windowing.Key.comma)] = true,
-                    xkb.XKB_KEY_minus => self.key_map[@intFromEnum(windowing.Key.minus)] = true,
-                    xkb.XKB_KEY_period => self.key_map[@intFromEnum(windowing.Key.period)] = true,
-                    xkb.XKB_KEY_slash => self.key_map[@intFromEnum(windowing.Key.slash)] = true,
-                    xkb.XKB_KEY_0 => self.key_map[@intFromEnum(windowing.Key.zero)] = true,
-                    xkb.XKB_KEY_1 => self.key_map[@intFromEnum(windowing.Key.one)] = true,
-                    xkb.XKB_KEY_2 => self.key_map[@intFromEnum(windowing.Key.two)] = true,
-                    xkb.XKB_KEY_3 => self.key_map[@intFromEnum(windowing.Key.three)] = true,
-                    xkb.XKB_KEY_4 => self.key_map[@intFromEnum(windowing.Key.four)] = true,
-                    xkb.XKB_KEY_5 => self.key_map[@intFromEnum(windowing.Key.five)] = true,
-                    xkb.XKB_KEY_6 => self.key_map[@intFromEnum(windowing.Key.six)] = true,
-                    xkb.XKB_KEY_7 => self.key_map[@intFromEnum(windowing.Key.seven)] = true,
-                    xkb.XKB_KEY_8 => self.key_map[@intFromEnum(windowing.Key.eight)] = true,
-                    xkb.XKB_KEY_9 => self.key_map[@intFromEnum(windowing.Key.nine)] = true,
-                    xkb.XKB_KEY_semicolon => self.key_map[@intFromEnum(windowing.Key.semicolon)] = true,
-                    xkb.XKB_KEY_equal => self.key_map[@intFromEnum(windowing.Key.equal)] = true,
-                    xkb.XKB_KEY_a => self.key_map[@intFromEnum(windowing.Key.a)] = true,
-                    xkb.XKB_KEY_b => self.key_map[@intFromEnum(windowing.Key.b)] = true,
-                    xkb.XKB_KEY_c => self.key_map[@intFromEnum(windowing.Key.c)] = true,
-                    xkb.XKB_KEY_d => self.key_map[@intFromEnum(windowing.Key.d)] = true,
-                    xkb.XKB_KEY_E, xkb.XKB_KEY_e => self.key_map[@intFromEnum(windowing.Key.e)] = true,
-                    xkb.XKB_KEY_f => self.key_map[@intFromEnum(windowing.Key.f)] = true,
-                    xkb.XKB_KEY_g => self.key_map[@intFromEnum(windowing.Key.g)] = true,
-                    xkb.XKB_KEY_h => self.key_map[@intFromEnum(windowing.Key.h)] = true,
-                    xkb.XKB_KEY_i => self.key_map[@intFromEnum(windowing.Key.i)] = true,
-                    xkb.XKB_KEY_j => self.key_map[@intFromEnum(windowing.Key.j)] = true,
-                    xkb.XKB_KEY_k => self.key_map[@intFromEnum(windowing.Key.k)] = true,
-                    xkb.XKB_KEY_l => self.key_map[@intFromEnum(windowing.Key.l)] = true,
-                    xkb.XKB_KEY_m => self.key_map[@intFromEnum(windowing.Key.m)] = true,
-                    xkb.XKB_KEY_n => self.key_map[@intFromEnum(windowing.Key.n)] = true,
-                    xkb.XKB_KEY_o => self.key_map[@intFromEnum(windowing.Key.o)] = true,
-                    xkb.XKB_KEY_p => self.key_map[@intFromEnum(windowing.Key.p)] = true,
-                    xkb.XKB_KEY_q => self.key_map[@intFromEnum(windowing.Key.q)] = true,
-                    xkb.XKB_KEY_r => self.key_map[@intFromEnum(windowing.Key.r)] = true,
-                    xkb.XKB_KEY_s => self.key_map[@intFromEnum(windowing.Key.s)] = true,
-                    xkb.XKB_KEY_t => self.key_map[@intFromEnum(windowing.Key.t)] = true,
-                    xkb.XKB_KEY_u => self.key_map[@intFromEnum(windowing.Key.u)] = true,
-                    xkb.XKB_KEY_v => self.key_map[@intFromEnum(windowing.Key.v)] = true,
-                    xkb.XKB_KEY_W, xkb.XKB_KEY_w => self.key_map[@intFromEnum(windowing.Key.w)] = true,
-                    xkb.XKB_KEY_x => self.key_map[@intFromEnum(windowing.Key.x)] = true,
-                    xkb.XKB_KEY_y => self.key_map[@intFromEnum(windowing.Key.y)] = true,
-                    xkb.XKB_KEY_z => self.key_map[@intFromEnum(windowing.Key.z)] = true,
-                    xkb.XKB_KEY_botleftsqbracket => self.key_map[@intFromEnum(windowing.Key.left_bracket)] = true,
-                    xkb.XKB_KEY_backslash => self.key_map[@intFromEnum(windowing.Key.backslash)] = true,
-                    xkb.XKB_KEY_botrightsqbracket => self.key_map[@intFromEnum(windowing.Key.right_bracket)] = true,
-                    xkb.XKB_KEY_grave => self.key_map[@intFromEnum(windowing.Key.grave_accent)] = true,
-                    xkb.XKB_KEY_Escape => self.key_map[@intFromEnum(windowing.Key.escape)] = true,
-                    xkb.XKB_KEY_Return => self.key_map[@intFromEnum(windowing.Key.enter)] = true,
-                    xkb.XKB_KEY_Tab => self.key_map[@intFromEnum(windowing.Key.tab)] = true,
-                    xkb.XKB_KEY_BackSpace => self.key_map[@intFromEnum(windowing.Key.backspace)] = true,
-                    xkb.XKB_KEY_Insert => self.key_map[@intFromEnum(windowing.Key.insert)] = true,
-                    xkb.XKB_KEY_Delete => self.key_map[@intFromEnum(windowing.Key.delete)] = true,
-                    xkb.XKB_KEY_Right => self.key_map[@intFromEnum(windowing.Key.right)] = true,
-                    xkb.XKB_KEY_Left => self.key_map[@intFromEnum(windowing.Key.left)] = true,
-                    xkb.XKB_KEY_Down => self.key_map[@intFromEnum(windowing.Key.down)] = true,
-                    xkb.XKB_KEY_Up => self.key_map[@intFromEnum(windowing.Key.up)] = true,
-                    xkb.XKB_KEY_Page_Up => self.key_map[@intFromEnum(windowing.Key.page_up)] = true,
-                    xkb.XKB_KEY_Page_Down => self.key_map[@intFromEnum(windowing.Key.page_down)] = true,
-                    xkb.XKB_KEY_Home => self.key_map[@intFromEnum(windowing.Key.home)] = true,
-                    xkb.XKB_KEY_End => self.key_map[@intFromEnum(windowing.Key.end)] = true,
-                    xkb.XKB_KEY_Caps_Lock => self.key_map[@intFromEnum(windowing.Key.caps_lock)] = true,
-                    xkb.XKB_KEY_Scroll_Lock => self.key_map[@intFromEnum(windowing.Key.scroll_lock)] = true,
-                    xkb.XKB_KEY_Num_Lock => self.key_map[@intFromEnum(windowing.Key.num_lock)] = true,
-                    xkb.XKB_KEY_Print => self.key_map[@intFromEnum(windowing.Key.print_screen)] = true,
-                    xkb.XKB_KEY_Pause => self.key_map[@intFromEnum(windowing.Key.pause)] = true,
-                    xkb.XKB_KEY_F1 => self.key_map[@intFromEnum(windowing.Key.F1)] = true,
-                    xkb.XKB_KEY_F2 => self.key_map[@intFromEnum(windowing.Key.F2)] = true,
-                    xkb.XKB_KEY_F3 => self.key_map[@intFromEnum(windowing.Key.F3)] = true,
-                    xkb.XKB_KEY_F4 => self.key_map[@intFromEnum(windowing.Key.F4)] = true,
-                    xkb.XKB_KEY_F5 => self.key_map[@intFromEnum(windowing.Key.F5)] = true,
-                    xkb.XKB_KEY_F6 => self.key_map[@intFromEnum(windowing.Key.F6)] = true,
-                    xkb.XKB_KEY_F7 => self.key_map[@intFromEnum(windowing.Key.F7)] = true,
-                    xkb.XKB_KEY_F8 => self.key_map[@intFromEnum(windowing.Key.F8)] = true,
-                    xkb.XKB_KEY_F9 => self.key_map[@intFromEnum(windowing.Key.F9)] = true,
-                    xkb.XKB_KEY_F10 => self.key_map[@intFromEnum(windowing.Key.F10)] = true,
-                    xkb.XKB_KEY_F11 => self.key_map[@intFromEnum(windowing.Key.F11)] = true,
-                    xkb.XKB_KEY_F12 => self.key_map[@intFromEnum(windowing.Key.F12)] = true,
-                    xkb.XKB_KEY_F13 => self.key_map[@intFromEnum(windowing.Key.F13)] = true,
-                    xkb.XKB_KEY_F14 => self.key_map[@intFromEnum(windowing.Key.F14)] = true,
-                    xkb.XKB_KEY_F15 => self.key_map[@intFromEnum(windowing.Key.F15)] = true,
-                    xkb.XKB_KEY_F16 => self.key_map[@intFromEnum(windowing.Key.F16)] = true,
-                    xkb.XKB_KEY_F17 => self.key_map[@intFromEnum(windowing.Key.F17)] = true,
-                    xkb.XKB_KEY_F18 => self.key_map[@intFromEnum(windowing.Key.F18)] = true,
-                    xkb.XKB_KEY_F19 => self.key_map[@intFromEnum(windowing.Key.F19)] = true,
-                    xkb.XKB_KEY_F20 => self.key_map[@intFromEnum(windowing.Key.F20)] = true,
-                    xkb.XKB_KEY_F21 => self.key_map[@intFromEnum(windowing.Key.F21)] = true,
-                    xkb.XKB_KEY_F22 => self.key_map[@intFromEnum(windowing.Key.F22)] = true,
-                    xkb.XKB_KEY_F23 => self.key_map[@intFromEnum(windowing.Key.F23)] = true,
-                    xkb.XKB_KEY_F24 => self.key_map[@intFromEnum(windowing.Key.F24)] = true,
-                    xkb.XKB_KEY_F25 => self.key_map[@intFromEnum(windowing.Key.F25)] = true,
-                    xkb.XKB_KEY_KP_0 => self.key_map[@intFromEnum(windowing.Key.kp_0)] = true,
-                    xkb.XKB_KEY_KP_1 => self.key_map[@intFromEnum(windowing.Key.kp_1)] = true,
-                    xkb.XKB_KEY_KP_2 => self.key_map[@intFromEnum(windowing.Key.kp_2)] = true,
-                    xkb.XKB_KEY_KP_3 => self.key_map[@intFromEnum(windowing.Key.kp_3)] = true,
-                    xkb.XKB_KEY_KP_4 => self.key_map[@intFromEnum(windowing.Key.kp_4)] = true,
-                    xkb.XKB_KEY_KP_5 => self.key_map[@intFromEnum(windowing.Key.kp_5)] = true,
-                    xkb.XKB_KEY_KP_6 => self.key_map[@intFromEnum(windowing.Key.kp_6)] = true,
-                    xkb.XKB_KEY_KP_7 => self.key_map[@intFromEnum(windowing.Key.kp_7)] = true,
-                    xkb.XKB_KEY_KP_8 => self.key_map[@intFromEnum(windowing.Key.kp_8)] = true,
-                    xkb.XKB_KEY_KP_9 => self.key_map[@intFromEnum(windowing.Key.kp_9)] = true,
-                    xkb.XKB_KEY_KP_Decimal => self.key_map[@intFromEnum(windowing.Key.kp_decimal)] = true,
-                    xkb.XKB_KEY_KP_Divide => self.key_map[@intFromEnum(windowing.Key.kp_divide)] = true,
-                    xkb.XKB_KEY_KP_Multiply => self.key_map[@intFromEnum(windowing.Key.kp_multiply)] = true,
-                    xkb.XKB_KEY_KP_Subtract => self.key_map[@intFromEnum(windowing.Key.kp_subtract)] = true,
-                    xkb.XKB_KEY_KP_Add => self.key_map[@intFromEnum(windowing.Key.kp_add)] = true,
-                    xkb.XKB_KEY_KP_Enter => self.key_map[@intFromEnum(windowing.Key.kp_enter)] = true,
-                    xkb.XKB_KEY_KP_Equal => self.key_map[@intFromEnum(windowing.Key.kp_equal)] = true,
-                    xkb.XKB_KEY_Shift_L => self.key_map[@intFromEnum(windowing.Key.left_shift)] = true,
-                    xkb.XKB_KEY_Control_L => self.key_map[@intFromEnum(windowing.Key.left_control)] = true,
-                    xkb.XKB_KEY_Alt_L => self.key_map[@intFromEnum(windowing.Key.left_alt)] = true,
-                    xkb.XKB_KEY_Super_L => self.key_map[@intFromEnum(windowing.Key.left_super)] = true,
-                    xkb.XKB_KEY_Shift_R => self.key_map[@intFromEnum(windowing.Key.right_shift)] = true,
-                    xkb.XKB_KEY_Control_R => self.key_map[@intFromEnum(windowing.Key.right_control)] = true,
-                    xkb.XKB_KEY_Alt_R => self.key_map[@intFromEnum(windowing.Key.right_alt)] = true,
-                    xkb.XKB_KEY_Super_R => self.key_map[@intFromEnum(windowing.Key.right_super)] = true,
-                    xkb.XKB_KEY_Menu => self.key_map[@intFromEnum(windowing.Key.menu)] = true,
-                    else => {},
+                _ = xkb.xkb_state_update_key(self.xkb_state, key_press.detail, xkb.XKB_KEY_DOWN);
+
+                const text_len = xkb.xkb_state_key_get_utf8(self.xkb_state, key_press.detail, &self.text_buffer[self.text_len], self.text_buffer.len);
+
+                self.text_len += @intCast(text_len);
+
+                if (xkbKeyToQuantaKey(keysym)) |key| {
+                    self.key_map[@intFromEnum(key)] = true;
                 }
             },
             .key_release => |key_release| {
                 const keysym = xkb.xkb_state_key_get_one_sym(self.xkb_state, key_release.detail);
 
-                switch (keysym) {
-                    xkb.XKB_KEY_space => self.key_map[@intFromEnum(windowing.Key.space)] = false,
-                    xkb.XKB_KEY_apostrophe => self.key_map[@intFromEnum(windowing.Key.apostrophe)] = false,
-                    xkb.XKB_KEY_comma => self.key_map[@intFromEnum(windowing.Key.comma)] = false,
-                    xkb.XKB_KEY_minus => self.key_map[@intFromEnum(windowing.Key.minus)] = false,
-                    xkb.XKB_KEY_period => self.key_map[@intFromEnum(windowing.Key.period)] = false,
-                    xkb.XKB_KEY_slash => self.key_map[@intFromEnum(windowing.Key.slash)] = false,
-                    xkb.XKB_KEY_0 => self.key_map[@intFromEnum(windowing.Key.zero)] = false,
-                    xkb.XKB_KEY_1 => self.key_map[@intFromEnum(windowing.Key.one)] = false,
-                    xkb.XKB_KEY_2 => self.key_map[@intFromEnum(windowing.Key.two)] = false,
-                    xkb.XKB_KEY_3 => self.key_map[@intFromEnum(windowing.Key.three)] = false,
-                    xkb.XKB_KEY_4 => self.key_map[@intFromEnum(windowing.Key.four)] = false,
-                    xkb.XKB_KEY_5 => self.key_map[@intFromEnum(windowing.Key.five)] = false,
-                    xkb.XKB_KEY_6 => self.key_map[@intFromEnum(windowing.Key.six)] = false,
-                    xkb.XKB_KEY_7 => self.key_map[@intFromEnum(windowing.Key.seven)] = false,
-                    xkb.XKB_KEY_8 => self.key_map[@intFromEnum(windowing.Key.eight)] = false,
-                    xkb.XKB_KEY_9 => self.key_map[@intFromEnum(windowing.Key.nine)] = false,
-                    xkb.XKB_KEY_semicolon => self.key_map[@intFromEnum(windowing.Key.semicolon)] = false,
-                    xkb.XKB_KEY_equal => self.key_map[@intFromEnum(windowing.Key.equal)] = false,
-                    xkb.XKB_KEY_a => self.key_map[@intFromEnum(windowing.Key.a)] = false,
-                    xkb.XKB_KEY_b => self.key_map[@intFromEnum(windowing.Key.b)] = false,
-                    xkb.XKB_KEY_c => self.key_map[@intFromEnum(windowing.Key.c)] = false,
-                    xkb.XKB_KEY_d => self.key_map[@intFromEnum(windowing.Key.d)] = false,
-                    xkb.XKB_KEY_E, xkb.XKB_KEY_e => self.key_map[@intFromEnum(windowing.Key.e)] = false,
-                    xkb.XKB_KEY_f => self.key_map[@intFromEnum(windowing.Key.f)] = false,
-                    xkb.XKB_KEY_g => self.key_map[@intFromEnum(windowing.Key.g)] = false,
-                    xkb.XKB_KEY_h => self.key_map[@intFromEnum(windowing.Key.h)] = false,
-                    xkb.XKB_KEY_i => self.key_map[@intFromEnum(windowing.Key.i)] = false,
-                    xkb.XKB_KEY_j => self.key_map[@intFromEnum(windowing.Key.j)] = false,
-                    xkb.XKB_KEY_k => self.key_map[@intFromEnum(windowing.Key.k)] = false,
-                    xkb.XKB_KEY_l => self.key_map[@intFromEnum(windowing.Key.l)] = false,
-                    xkb.XKB_KEY_m => self.key_map[@intFromEnum(windowing.Key.m)] = false,
-                    xkb.XKB_KEY_n => self.key_map[@intFromEnum(windowing.Key.n)] = false,
-                    xkb.XKB_KEY_o => self.key_map[@intFromEnum(windowing.Key.o)] = false,
-                    xkb.XKB_KEY_p => self.key_map[@intFromEnum(windowing.Key.p)] = false,
-                    xkb.XKB_KEY_q => self.key_map[@intFromEnum(windowing.Key.q)] = false,
-                    xkb.XKB_KEY_r => self.key_map[@intFromEnum(windowing.Key.r)] = false,
-                    xkb.XKB_KEY_s => self.key_map[@intFromEnum(windowing.Key.s)] = false,
-                    xkb.XKB_KEY_t => self.key_map[@intFromEnum(windowing.Key.t)] = false,
-                    xkb.XKB_KEY_u => self.key_map[@intFromEnum(windowing.Key.u)] = false,
-                    xkb.XKB_KEY_v => self.key_map[@intFromEnum(windowing.Key.v)] = false,
-                    xkb.XKB_KEY_w => self.key_map[@intFromEnum(windowing.Key.w)] = false,
-                    xkb.XKB_KEY_x => self.key_map[@intFromEnum(windowing.Key.x)] = false,
-                    xkb.XKB_KEY_y => self.key_map[@intFromEnum(windowing.Key.y)] = false,
-                    xkb.XKB_KEY_z => self.key_map[@intFromEnum(windowing.Key.z)] = false,
-                    xkb.XKB_KEY_botleftsqbracket => self.key_map[@intFromEnum(windowing.Key.left_bracket)] = false,
-                    xkb.XKB_KEY_backslash => self.key_map[@intFromEnum(windowing.Key.backslash)] = false,
-                    xkb.XKB_KEY_botrightsqbracket => self.key_map[@intFromEnum(windowing.Key.right_bracket)] = false,
-                    xkb.XKB_KEY_grave => self.key_map[@intFromEnum(windowing.Key.grave_accent)] = false,
-                    // world_1,
-                    // world_2,
-                    xkb.XKB_KEY_Escape => self.key_map[@intFromEnum(windowing.Key.escape)] = false,
-                    xkb.XKB_KEY_Return => self.key_map[@intFromEnum(windowing.Key.enter)] = false,
-                    xkb.XKB_KEY_Tab => self.key_map[@intFromEnum(windowing.Key.tab)] = false,
-                    xkb.XKB_KEY_BackSpace => self.key_map[@intFromEnum(windowing.Key.backspace)] = false,
-                    xkb.XKB_KEY_Insert => self.key_map[@intFromEnum(windowing.Key.insert)] = false,
-                    xkb.XKB_KEY_Delete => self.key_map[@intFromEnum(windowing.Key.delete)] = false,
-                    xkb.XKB_KEY_Right => self.key_map[@intFromEnum(windowing.Key.right)] = false,
-                    xkb.XKB_KEY_Left => self.key_map[@intFromEnum(windowing.Key.left)] = false,
-                    xkb.XKB_KEY_Down => self.key_map[@intFromEnum(windowing.Key.down)] = false,
-                    xkb.XKB_KEY_Up => self.key_map[@intFromEnum(windowing.Key.up)] = false,
-                    xkb.XKB_KEY_Page_Up => self.key_map[@intFromEnum(windowing.Key.page_up)] = false,
-                    xkb.XKB_KEY_Page_Down => self.key_map[@intFromEnum(windowing.Key.page_down)] = false,
-                    xkb.XKB_KEY_Home => self.key_map[@intFromEnum(windowing.Key.home)] = false,
-                    xkb.XKB_KEY_End => self.key_map[@intFromEnum(windowing.Key.end)] = false,
-                    xkb.XKB_KEY_Caps_Lock => self.key_map[@intFromEnum(windowing.Key.caps_lock)] = false,
-                    xkb.XKB_KEY_Scroll_Lock => self.key_map[@intFromEnum(windowing.Key.scroll_lock)] = false,
-                    xkb.XKB_KEY_Num_Lock => self.key_map[@intFromEnum(windowing.Key.num_lock)] = false,
-                    xkb.XKB_KEY_Print => self.key_map[@intFromEnum(windowing.Key.print_screen)] = false,
-                    xkb.XKB_KEY_Pause => self.key_map[@intFromEnum(windowing.Key.pause)] = false,
-                    xkb.XKB_KEY_F1 => self.key_map[@intFromEnum(windowing.Key.F1)] = false,
-                    xkb.XKB_KEY_F2 => self.key_map[@intFromEnum(windowing.Key.F2)] = false,
-                    xkb.XKB_KEY_F3 => self.key_map[@intFromEnum(windowing.Key.F3)] = false,
-                    xkb.XKB_KEY_F4 => self.key_map[@intFromEnum(windowing.Key.F4)] = false,
-                    xkb.XKB_KEY_F5 => self.key_map[@intFromEnum(windowing.Key.F5)] = false,
-                    xkb.XKB_KEY_F6 => self.key_map[@intFromEnum(windowing.Key.F6)] = false,
-                    xkb.XKB_KEY_F7 => self.key_map[@intFromEnum(windowing.Key.F7)] = false,
-                    xkb.XKB_KEY_F8 => self.key_map[@intFromEnum(windowing.Key.F8)] = false,
-                    xkb.XKB_KEY_F9 => self.key_map[@intFromEnum(windowing.Key.F9)] = false,
-                    xkb.XKB_KEY_F10 => self.key_map[@intFromEnum(windowing.Key.F10)] = false,
-                    xkb.XKB_KEY_F11 => self.key_map[@intFromEnum(windowing.Key.F11)] = false,
-                    xkb.XKB_KEY_F12 => self.key_map[@intFromEnum(windowing.Key.F12)] = false,
-                    xkb.XKB_KEY_F13 => self.key_map[@intFromEnum(windowing.Key.F13)] = false,
-                    xkb.XKB_KEY_F14 => self.key_map[@intFromEnum(windowing.Key.F14)] = false,
-                    xkb.XKB_KEY_F15 => self.key_map[@intFromEnum(windowing.Key.F15)] = false,
-                    xkb.XKB_KEY_F16 => self.key_map[@intFromEnum(windowing.Key.F16)] = false,
-                    xkb.XKB_KEY_F17 => self.key_map[@intFromEnum(windowing.Key.F17)] = false,
-                    xkb.XKB_KEY_F18 => self.key_map[@intFromEnum(windowing.Key.F18)] = false,
-                    xkb.XKB_KEY_F19 => self.key_map[@intFromEnum(windowing.Key.F19)] = false,
-                    xkb.XKB_KEY_F20 => self.key_map[@intFromEnum(windowing.Key.F20)] = false,
-                    xkb.XKB_KEY_F21 => self.key_map[@intFromEnum(windowing.Key.F21)] = false,
-                    xkb.XKB_KEY_F22 => self.key_map[@intFromEnum(windowing.Key.F22)] = false,
-                    xkb.XKB_KEY_F23 => self.key_map[@intFromEnum(windowing.Key.F23)] = false,
-                    xkb.XKB_KEY_F24 => self.key_map[@intFromEnum(windowing.Key.F24)] = false,
-                    xkb.XKB_KEY_F25 => self.key_map[@intFromEnum(windowing.Key.F25)] = false,
-                    xkb.XKB_KEY_KP_0 => self.key_map[@intFromEnum(windowing.Key.kp_0)] = false,
-                    xkb.XKB_KEY_KP_1 => self.key_map[@intFromEnum(windowing.Key.kp_1)] = false,
-                    xkb.XKB_KEY_KP_2 => self.key_map[@intFromEnum(windowing.Key.kp_2)] = false,
-                    xkb.XKB_KEY_KP_3 => self.key_map[@intFromEnum(windowing.Key.kp_3)] = false,
-                    xkb.XKB_KEY_KP_4 => self.key_map[@intFromEnum(windowing.Key.kp_4)] = false,
-                    xkb.XKB_KEY_KP_5 => self.key_map[@intFromEnum(windowing.Key.kp_5)] = false,
-                    xkb.XKB_KEY_KP_6 => self.key_map[@intFromEnum(windowing.Key.kp_6)] = false,
-                    xkb.XKB_KEY_KP_7 => self.key_map[@intFromEnum(windowing.Key.kp_7)] = false,
-                    xkb.XKB_KEY_KP_8 => self.key_map[@intFromEnum(windowing.Key.kp_8)] = false,
-                    xkb.XKB_KEY_KP_9 => self.key_map[@intFromEnum(windowing.Key.kp_9)] = false,
-                    xkb.XKB_KEY_KP_Decimal => self.key_map[@intFromEnum(windowing.Key.kp_decimal)] = false,
-                    xkb.XKB_KEY_KP_Divide => self.key_map[@intFromEnum(windowing.Key.kp_divide)] = false,
-                    xkb.XKB_KEY_KP_Multiply => self.key_map[@intFromEnum(windowing.Key.kp_multiply)] = false,
-                    xkb.XKB_KEY_KP_Subtract => self.key_map[@intFromEnum(windowing.Key.kp_subtract)] = false,
-                    xkb.XKB_KEY_KP_Add => self.key_map[@intFromEnum(windowing.Key.kp_add)] = false,
-                    xkb.XKB_KEY_KP_Enter => self.key_map[@intFromEnum(windowing.Key.kp_enter)] = false,
-                    xkb.XKB_KEY_KP_Equal => self.key_map[@intFromEnum(windowing.Key.kp_equal)] = false,
-                    xkb.XKB_KEY_Shift_L => self.key_map[@intFromEnum(windowing.Key.left_shift)] = false,
-                    xkb.XKB_KEY_Control_L => self.key_map[@intFromEnum(windowing.Key.left_control)] = false,
-                    xkb.XKB_KEY_Alt_L => self.key_map[@intFromEnum(windowing.Key.left_alt)] = false,
-                    xkb.XKB_KEY_Super_L => self.key_map[@intFromEnum(windowing.Key.left_super)] = false,
-                    xkb.XKB_KEY_Shift_R => self.key_map[@intFromEnum(windowing.Key.right_shift)] = false,
-                    xkb.XKB_KEY_Control_R => self.key_map[@intFromEnum(windowing.Key.right_control)] = false,
-                    xkb.XKB_KEY_Alt_R => self.key_map[@intFromEnum(windowing.Key.right_alt)] = false,
-                    xkb.XKB_KEY_Super_R => self.key_map[@intFromEnum(windowing.Key.right_super)] = false,
-                    xkb.XKB_KEY_Menu => self.key_map[@intFromEnum(windowing.Key.menu)] = false,
-                    else => {},
+                _ = xkb.xkb_state_update_key(self.xkb_state, key_release.detail, xkb.XKB_KEY_UP);
+
+                if (xkbKeyToQuantaKey(keysym)) |key| {
+                    self.key_map[@intFromEnum(key)] = false;
                 }
             },
             .motion_notify => |motion_notify| {
@@ -457,8 +237,6 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                 const S = struct {
                     pub var warped: bool = false;
                 };
-
-                std.log.info("motion_notify = {}", .{motion_notify});
 
                 var warped: bool = false;
 
@@ -514,7 +292,7 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                 }
             },
             .xinput_raw_mouse_motion => |raw_mouse_motion| {
-                std.log.info("xinput_raw_mouse_motion = {}", .{raw_mouse_motion});
+                _ = raw_mouse_motion; // autofix
             },
             else => {},
         }
@@ -528,7 +306,6 @@ pub fn shouldClose(self: *XcbWindow) bool {
 }
 
 pub fn getWidth(self: XcbWindow) u16 {
-    //TODO: store the width properly instead of querying the window system every time these functions are called
     const reply = self.xcb_library.getGeometry(self.connection, @enumFromInt(@intFromEnum(self.window)));
 
     return reply.width;
@@ -541,6 +318,8 @@ pub fn getHeight(self: XcbWindow) u16 {
 }
 
 pub fn grabCursor(self: *XcbWindow) void {
+    if (self.cursor_grabbed) return;
+
     self.hideCursor();
 
     _ = self.xcb_library.grabPointer(
@@ -559,6 +338,8 @@ pub fn grabCursor(self: *XcbWindow) void {
 }
 
 pub fn ungrabCursor(self: *XcbWindow) void {
+    if (!self.cursor_grabbed) return;
+
     self.xcb_library.ungrabPointer(self.connection, xcb.XCB_CURRENT_TIME);
 
     self.unhideCursor();
@@ -571,12 +352,16 @@ pub fn isCursorGrabbed(self: *XcbWindow) bool {
 }
 
 pub fn hideCursor(self: *XcbWindow) void {
+    if (self.cursor_hidden) return;
+
     self.xcb_library.changeWindowAttributes(self.connection, self.window, xcb.XCB_CW_CURSOR, &self.hidden_cursor);
 
     self.cursor_hidden = true;
 }
 
 pub fn unhideCursor(self: *XcbWindow) void {
+    if (!self.cursor_hidden) return;
+
     self.xcb_library.changeWindowAttributes(self.connection, self.window, xcb.XCB_CW_CURSOR, &@as(u32, 0));
 
     self.cursor_hidden = false;
@@ -607,10 +392,6 @@ pub fn getKey(self: *XcbWindow, key: windowing.Key) windowing.Action {
 pub fn getMouseButton(self: *XcbWindow, key: windowing.MouseButton) windowing.Action {
     const index = @intFromEnum(key);
 
-    // if (!self.mouse_map[index] and self.previ[index]) {
-    // return .press;
-    // }
-
     if (self.mouse_map[index]) {
         return .down;
     }
@@ -626,6 +407,139 @@ pub fn isFocused(self: *XcbWindow) bool {
     const focus = self.xcb_library.getInputFocus(self.connection);
 
     return self.window == focus.focus;
+}
+
+pub fn getUtf8Input(self: *XcbWindow) []const u8 {
+    return self.text_buffer[0..self.text_len];
+}
+
+pub fn getMouseScroll(self: *XcbWindow) i32 {
+    return self.mouse_scroll;
+}
+
+///Convert xkb key symbol to windowing.Key
+fn xkbKeyToQuantaKey(keysym: u32) ?windowing.Key {
+    return switch (keysym) {
+        xkb.XKB_KEY_space => .space,
+        xkb.XKB_KEY_apostrophe => .apostrophe,
+        xkb.XKB_KEY_comma => .comma,
+        xkb.XKB_KEY_minus => .minus,
+        xkb.XKB_KEY_period => .period,
+        xkb.XKB_KEY_slash => .slash,
+        xkb.XKB_KEY_0 => .zero,
+        xkb.XKB_KEY_1 => .one,
+        xkb.XKB_KEY_2 => .two,
+        xkb.XKB_KEY_3 => .three,
+        xkb.XKB_KEY_4 => .four,
+        xkb.XKB_KEY_5 => .five,
+        xkb.XKB_KEY_6 => .six,
+        xkb.XKB_KEY_7 => .seven,
+        xkb.XKB_KEY_8 => .eight,
+        xkb.XKB_KEY_9 => .nine,
+        xkb.XKB_KEY_semicolon => .semicolon,
+        xkb.XKB_KEY_equal => .equal,
+        xkb.XKB_KEY_a => .a,
+        xkb.XKB_KEY_b => .b,
+        xkb.XKB_KEY_c => .c,
+        xkb.XKB_KEY_d => .d,
+        xkb.XKB_KEY_E, xkb.XKB_KEY_e => .e,
+        xkb.XKB_KEY_f => .f,
+        xkb.XKB_KEY_g => .g,
+        xkb.XKB_KEY_h => .h,
+        xkb.XKB_KEY_i => .i,
+        xkb.XKB_KEY_j => .j,
+        xkb.XKB_KEY_k => .k,
+        xkb.XKB_KEY_l => .l,
+        xkb.XKB_KEY_m => .m,
+        xkb.XKB_KEY_n => .n,
+        xkb.XKB_KEY_o => .o,
+        xkb.XKB_KEY_p => .p,
+        xkb.XKB_KEY_q => .q,
+        xkb.XKB_KEY_r => .r,
+        xkb.XKB_KEY_s => .s,
+        xkb.XKB_KEY_t => .t,
+        xkb.XKB_KEY_u => .u,
+        xkb.XKB_KEY_v => .v,
+        xkb.XKB_KEY_W, xkb.XKB_KEY_w => .w,
+        xkb.XKB_KEY_x => .x,
+        xkb.XKB_KEY_y => .y,
+        xkb.XKB_KEY_z => .z,
+        xkb.XKB_KEY_botleftsqbracket => .left_bracket,
+        xkb.XKB_KEY_backslash => .backslash,
+        xkb.XKB_KEY_botrightsqbracket => .right_bracket,
+        xkb.XKB_KEY_grave => .grave_accent,
+        xkb.XKB_KEY_Escape => .escape,
+        xkb.XKB_KEY_Return => .enter,
+        xkb.XKB_KEY_Tab => .tab,
+        xkb.XKB_KEY_BackSpace => .backspace,
+        xkb.XKB_KEY_Insert => .insert,
+        xkb.XKB_KEY_Delete => .delete,
+        xkb.XKB_KEY_Right => .right,
+        xkb.XKB_KEY_Left => .left,
+        xkb.XKB_KEY_Down => .down,
+        xkb.XKB_KEY_Up => .up,
+        xkb.XKB_KEY_Page_Up => .page_up,
+        xkb.XKB_KEY_Page_Down => .page_down,
+        xkb.XKB_KEY_Home => .home,
+        xkb.XKB_KEY_End => .end,
+        xkb.XKB_KEY_Caps_Lock => .caps_lock,
+        xkb.XKB_KEY_Scroll_Lock => .scroll_lock,
+        xkb.XKB_KEY_Num_Lock => .num_lock,
+        xkb.XKB_KEY_Print => .print_screen,
+        xkb.XKB_KEY_Pause => .pause,
+        xkb.XKB_KEY_F1 => .F1,
+        xkb.XKB_KEY_F2 => .F2,
+        xkb.XKB_KEY_F3 => .F3,
+        xkb.XKB_KEY_F4 => .F4,
+        xkb.XKB_KEY_F5 => .F5,
+        xkb.XKB_KEY_F6 => .F6,
+        xkb.XKB_KEY_F7 => .F7,
+        xkb.XKB_KEY_F8 => .F8,
+        xkb.XKB_KEY_F9 => .F9,
+        xkb.XKB_KEY_F10 => .F10,
+        xkb.XKB_KEY_F11 => .F11,
+        xkb.XKB_KEY_F12 => .F12,
+        xkb.XKB_KEY_F13 => .F13,
+        xkb.XKB_KEY_F14 => .F14,
+        xkb.XKB_KEY_F15 => .F15,
+        xkb.XKB_KEY_F16 => .F16,
+        xkb.XKB_KEY_F17 => .F17,
+        xkb.XKB_KEY_F18 => .F18,
+        xkb.XKB_KEY_F19 => .F19,
+        xkb.XKB_KEY_F20 => .F20,
+        xkb.XKB_KEY_F21 => .F21,
+        xkb.XKB_KEY_F22 => .F22,
+        xkb.XKB_KEY_F23 => .F23,
+        xkb.XKB_KEY_F24 => .F24,
+        xkb.XKB_KEY_F25 => .F25,
+        xkb.XKB_KEY_KP_0 => .kp_0,
+        xkb.XKB_KEY_KP_1 => .kp_1,
+        xkb.XKB_KEY_KP_2 => .kp_2,
+        xkb.XKB_KEY_KP_3 => .kp_3,
+        xkb.XKB_KEY_KP_4 => .kp_4,
+        xkb.XKB_KEY_KP_5 => .kp_5,
+        xkb.XKB_KEY_KP_6 => .kp_6,
+        xkb.XKB_KEY_KP_7 => .kp_7,
+        xkb.XKB_KEY_KP_8 => .kp_8,
+        xkb.XKB_KEY_KP_9 => .kp_9,
+        xkb.XKB_KEY_KP_Decimal => .kp_decimal,
+        xkb.XKB_KEY_KP_Divide => .kp_divide,
+        xkb.XKB_KEY_KP_Multiply => .kp_multiply,
+        xkb.XKB_KEY_KP_Subtract => .kp_subtract,
+        xkb.XKB_KEY_KP_Add => .kp_add,
+        xkb.XKB_KEY_KP_Enter => .kp_enter,
+        xkb.XKB_KEY_KP_Equal => .kp_equal,
+        xkb.XKB_KEY_Shift_L => .left_shift,
+        xkb.XKB_KEY_Control_L => .left_control,
+        xkb.XKB_KEY_Alt_L => .left_alt,
+        xkb.XKB_KEY_Super_L => .left_super,
+        xkb.XKB_KEY_Shift_R => .right_shift,
+        xkb.XKB_KEY_Control_R => .right_control,
+        xkb.XKB_KEY_Alt_R => .right_alt,
+        xkb.XKB_KEY_Super_R => .right_super,
+        xkb.XKB_KEY_Menu => .menu,
+        else => null,
+    };
 }
 
 const XcbWindow = @This();

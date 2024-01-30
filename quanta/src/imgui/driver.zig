@@ -52,6 +52,8 @@ pub fn end() void {}
 fn updateInputs(window: *Window) void {
     const io = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
+    if (io.WantCaptureMouse) {} else {}
+
     if (io.ConfigFlags & imgui.ImGuiConfigFlags_NoMouseCursorChange == 1 or window.isCursorGrabbed()) {
         imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Left, false);
         imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Right, false);
@@ -67,6 +69,9 @@ fn updateInputs(window: *Window) void {
         for (std.enums.values(windowing.Key)) |key| {
             imgui.ImGuiIO_AddKeyEvent(io, quantaToImGuiKey(key), false);
         }
+
+        imgui.ImGuiIO_ClearInputKeys(io);
+        imgui.ImGuiIO_ClearInputCharacters(io);
 
         return;
     }
@@ -89,29 +94,23 @@ fn updateInputs(window: *Window) void {
     imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Super, window.getKey(.left_super) == .down or window.getKey(.right_super) == .down);
 
     for (std.enums.values(windowing.Key)) |key| {
-        imgui.ImGuiIO_AddKeyEvent(io, quantaToImGuiKey(key), window.getKey(key) == .down);
+        imgui.ImGuiIO_AddKeyEvent(io, quantaToImGuiKey(key), window.getKey(key) != .release);
+    }
+
+    const input_text = window.getUtf8Input();
+
+    for (input_text) |character| {
+        const string: [2]u8 = .{ character, 0 };
+
+        imgui.ImGuiIO_AddInputCharactersUTF8(io, &string);
     }
 
     imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Left, window.getMouseButton(.left) == .down);
     imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Right, window.getMouseButton(.right) == .down);
     imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Middle, window.getMouseButton(.middle) == .down);
+
+    imgui.ImGuiIO_AddMouseWheelEvent(io, 0, @floatFromInt(window.getMouseScroll()));
 }
-
-// fn charCallback(_: glfw.Window, codepoint: u21) void {
-//     const io = imgui.igGetIO();
-
-//     var bytes: [32]u8 = [1]u8{0} ** 32;
-
-//     _ = std.unicode.utf8Encode(codepoint, &bytes) catch unreachable;
-
-//     imgui.ImGuiIO_AddInputCharactersUTF8(io, &bytes);
-// }
-
-// fn scrollCallback(_: glfw.Window, xoffset: f64, yoffset: f64) void {
-//     const io = imgui.igGetIO();
-
-//     imgui.ImGuiIO_AddMouseWheelEvent(io, @as(f32, @floatCast(xoffset)), @as(f32, @floatCast(yoffset)));
-// }
 
 fn quantaToImGuiKey(key: windowing.Key) c_uint {
     return switch (key) {
@@ -221,6 +220,117 @@ fn quantaToImGuiKey(key: windowing.Key) c_uint {
         .F11 => imgui.ImGuiKey_F11,
         .F12 => imgui.ImGuiKey_F12,
         else => imgui.ImGuiKey_None,
+    };
+}
+
+fn quantaKeyToUtf8(key: windowing.Key) ?u8 {
+    return switch (key) {
+        .tab => null,
+        .left => null,
+        .right => null,
+        .up => null,
+        .down => null,
+        .page_up => null,
+        .page_down => null,
+        .home => null,
+        .end => null,
+        .insert => null,
+        .delete => null,
+        .backspace => null,
+        .space => ' ',
+        .enter => '\n',
+        .escape => null,
+        .apostrophe => '\'',
+        .comma => ',',
+        .minus => '-',
+        .period => '.',
+        .slash => '/',
+        .semicolon => ';',
+        .equal => '=',
+        .left_bracket => '[',
+        .backslash => '\\',
+        .right_bracket => ']',
+        .grave_accent => '`',
+        .caps_lock => null,
+        .scroll_lock => null,
+        .num_lock => null,
+        .print_screen => null,
+        .pause => null,
+        .kp_0 => '0',
+        .kp_1 => '1',
+        .kp_2 => '2',
+        .kp_3 => '3',
+        .kp_4 => '4',
+        .kp_5 => '5',
+        .kp_6 => '6',
+        .kp_7 => '7',
+        .kp_8 => '8',
+        .kp_9 => '9',
+        .kp_decimal => null,
+        .kp_divide => null,
+        .kp_multiply => null,
+        .kp_subtract => null,
+        .kp_add => null,
+        .kp_enter => null,
+        .kp_equal => null,
+        .left_shift => null,
+        .left_control => null,
+        .left_alt => null,
+        .left_super => null,
+        .right_shift => null,
+        .right_control => null,
+        .right_alt => null,
+        .right_super => null,
+        .menu => null,
+        .zero => '0',
+        .one => '1',
+        .two => '2',
+        .three => '3',
+        .four => '4',
+        .five => '5',
+        .six => '6',
+        .seven => '7',
+        .eight => '8',
+        .nine => '9',
+        .a => 'a',
+        .b => 'b',
+        .c => 'c',
+        .d => 'd',
+        .e => 'e',
+        .f => 'f',
+        .g => 'g',
+        .h => 'h',
+        .i => 'i',
+        .j => 'j',
+        .k => 'k',
+        .l => 'l',
+        .m => 'm',
+        .n => 'n',
+        .o => 'o',
+        .p => 'p',
+        .q => 'q',
+        .r => 'r',
+        .s => 's',
+        .t => 't',
+        .u => 'u',
+        .v => 'v',
+        .w => 'w',
+        .x => 'x',
+        .y => 'y',
+        .z => 'z',
+        .F1 => null,
+        .F2 => null,
+        .F3 => null,
+        .F4 => null,
+        .F5 => null,
+        .F6 => null,
+        .F7 => null,
+        .F8 => null,
+        .F9 => null,
+        .F10 => null,
+        .F11 => null,
+        .F12 => null,
+        else => null,
     };
 }
 

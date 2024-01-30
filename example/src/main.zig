@@ -379,7 +379,7 @@ pub fn deinit() void {
     defer state.asset_storage.deinit();
 }
 
-pub fn update() !quanta.app.UpdateResult {
+pub fn update() !UpdateResult {
     if (state.window.shouldClose()) return .exit;
 
     const time_begin = std.time.nanoTimestamp();
@@ -738,6 +738,13 @@ pub fn update() !quanta.app.UpdateResult {
 
     return .pass;
 }
+
+pub const UpdateResult = enum(u8) {
+    ///Indicates to the app runner the app should exit
+    exit,
+    ///Indicates to the app runner the app should continue to next update
+    pass,
+};
 
 pub fn main() !void {
     try init();

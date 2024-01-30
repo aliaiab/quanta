@@ -6,7 +6,7 @@ pub inline fn deinit(self: *Window, allocator: std.mem.Allocator) void {
 }
 
 pub inline fn pollEvents(self: *Window) !void {
-    try self.impl.pollEvents();
+    return self.impl.pollEvents();
 }
 
 pub inline fn shouldClose(self: *Window) bool {
@@ -79,8 +79,18 @@ pub inline fn isFocused(self: *Window) bool {
     return self.impl.isFocused();
 }
 
+///Returns the vertical scroll of the mouse device
+pub inline fn getMouseScroll(self: *Window) i32 {
+    return self.impl.getMouseScroll();
+}
+
+///Returns a buffer of the text input pressed in this polling window
+pub inline fn getUtf8Input(self: *Window) []const u8 {
+    return self.impl.getUtf8Input();
+}
+
 ///Implementation structure
-pub const Impl = switch (windowing.backend) {
+const Impl = switch (windowing.backend) {
     .wayland => @compileError("Wayland not supported"),
     .xcb => @import("xcb/XcbWindow.zig"),
     .win32 => @compileError("Win32 not supported"),

@@ -51,7 +51,7 @@ pub fn collapsingHeader(comptime format: []const u8, args: anytype) bool {
 }
 
 pub fn dragFloat(label: []const u8, float: *f32) void {
-    _ = imgui.igDragFloat(label.ptr, float, 0.1, 0, 0, null, 0);
+    _ = imgui.igInputFloat(label.ptr, float, 0.1, 0, 0, 0);
 }
 
 pub fn drawBillboard(
