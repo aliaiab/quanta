@@ -26,9 +26,7 @@ mouse_scroll: i32 = 0,
 pub fn init(
     allocator: std.mem.Allocator,
     window_system: *XcbWindowSystem,
-    width: u16,
-    height: u16,
-    title: []const u8,
+    options: windowing.WindowSystem.CreateWindowOptions,
 ) !XcbWindow {
     _ = allocator;
 
@@ -37,8 +35,8 @@ pub fn init(
         .connection = window_system.connection,
         .screen = undefined,
         .window = undefined,
-        .width = width,
-        .height = height,
+        .width = undefined,
+        .height = undefined,
         .wm_delete_window_atom = undefined,
         .xkb_context = undefined,
         .xkb_state = undefined,
@@ -57,8 +55,7 @@ pub fn init(
     self.screen = &iter.data[0];
 
     const xinput_extension_info = self.xcb_library.queryExtension(self.connection, "XInputExtension");
-
-    std.log.info("xinput_extension_info = {}", .{xinput_extension_info});
+    _ = xinput_extension_info; // autofix
 
     const values = [_]u32{xcb.XCB_EVENT_MASK_EXPOSURE | xcb.XCB_EVENT_MASK_BUTTON_PRESS |
         xcb.XCB_EVENT_MASK_BUTTON_RELEASE | xcb.XCB_EVENT_MASK_POINTER_MOTION |
@@ -72,11 +69,11 @@ pub fn init(
         self.connection,
         xcb.XCB_COPY_FROM_PARENT,
         self.screen.root,
-        0,
-        0,
-        width,
-        height,
-        10,
+        xcb.XCB_COPY_FROM_PARENT,
+        xcb.XCB_COPY_FROM_PARENT,
+        options.preferred_width orelse self.screen.width_in_pixels * 2 / 3,
+        options.preferred_height orelse self.screen.height_in_pixels * 2 / 3,
+        xcb.XCB_COPY_FROM_PARENT,
         xcb.XCB_WINDOW_CLASS_INPUT_OUTPUT,
         self.screen.root_visual,
         xcb.XCB_CW_EVENT_MASK,
@@ -108,8 +105,8 @@ pub fn init(
         .wm_name,
         .string,
         8,
-        @intCast(title.len),
-        title.ptr,
+        @intCast(options.title.len),
+        options.title.ptr,
     );
 
     const protocols_atom = self.xcb_library.internAtom(self.connection, false, "WM_PROTOCOLS");

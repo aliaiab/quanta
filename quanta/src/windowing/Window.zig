@@ -54,7 +54,7 @@ pub inline fn grabCursor(self: *Window) void {
     return self.impl.grabCursor();
 }
 
-///Releases the cursor from window confinement
+///Releases the cursor from window confinement and unhides it
 pub inline fn ungrabCursor(self: *Window) void {
     return self.impl.ungrabCursor();
 }
@@ -79,7 +79,9 @@ pub inline fn isFocused(self: *Window) bool {
     return self.impl.isFocused();
 }
 
-///Returns the vertical scroll of the mouse device
+///Returns the vertical scroll of the mouse device.
+///The returned signed integer is the number of discrete scroll increments relative from zero
+///where zero is no scrolling. This value is a delta value, not absolute.
 pub inline fn getMouseScroll(self: *Window) i32 {
     return self.impl.getMouseScroll();
 }

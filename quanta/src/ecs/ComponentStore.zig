@@ -352,8 +352,6 @@ const EntityMap = struct {
     }
 
     pub fn getUnchecked(self: *EntityMap, entity: Entity) *EntityDescription {
-        @setRuntimeSafety(false);
-
         const entity_data = EntityData.fromHandle(entity);
 
         const index = entity_data.index;

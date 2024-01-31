@@ -21,11 +21,13 @@ pub fn deinit(self: *XcbWindowSystem) void {
 pub fn createWindow(
     self: *XcbWindowSystem,
     allocator: std.mem.Allocator,
-    width: u16,
-    height: u16,
-    title: []const u8,
+    options: windowing.WindowSystem.CreateWindowOptions,
 ) !XcbWindow {
-    return XcbWindow.init(allocator, self, width, height, title);
+    return XcbWindow.init(
+        allocator,
+        self,
+        options,
+    );
 }
 
 const XcbWindowSystem = @This();

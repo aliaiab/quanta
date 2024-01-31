@@ -87,7 +87,11 @@ pub fn init() !void {
     state.window_system = try windowing.WindowSystem.init();
     errdefer state.window_system.deinit();
 
-    state.window = try state.window_system.createWindow(state.allocator, 1600, 900, "Quanta Example");
+    state.window = try state.window_system.createWindow(state.allocator, .{
+        .preferred_width = 1600,
+        .preferred_height = 900,
+        .title = "Quanta Example",
+    });
     errdefer state.window.deinit(state.allocator);
 
     {
@@ -140,7 +144,7 @@ pub fn init() !void {
     state.asset_storage = asset.AssetStorage.init(state.allocator, state.asset_archive);
     errdefer state.asset_storage.deinit();
 
-    const test_scene_handle = try state.asset_storage.load(gltf.Import, "suzanne/Suzanne.gltf");
+    const test_scene_handle = try state.asset_storage.load(gltf.Import, "light_test/light_test.gltf");
 
     const test_scene_import = state.asset_storage.get(gltf.Import, test_scene_handle).?;
 

@@ -16,15 +16,25 @@ pub inline fn deinit(self: *WindowSystem) void {
     self.* = undefined;
 }
 
+pub const CreateWindowOptions = struct {
+    ///A hint to indicate to the window system how wide the window should be
+    preferred_width: ?u16 = null,
+    ///A hint to indicate to the window system how tall the window should be
+    preferred_height: ?u16 = null,
+    ///A static title which names this window
+    title: []const u8,
+};
+
 pub inline fn createWindow(
     self: *WindowSystem,
     allocator: std.mem.Allocator,
-    width: u16,
-    height: u16,
-    title: []const u8,
+    options: CreateWindowOptions,
 ) !Window {
     const window = Window{
-        .impl = try self.impl.createWindow(allocator, width, height, title),
+        .impl = try self.impl.createWindow(
+            allocator,
+            options,
+        ),
     };
 
     return window;
