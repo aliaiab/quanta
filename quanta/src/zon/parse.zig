@@ -1,10 +1,6 @@
 pub fn parse(comptime T: type, allocator: std.mem.Allocator, source: [:0]const u8) !T {
     const root_value = try Value.parse(allocator, source);
 
-    for (root_value.struct_literal.keys(), root_value.struct_literal.values()) |key, value| {
-        std.log.info("field: {s} = {any}", .{ key, value });
-    }
-
     const data = try structLiteralAsType(T, allocator, root_value.struct_literal);
 
     return data;
@@ -181,19 +177,15 @@ const Value = union(enum) {
 
         for (0..ast.nodes.len) |node_index| {
             const node_tag = ast.nodes.items(.tag)[node_index];
-
-            std.log.info("{}", .{node_tag});
+            _ = node_tag;
         }
 
         const root = ast.nodes.get(0);
 
-        std.log.info("root: {}, {}", .{ root.data.lhs, root.data.rhs });
-
         var struct_init_buffer: [2]std.zig.Ast.Node.Index = undefined;
 
         const struct_init = ast.fullStructInit(&struct_init_buffer, root.data.lhs).?;
-
-        std.log.info("{any}", .{struct_init.ast.fields});
+        _ = struct_init;
 
         const root_value = try structLiteralValue(allocator, ast, root.data.lhs);
 
@@ -231,12 +223,15 @@ const Value = union(enum) {
                 value = .{ .enum_literal = string_value };
             },
             .struct_init_dot,
+            .struct_init_dot_comma,
             .struct_init_dot_two,
             .struct_init_dot_two_comma,
             => {
                 value = try structLiteralValue(allocator, ast, node_index);
             },
             .array_init_dot,
+            .array_init_dot_comma,
+            .array_init_dot_two_comma,
             .array_init,
             => {
                 value = try arrayValue(allocator, ast, node_index);
@@ -262,8 +257,6 @@ const Value = union(enum) {
         var struct_init_buffer: [2]std.zig.Ast.Node.Index = undefined;
         const struct_init = ast.fullStructInit(&struct_init_buffer, node_index).?;
 
-        std.log.info("{any}", .{struct_init.ast.fields});
-
         var value_map: Value.StructLiteral = .{};
 
         for (struct_init.ast.fields) |field_index| {
@@ -276,6 +269,7 @@ const Value = union(enum) {
                 .struct_init_dot_two_comma,
                 .array_init,
                 .array_init_dot,
+                .array_init_dot_comma,
                 .array_init_dot_two,
                 .array_init_dot_two_comma,
                 => 3,
@@ -283,7 +277,11 @@ const Value = union(enum) {
                 .number_literal,
                 .string_literal,
                 => 2,
-                else => unreachable,
+                else => {
+                    std.log.err("node_type = {}", .{node_type});
+
+                    unreachable;
+                },
             };
 
             const field_name = ast.tokenSlice(ast.nodes.get(field_index).main_token - offset);

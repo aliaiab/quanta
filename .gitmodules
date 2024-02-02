@@ -13,15 +13,9 @@
 [submodule "quanta/lib/ImGuizmo"]
 	path = quanta-imgui/lib/ImGuizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo.git
-[submodule "quanta/lib/shaderc"]
-	path = quanta/lib/shaderc
-	url = https://github.com/google/shaderc.git
 [submodule "quanta/lib/glslang"]
 	path = quanta/lib/glslang
 	url = https://github.com/KhronosGroup/glslang.git
-[submodule "quanta/lib/SPIRV-Tools"]
-	path = quanta/lib/SPIRV-Tools
-	url = https://github.com/KhronosGroup/SPIRV-Tools.git
 [submodule "quanta/lib/spvine"]
 	path = quanta/lib/spvine
 	url = https://github.com/zkburke/spvine.git

@@ -7,24 +7,22 @@ pub fn build(builder: *Build) !void {
         .optimize = optimize,
     });
 
-    const renderer_gui_rectangle_vert_module = GlslCompileStep.compileModule(builder, optimize, .vertex, builder.pathFromRoot("src/renderer_gui/rectangle.vert.glsl"), "rectangle.vert.spv");
-    const renderer_gui_rectangle_frag_module = GlslCompileStep.compileModule(builder, optimize, .fragment, builder.pathFromRoot("src/renderer_gui/rectangle.frag.glsl"), "rectangle.frag.spv");
-    const renderer_gui_mesh_vert_module = GlslCompileStep.compileModule(builder, optimize, .vertex, builder.pathFromRoot("src/renderer_gui/mesh.vert.glsl"), "mesh.vert.spv");
-    const renderer_gui_mesh_frag_module = GlslCompileStep.compileModule(builder, optimize, .fragment, builder.pathFromRoot("src/renderer_gui/mesh.frag.glsl"), "mesh.frag.spv");
+    const glsl_compile_step = quanta.addGlslCompileStep(builder, quanta_dependency, .{
+        .optimize = optimize,
+        .source_directory = builder.pathFromRoot("src/renderer_gui/shaders.zon"),
+    });
 
     const quanta_imgui_module = builder.addModule("quanta-imgui", .{
         .root_source_file = .{ .path = builder.pathFromRoot("src/root.zig") },
         .imports = &.{
-            .{ .name = "renderer_gui_rectangle_vert.spv", .module = renderer_gui_rectangle_vert_module },
-            .{ .name = "renderer_gui_rectangle_frag.spv", .module = renderer_gui_rectangle_frag_module },
-            .{ .name = "renderer_gui_mesh_vert.spv", .module = renderer_gui_mesh_vert_module },
-            .{ .name = "renderer_gui_mesh_frag.spv", .module = renderer_gui_mesh_frag_module },
             .{ .name = "quanta", .module = quanta_dependency.module("quanta") },
         },
         .link_libcpp = true,
         .link_libc = true,
         .target = target,
     });
+
+    glsl_compile_step.addImportToModule(quanta_imgui_module);
 
     quanta_imgui_module.addIncludePath(.{ .path = builder.pathFromRoot("lib/cimgui/imgui/") });
     quanta_imgui_module.addIncludePath(.{ .path = builder.pathFromRoot("lib/ImGuizmo/") });

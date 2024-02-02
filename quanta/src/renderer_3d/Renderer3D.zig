@@ -1,6 +1,6 @@
-const depth_reduce_comp_spv: []align(4) const u8 = @alignCast(@embedFile("renderer_depth_reduce_comp.spv"));
-const depth_vert_spv: []align(4) const u8 = @alignCast(@embedFile("renderer_depth_vert.spv"));
-const depth_frag_spv: []align(4) const u8 = @alignCast(@embedFile("renderer_depth_frag.spv"));
+const depth_reduce_comp_spv: []align(4) const u8 = @alignCast(@embedFile("depth_reduce.comp.spv"));
+const depth_vert_spv: []align(4) const u8 = @alignCast(@embedFile("depth.vert.spv"));
+const depth_frag_spv: []align(4) const u8 = @alignCast(@embedFile("depth.frag.spv"));
 
 const SkyPipelinePushConstants = extern struct {
     view_projection: [4][4]f32,
@@ -269,10 +269,10 @@ pub fn init(allocator: std.mem.Allocator) !void {
     self.index_buffer = try graphics.Buffer.init(vertex_buffer_size, .index);
     errdefer self.index_buffer.deinit();
 
-    self.cull_pipeline = try graphics.ComputePipeline.init(self.allocator, @alignCast(@embedFile("renderer_pre_depth_cull_comp.spv")), .@"1d", null, DrawCullPushConstants);
+    self.cull_pipeline = try graphics.ComputePipeline.init(self.allocator, @alignCast(@embedFile("pre_depth_cull.comp.spv")), .@"1d", null, DrawCullPushConstants);
     errdefer self.cull_pipeline.deinit(self.allocator);
 
-    self.post_depth_cull_pipeline = try graphics.ComputePipeline.init(self.allocator, @alignCast(@embedFile("renderer_post_depth_cull_comp.spv")), .@"1d", null, PostDepthCullPushConstants);
+    self.post_depth_cull_pipeline = try graphics.ComputePipeline.init(self.allocator, @alignCast(@embedFile("post_depth_cull.comp.spv")), .@"1d", null, PostDepthCullPushConstants);
     errdefer self.post_depth_cull_pipeline.deinit(self.allocator);
 
     self.post_depth_cull_pipeline.setDescriptorBuffer(1, 0, self.mesh_buffer);
@@ -286,8 +286,8 @@ pub fn init(allocator: std.mem.Allocator) !void {
             // swapchain.surface_format.format,
             self.radiance_color_image.format},
             .depth_attachment_format = self.depth_image.format,
-            .vertex_shader_binary = @alignCast(@embedFile("renderer_tri_vert.spv")),
-            .fragment_shader_binary = @alignCast(@embedFile("renderer_tri_frag.spv")),
+            .vertex_shader_binary = @alignCast(@embedFile("tri.vert.spv")),
+            .fragment_shader_binary = @alignCast(@embedFile("tri.frag.spv")),
             .depth_state = .{
                 .write_enabled = false,
                 .test_enabled = true,
@@ -310,8 +310,8 @@ pub fn init(allocator: std.mem.Allocator) !void {
                 self.radiance_color_image.format,
             },
             .depth_attachment_format = self.depth_image.format,
-            .vertex_shader_binary = @alignCast(@embedFile("renderer_sky_vert.spv")),
-            .fragment_shader_binary = @alignCast(@embedFile("renderer_sky_frag.spv")),
+            .vertex_shader_binary = @alignCast(@embedFile("sky.vert.spv")),
+            .fragment_shader_binary = @alignCast(@embedFile("sky.frag.spv")),
             .depth_state = .{
                 .write_enabled = false,
                 .test_enabled = true,
@@ -371,7 +371,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
     );
     errdefer self.shadow_pipeline.deinit(allocator);
 
-    self.color_resolve_pipeline = try graphics.ComputePipeline.init(allocator, @alignCast(@embedFile("renderer_color_resolve_comp.spv")), .@"2d", null, ColorResolvePushData);
+    self.color_resolve_pipeline = try graphics.ComputePipeline.init(allocator, @alignCast(@embedFile("color_resolve.comp.spv")), .@"2d", null, ColorResolvePushData);
     errdefer self.color_resolve_pipeline.deinit(self.allocator);
 
     self.materials_buffer = try graphics.Buffer.init(1024 * @sizeOf(Material), .storage);

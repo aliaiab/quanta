@@ -1,0 +1,14 @@
+.{
+    .paths = .{
+        "color_resolve.comp.glsl",
+        "depth_reduce.comp.glsl",
+        "depth.frag.glsl",
+        "depth.vert.glsl",
+        "pre_depth_cull.comp.glsl",
+        "post_depth_cull.comp.glsl",
+        "sky.vert.glsl",
+        "sky.frag.glsl",
+        "tri.vert.glsl",
+        "tri.frag.glsl",
+    },
+}

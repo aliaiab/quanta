@@ -1,0 +1,6 @@
+.{
+    .paths = .{
+        "mesh.vert.glsl",
+        "mesh.frag.glsl",
+    },
+}
