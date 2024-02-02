@@ -50,10 +50,10 @@ pub fn build(builder: *std.Build) !void {
 
     run_cmd.cwd = .{ .path = builder.pathFromRoot("zig-out/bin/") };
 
-    const run_step = builder.step("run_example", "Run the example application");
+    const run_step = builder.step("run", "Run the application");
     run_step.dependOn(&run_cmd.step);
 
-    const compile_assets_step = builder.step("compile_assets", "Compile the assets for example");
+    const compile_assets_step = builder.step("compile_assets", "Compile the assets");
 
     compile_assets_step.dependOn(compile_assets.step);
 }

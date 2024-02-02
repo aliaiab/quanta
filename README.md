@@ -1,7 +1,7 @@
 # Quanta
 
 A data oriented game engine/framework/library for desktop platforms written in
-and for zig.
+and for Zig.
 
 This is an unfinished, experimental project which satisfies my semi-academic
 interest in game engine design. It is not yet fully useable.
@@ -9,13 +9,20 @@ interest in game engine design. It is not yet fully useable.
 ### Required System Dependencies:
 
 - Git
-- Zig 0.12.0-dev.176+c429bb5d2
+- Zig 0.12.0 master
 - LunarG vulkan-sdk
 
-**1. Build the example assets**
+## Build and Run Tests
 
-- `zig build example_assets`
+`zig build test`
 
-**2. Build and run the example**
+## Build the Example
 
-- `zig build run_example`
+`cd quanta-example`
+
+`zig build run`
+
+If you want to test the asset compiler in isolation (which is run as a
+dependency step for the run step by default).
+
+`zig build compile_assets`
