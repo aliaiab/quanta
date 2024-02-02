@@ -2,7 +2,7 @@
 	path = quanta/lib/zalgebra
 	url = https://github.com/kooparse/zalgebra.git
 [submodule "quanta/lib/cimgui"]
-	path = quanta/lib/cimgui
+	path = quanta-imgui/lib/cimgui
 	url = https://github.com/cimgui/cimgui.git
 [submodule "quanta/lib/zigimg"]
 	path = quanta/lib/zigimg
@@ -11,7 +11,7 @@
 	path = quanta/lib/vulkan-zig
 	url = https://github.com/Snektron/vulkan-zig.git
 [submodule "quanta/lib/ImGuizmo"]
-	path = quanta/lib/ImGuizmo
+	path = quanta-imgui/lib/ImGuizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo.git
 [submodule "quanta/lib/shaderc"]
 	path = quanta/lib/shaderc

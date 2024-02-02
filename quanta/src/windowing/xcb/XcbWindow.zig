@@ -314,8 +314,10 @@ pub fn getHeight(self: XcbWindow) u16 {
     return reply.height;
 }
 
-pub fn grabCursor(self: *XcbWindow) void {
+pub fn captureCursor(self: *XcbWindow) void {
     if (self.cursor_grabbed) return;
+
+    self.key_map = std.mem.zeroes(@TypeOf(self.key_map));
 
     self.hideCursor();
 
@@ -334,7 +336,7 @@ pub fn grabCursor(self: *XcbWindow) void {
     self.cursor_grabbed = true;
 }
 
-pub fn ungrabCursor(self: *XcbWindow) void {
+pub fn uncaptureCursor(self: *XcbWindow) void {
     if (!self.cursor_grabbed) return;
 
     self.xcb_library.ungrabPointer(self.connection, xcb.XCB_CURRENT_TIME);
@@ -344,7 +346,7 @@ pub fn ungrabCursor(self: *XcbWindow) void {
     self.cursor_grabbed = false;
 }
 
-pub fn isCursorGrabbed(self: *XcbWindow) bool {
+pub fn isCursorCaptured(self: XcbWindow) bool {
     return self.cursor_grabbed;
 }
 
@@ -364,15 +366,15 @@ pub fn unhideCursor(self: *XcbWindow) void {
     self.cursor_hidden = false;
 }
 
-pub fn isCursorHidden(self: *XcbWindow) bool {
+pub fn isCursorHidden(self: XcbWindow) bool {
     return self.cursor_hidden;
 }
 
-pub fn getCursorPosition(self: *XcbWindow) @Vector(2, i16) {
+pub fn getCursorPosition(self: XcbWindow) @Vector(2, i16) {
     return self.mouse_position;
 }
 
-pub fn getKey(self: *XcbWindow, key: windowing.Key) windowing.Action {
+pub fn getKey(self: XcbWindow, key: windowing.Key) windowing.Action {
     const index = @intFromEnum(key);
 
     if (!self.key_map[index] and self.previous_key_map[index]) {
@@ -386,7 +388,7 @@ pub fn getKey(self: *XcbWindow, key: windowing.Key) windowing.Action {
     return .release;
 }
 
-pub fn getMouseButton(self: *XcbWindow, key: windowing.MouseButton) windowing.Action {
+pub fn getMouseButton(self: XcbWindow, key: windowing.MouseButton) windowing.Action {
     const index = @intFromEnum(key);
 
     if (self.mouse_map[index]) {
@@ -396,21 +398,21 @@ pub fn getMouseButton(self: *XcbWindow, key: windowing.MouseButton) windowing.Ac
     return .release;
 }
 
-pub fn getMouseMotion(self: *XcbWindow) @Vector(2, i16) {
+pub fn getMouseMotion(self: XcbWindow) @Vector(2, i16) {
     return self.mouse_motion;
 }
 
-pub fn isFocused(self: *XcbWindow) bool {
+pub fn isFocused(self: XcbWindow) bool {
     const focus = self.xcb_library.getInputFocus(self.connection);
 
     return self.window == focus.focus;
 }
 
-pub fn getUtf8Input(self: *XcbWindow) []const u8 {
+pub fn getUtf8Input(self: XcbWindow) []const u8 {
     return self.text_buffer[0..self.text_len];
 }
 
-pub fn getMouseScroll(self: *XcbWindow) i32 {
+pub fn getMouseScroll(self: XcbWindow) i32 {
     return self.mouse_scroll;
 }
 

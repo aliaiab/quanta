@@ -1,7 +1,7 @@
 const std = @import("std");
-const quanta = @import("../root.zig");
-const imgui = quanta.imgui.cimgui;
-const widgets = quanta.imgui.widgets;
+const quanta = @import("quanta");
+const imgui = @import("cimgui.zig");
+const widgets = @import("widgets.zig");
 
 const Message = struct {
     level: std.log.Level,

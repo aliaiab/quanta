@@ -1,5 +1,4 @@
 const depth_reduce_comp_spv: []align(4) const u8 = @alignCast(@embedFile("renderer_depth_reduce_comp.spv"));
-
 const depth_vert_spv: []align(4) const u8 = @alignCast(@embedFile("renderer_depth_vert.spv"));
 const depth_frag_spv: []align(4) const u8 = @alignCast(@embedFile("renderer_depth_frag.spv"));
 

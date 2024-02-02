@@ -1,0 +1,15 @@
+.{
+    .name = "quanta-example",
+    .version = "0.0.0",
+    .dependencies = .{
+        .quanta = .{
+            .path = "../",
+        },
+        .quanta_imgui = .{
+            .path = "../quanta-imgui/",
+        },
+    },
+    .paths = .{
+        "",
+    },
+}

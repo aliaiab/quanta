@@ -1,9 +1,10 @@
 const RendererGui = @This();
 
 const std = @import("std");
-const graphics = @import("../graphics.zig");
-const zalgebra = @import("../math.zig").zalgebra;
-const imgui = @import("../imgui.zig").cimgui;
+const quanta = @import("quanta");
+const graphics = quanta.graphics;
+const zalgebra = quanta.math.zalgebra;
+const imgui = @import("../imgui/cimgui.zig");
 
 var self: @This() = .{};
 

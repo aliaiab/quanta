@@ -54,7 +54,7 @@ fn updateInputs(window: *Window) void {
 
     if (io.WantCaptureMouse) {} else {}
 
-    if (io.ConfigFlags & imgui.ImGuiConfigFlags_NoMouseCursorChange == 1 or window.isCursorGrabbed()) {
+    if (io.ConfigFlags & imgui.ImGuiConfigFlags_NoMouseCursorChange == 1 or window.isCursorCaptured()) {
         imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Left, false);
         imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Right, false);
         imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Middle, false);
@@ -336,5 +336,6 @@ fn quantaKeyToUtf8(key: windowing.Key) ?u8 {
 
 const std = @import("std");
 const imgui = @import("cimgui.zig");
-const windowing = @import("../windowing.zig");
-const Window = windowing.Window;
+const windowing = quanta.windowing;
+const Window = quanta.windowing.Window;
+const quanta = @import("quanta");

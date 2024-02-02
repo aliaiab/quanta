@@ -114,7 +114,7 @@ pub const Type = union(enum) {
         return @as(Id, @enumFromInt(@intFromPtr(&static.value)));
     }
 
-    ///Returns a pointer to the canonical Type for T
+    ///Returns a pointer to the canonical Type info for T
     pub fn info(comptime T: type) *const Type {
         const Static = struct {
             pub const @"type": Type = infoValue(T);

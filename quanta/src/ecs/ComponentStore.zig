@@ -211,7 +211,12 @@ pub const ArchetypeId = packed struct(u32) {
 };
 
 pub const ArchetypeIndex = u32;
+
+pub const max_archetype_count = std.math.maxInt(ArchetypeIndex);
+
 pub const ChunkIndex = u16;
+
+pub const max_chunk_count = std.math.maxInt(ChunkIndex);
 
 ///Stores the data for components on entities with the same component permutation
 pub const Archetype = struct {
@@ -266,24 +271,31 @@ pub const Changes = struct {
 ///Allows random access of stable entity ids
 const EntityMap = struct {
     ///Number of entities per entity description chunk
-    pub const chunk_size: usize = 1024;
+    pub const chunk_size: usize = 1 * 1024;
 
-    chunks: std.ArrayListUnmanaged(*[chunk_size]EntityDescription) = .{},
+    chunks: std.SegmentedList(*[chunk_size]EntityDescription, 16) = .{},
     entity_count: u32 = 0,
     next_entity_index: u32 = 0,
     next_entity_generation: u16 = 0,
 
+    comptime {
+        std.debug.assert(@rem(@sizeOf([chunk_size]EntityDescription), std.mem.page_size) == 0);
+    }
+
     pub fn deinit(self: *EntityMap, allocator: std.mem.Allocator) void {
-        for (self.chunks.items) |chunk| {
-            allocator.destroy(chunk);
+        var iterator = self.chunks.iterator(0);
+
+        while (iterator.next()) |chunk| {
+            std.heap.page_allocator.destroy(chunk.*);
         }
 
         self.chunks.deinit(allocator);
     }
 
     pub fn createChunk(self: *EntityMap, allocator: std.mem.Allocator) !*[chunk_size]EntityDescription {
-        const chunk = try allocator.create([chunk_size]EntityDescription);
-        errdefer allocator.destroy(chunk);
+        //Need to create a zero page
+        const chunk = try std.heap.page_allocator.create([chunk_size]EntityDescription);
+        errdefer std.heap.page_allocator.destroy(chunk);
 
         try self.chunks.append(allocator, chunk);
 
@@ -291,18 +303,19 @@ const EntityMap = struct {
     }
 
     pub fn getFreeChunk(self: *EntityMap, allocator: std.mem.Allocator) !*[chunk_size]EntityDescription {
-        const chunk_index = self.entity_count / chunk_size;
+        const chunk_index = @divTrunc(self.entity_count, chunk_size);
 
-        if (chunk_index >= self.chunks.items.len) {
+        if (chunk_index >= self.chunks.len) {
             _ = try self.createChunk(allocator);
         }
 
-        return self.chunks.items[chunk_index];
+        return self.chunks.at(chunk_index).*;
     }
 
     pub fn mapEntity(self: *EntityMap, allocator: std.mem.Allocator, entity: Entity) !*EntityDescription {
         self.entity_count += 1;
 
+        //TODO: lazily create chunks for new empty entities
         const chunk = try self.getFreeChunk(allocator);
         _ = chunk;
 
@@ -327,15 +340,15 @@ const EntityMap = struct {
     }
 
     pub fn removeEntity(self: *EntityMap, entity: Entity) void {
-        //We can't do a swap remove (as of now) as it would invalidate
+        const entity_description = self.getUnchecked(entity);
 
-        self.getUnchecked(entity).archetype_index = std.math.maxInt(ArchetypeIndex);
-        self.getUnchecked(entity).row = .{};
+        entity_description.archetype_index = std.math.maxInt(ArchetypeIndex);
+        entity_description.row = .{};
 
         self.next_entity_generation +%= 1;
     }
 
-    pub fn contains(self: *EntityMap, entity: Entity) bool {
+    pub inline fn contains(self: *EntityMap, entity: Entity) bool {
         const entity_data = EntityData.fromHandle(entity);
 
         return entity_data.index < self.entity_count and
@@ -356,11 +369,13 @@ const EntityMap = struct {
 
         const index = entity_data.index;
 
-        const chunk_index = index / chunk_size;
+        const chunk_index = @divTrunc(index, chunk_size);
 
-        const offset = index - (chunk_index * chunk_size);
+        const chunk_begin = chunk_index * chunk_size;
 
-        const chunk = self.chunks.items[chunk_index];
+        const offset = index - chunk_begin;
+
+        const chunk = self.chunks.at(chunk_index).*;
 
         return &chunk[offset];
     }

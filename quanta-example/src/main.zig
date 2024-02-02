@@ -12,10 +12,11 @@ const Sampler = quanta.graphics.Sampler;
 const png = quanta.asset.importers.png;
 const gltf = quanta.asset.importers.gltf;
 const zalgebra = quanta.math.zalgebra;
-const imgui = quanta.imgui.cimgui;
-const imguizmo = quanta.imgui.guizmo;
-const entity_editor = quanta.imgui.entity_editor;
+const imgui = quanta_imgui.cimgui;
+const imguizmo = quanta_imgui.guizmo;
+const entity_editor = quanta_imgui.entity_editor;
 const asset = quanta.asset;
+const quanta_imgui = @import("quanta-imgui");
 
 const quanta_components = quanta.components;
 const velocity_system = quanta.systems.velocity_system;
@@ -23,7 +24,7 @@ const acceleration_system = quanta.systems.acceleration_system;
 
 const graphics = quanta.graphics;
 const Renderer3D = quanta.renderer_3d.Renderer3D;
-const RendererGui = quanta.renderer_gui.RendererGui;
+const RendererGui = quanta_imgui.RendererGui;
 
 const log = std.log.scoped(.example);
 
@@ -123,7 +124,7 @@ pub fn init() !void {
     std.debug.assert(imgui_context != null);
     imgui.igSetCurrentContext(imgui_context);
 
-    try quanta.imgui.driver.init();
+    try quanta_imgui.driver.init();
     try RendererGui.init(state.allocator, state.swapchain);
 
     const asset_archive_file_path = "example_assets_archive";
@@ -370,7 +371,7 @@ pub fn deinit() void {
     defer state.swapchain.deinit();
     defer Renderer3D.deinit();
     defer imgui.igDestroyContext(imgui.igGetCurrentContext());
-    defer quanta.imgui.driver.deinit();
+    defer quanta_imgui.driver.deinit();
     defer RendererGui.deinit();
     defer std.os.munmap(state.asset_archive_blob);
     defer state.allocator.free(state.test_scene_meshes);
@@ -392,9 +393,9 @@ pub fn update() !UpdateResult {
         state.camera_enable = !state.camera_enable;
 
         if (state.camera_enable) {
-            state.window.grabCursor();
+            state.window.captureCursor();
         } else {
-            state.window.ungrabCursor();
+            state.window.uncaptureCursor();
         }
 
         state.camera_enable_changed = true;
@@ -514,10 +515,10 @@ pub fn update() !UpdateResult {
     if (enable_imgui) {
         //Process UI logic
         {
-            try quanta.imgui.driver.begin(&state.window);
-            defer quanta.imgui.driver.end();
+            try quanta_imgui.driver.begin(&state.window);
+            defer quanta_imgui.driver.end();
 
-            const widgets = quanta.imgui.widgets;
+            const widgets = quanta_imgui.widgets;
 
             imgui.igNewFrame();
             imguizmo.ImGuizmo_SetOrthographic(false);
@@ -696,7 +697,7 @@ pub fn update() !UpdateResult {
 
             entity_editor.entityViewer(&state.ecs_scene, &state.entity_debugger_commands, &state.selected_entities);
             entity_editor.chunkViewer(&state.ecs_scene);
-            quanta.imgui.log.viewer("Log");
+            quanta_imgui.log.viewer("Log");
 
             try state.entity_debugger_commands.execute(&state.ecs_scene);
         }
@@ -711,7 +712,7 @@ pub fn update() !UpdateResult {
 
             while (query.nextBlock()) |block| {
                 for (block.Position) |position| {
-                    quanta.imgui.widgets.drawBillboard(camera_view_projection, .{ position.x, position.y, position.z }, 10);
+                    quanta_imgui.widgets.drawBillboard(camera_view_projection, .{ position.x, position.y, position.z }, 10);
                 }
             }
         }
@@ -794,7 +795,7 @@ pub const std_options = struct {
             nosuspend stderr.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
         }
 
-        quanta.imgui.log.logMessage(message_level, scope, format, args) catch return;
+        quanta_imgui.log.logMessage(message_level, scope, format, args) catch return;
     }
 };
 
