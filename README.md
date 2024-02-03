@@ -10,7 +10,10 @@ interest in game engine design. It is not yet fully useable.
 
 - Git
 - Zig 0.12.0 master
-- LunarG vulkan-sdk
+
+### Optional System Dependencies:
+
+- LunarG vulkan-sdk (for validation layers)
 
 ## Build and Run Tests
 
