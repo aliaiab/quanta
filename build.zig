@@ -50,9 +50,6 @@ pub fn build(builder: *std.Build) !void {
             //OsDependent
             builder.pathFromRoot("quanta/lib/glslang/glslang/OSDependent/Unix/ossource.cpp"),
 
-            //I'm not sure what this does or why it's needed
-            builder.pathFromRoot("quanta/lib/glslang/OGLCompilersDLL/InitializeDll.cpp"),
-
             builder.pathFromRoot("quanta/lib/glslang/glslang/ResourceLimits/resource_limits_c.cpp"),
             builder.pathFromRoot("quanta/lib/glslang/glslang/ResourceLimits/ResourceLimits.cpp"),
 
@@ -69,12 +66,14 @@ pub fn build(builder: *std.Build) !void {
         },
         .flags = &[_][]const u8{},
     });
+    glslang_module.sanitize_c = false;
 
     const glsl_compiler = builder.addExecutable(.{
         .name = "glsl_compiler",
         .root_source_file = std.Build.LazyPath.relative("quanta/src/asset/build_steps/glsl_compiler.zig"),
         .target = builder.host,
         .optimize = .Debug,
+        .sanitize_thread = true,
     });
 
     glsl_compiler.addIncludePath(.{ .path = builder.pathFromRoot("quanta/lib/glslang/") });
@@ -129,7 +128,7 @@ pub fn build(builder: *std.Build) !void {
         .name = "asset_compiler",
         .root_source_file = std.Build.LazyPath.relative("quanta/src/asset/compiler_main.zig"),
         .target = builder.host,
-        .optimize = .ReleaseSafe,
+        .optimize = .Debug,
     });
 
     asset_compiler.root_module.addImport("quanta", quanta_module);

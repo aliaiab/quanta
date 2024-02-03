@@ -7,20 +7,57 @@ const glslang_c = @cImport(
 
 extern fn glslang_default_resource() callconv(.C) *const glslang_c.glslang_resource_t;
 
+const IncludeContext = struct {
+    root_source_directory: []const u8,
+};
+
 fn glslIncludeLocalFunc(
     context: ?*anyopaque,
     header_name: [*c]const u8,
     includer_name: [*c]const u8,
     include_depth: usize,
 ) callconv(.C) [*c]glslang_c.glsl_include_result_t {
-    _ = context;
-    std.log.err("HELLO FROM INCLUDE FUNC: header_name = {s}, includer_name = {s}, include_depth = {}", .{
-        header_name,
-        includer_name,
-        include_depth,
-    });
+    const include_context: *const IncludeContext = @alignCast(@ptrCast(context.?));
 
-    const result = std.heap.c_allocator.create(glslang_c.glsl_include_result_t) catch @panic("");
+    std.debug.assert(header_name != null);
+
+    const result = std.heap.c_allocator.create(glslang_c.glsl_include_result_t) catch @panic("oom");
+
+    const includer_name_span = std.mem.span(@as([*:0]const u8, @ptrCast(includer_name)));
+    const header_name_span = std.mem.span(@as([*:0]const u8, @ptrCast(header_name)));
+
+    const includer_dir_relative = std.fs.path.dirname(includer_name_span) orelse "";
+
+    const file_path = std.fs.path.join(std.heap.c_allocator, &.{
+        include_context.root_source_directory,
+        includer_dir_relative,
+        header_name_span,
+    }) catch @panic("oom");
+
+    const relative_to_root = std.fs.path.relative(std.heap.c_allocator, include_context.root_source_directory, file_path) catch @panic("");
+
+    var path_component_iterator = std.fs.path.componentIterator(relative_to_root) catch @panic("");
+
+    while (path_component_iterator.next()) |path_component| {
+        if (std.mem.eql(u8, path_component.path, "..")) {
+            std.log.info("includer: \"{s}\"", .{includer_name});
+            std.log.info("includer_depth: {}", .{include_depth});
+            std.log.info("header_name: \"{s}\"", .{header_name});
+            std.log.info("relative_to_root: \"{s}\"", .{relative_to_root});
+
+            std.log.err("Cannot include file \"{s}\"; Outside of asset package root", .{header_name});
+
+            return null;
+        }
+    }
+
+    const file_contents = std.fs.cwd().readFileAlloc(std.heap.c_allocator, file_path, std.math.maxInt(u32)) catch {
+        return null;
+    };
+
+    result.header_name = header_name;
+    result.header_length = file_contents.len;
+    result.header_data = file_contents.ptr;
 
     return result;
 }
@@ -29,10 +66,24 @@ fn glslIncludeResultFree(context: ?*anyopaque, glsl_include_result: [*c]glslang_
     _ = context;
 
     std.heap.c_allocator.destroy(@as(*glslang_c.glsl_include_result_t, @ptrCast(glsl_include_result)));
+
     return 0;
 }
 
 pub fn main() !void {
+    run() catch |e| {
+        switch (e) {
+            error.CompileFailed => {},
+            else => {
+                return e;
+            },
+        }
+
+        std.os.exit(1);
+    };
+}
+
+pub fn run() !void {
     var process_args_iterator = std.process.args();
 
     _ = process_args_iterator.next().?;
@@ -64,8 +115,6 @@ pub fn main() !void {
 
     const arg_output_path = process_args_iterator.next().?;
 
-    std.log.info("Hello from glsl_compiler", .{});
-
     if (glslang_c.glslang_initialize_process() == 0) {
         return error.FailedToInitializeProcess;
     }
@@ -96,6 +145,10 @@ pub fn main() !void {
         context: ?*anyopaque,
     };
 
+    var include_context: IncludeContext = .{
+        .root_source_directory = std.fs.path.dirname(arg_input_path).?,
+    };
+
     var input: struct_glslang_input_s = .{
         .language = glslang_c.GLSLANG_SOURCE_GLSL,
         .stage = shader_stage,
@@ -108,17 +161,14 @@ pub fn main() !void {
         .default_profile = glslang_c.GLSLANG_NO_PROFILE,
         .force_default_version_and_profile = @intFromBool(false),
         .forward_compatible = @intFromBool(false),
-        .messages = glslang_c.GLSLANG_MSG_DEFAULT_BIT | glslang_c.GLSLANG_MSG_DEBUG_INFO_BIT | glslang_c.GLSLANG_MSG_ENHANCED,
+        .messages = glslang_c.GLSLANG_MSG_DEFAULT_BIT | glslang_c.GLSLANG_MSG_DEBUG_INFO_BIT | glslang_c.GLSLANG_MSG_ENHANCED | glslang_c.GLSLANG_MSG_CASCADING_ERRORS_BIT,
         .resource = glslang_default_resource(),
         .callbacks = .{
-            // .include_local = &glslIncludeLocalFunc,
-            // .include_system = &glslIncludeLocalFunc,
-            // .free_include_result = &glslIncludeResultFree,
-            .include_local = null,
-            .include_system = null,
-            .free_include_result = null,
+            .include_local = &glslIncludeLocalFunc,
+            .include_system = &glslIncludeLocalFunc,
+            .free_include_result = &glslIncludeResultFree,
         },
-        .context = null,
+        .context = &include_context,
     };
 
     const shader = glslang_c.glslang_shader_create(@ptrCast(&input)) orelse return error.FailedToCreateShader;
@@ -128,9 +178,29 @@ pub fn main() !void {
     glslang_c.glslang_shader_set_options(shader, glslang_c.GLSLANG_SHADER_AUTO_MAP_LOCATIONS);
 
     errdefer {
-        std.log.err("{s}", .{arg_input_path});
-        std.log.err("{s}", .{glslang_c.glslang_shader_get_info_log(shader)});
-        std.log.err("{s}", .{glslang_c.glslang_shader_get_info_debug_log(shader)});
+        const info_log = std.mem.span(@as([*:0]const u8, @ptrCast(glslang_c.glslang_shader_get_info_log(shader))));
+
+        var info_log_lines = std.mem.tokenize(u8, info_log, &.{'\n'});
+
+        while (info_log_lines.next()) |info_log_line| {
+            const error_token: []const u8 = "ERROR: ";
+
+            if (std.mem.startsWith(u8, info_log_line, error_token)) {
+                const error_message = info_log_line[error_token.len..];
+
+                if (std.mem.startsWith(u8, error_message, "0:")) {
+                    std.log.err("{s}:{s}", .{ arg_input_path, error_message[2..] });
+                } else {
+                    std.log.err("{s}", .{error_message});
+                }
+            }
+        }
+
+        const debug_log: ?[*:0]const u8 = @ptrCast(glslang_c.glslang_shader_get_info_debug_log(shader));
+
+        if (debug_log != null and std.mem.span(debug_log.?).len != 0) {
+            std.log.debug("{s}", .{debug_log.?});
+        }
     }
 
     if (glslang_c.glslang_shader_preprocess(shader, @ptrCast(&input)) == 0) {
@@ -185,7 +255,7 @@ pub fn main() !void {
 
     const spirv_data = spirv_ptr[0..binary_size];
 
-    std.log.info("Generated binary: len = {}", .{spirv_data.len});
+    std.fs.cwd().makeDir(std.fs.path.dirname(arg_output_path).?) catch {};
 
     try std.fs.cwd().writeFile(arg_output_path, std.mem.sliceAsBytes(spirv_data));
 }

@@ -99,7 +99,7 @@ pub fn main() !void {
 
     const asset_compilers = [_]compiler.AssetCompilerInfo{
         compiler.AssetCompilerInfo.fromType(importers.gltf.Import),
-        compiler.AssetCompilerInfo.fromType(asset.CubeMap),
+        compiler.AssetCompilerInfo.fromType(CubeMap),
     };
 
     var context = compiler.CompilerContext{
@@ -128,7 +128,7 @@ pub fn main() !void {
 
     std.log.info("Recompiled {} assets", .{context.compiled_asset_count});
 
-    const asset_archive = try asset.Archive.encode(allocator, context.assets.items);
+    const asset_archive = try Archive.encode(allocator, context.assets.items);
 
     try asset_archive_file.setEndPos(0);
     try asset_archive_file.seekTo(0);
@@ -140,8 +140,8 @@ pub fn main() !void {
 
 const std = @import("std");
 const quanta = @import("quanta");
-const asset = quanta.asset;
 const compiler = quanta.asset.compiler;
 const zon = quanta.zon;
 const importers = quanta.asset.importers;
+const CubeMap = quanta.asset.CubeMap;
 const Archive = quanta.asset.Archive;

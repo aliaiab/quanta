@@ -1,32 +1,9 @@
 #version 450
 #extension GL_EXT_scalar_block_layout : enable
 #extension GL_EXT_nonuniform_qualifier : enable
+#extension GL_GOOGLE_include_directive : enable
 
-#if 0
-
-#include "stdint.glsl"
-#include "math.glsl"
-
-#else 
-
-#define u8 uint8_t
-#define u16 uint16_t
-#define u32 uint
-#define u64 uint64_t
-
-#define i8 int8_t
-#define i16 int16_t
-#define i32 int
-#define i64 int64_t
-
-#define f16 lowp
-#define f32 float
-#define f64 double
-
-#define PI 3.14159265359
-#define TAU 2 * PI
-
-#endif
+#include "std/std.glsl"
 
 struct AmbientLight 
 {

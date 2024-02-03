@@ -36,7 +36,16 @@ pub fn create(
     self.* = GlslCompileStep{
         .builder = builder,
         .glsl_compiler = builder.addRunArtifact(glsl_compiler),
-        .step = std.Build.Step.init(.{ .id = base_id, .name = name, .owner = builder, .makeFn = &make }),
+        .step = std.Build.Step.init(.{
+            .id = base_id,
+            .name = std.mem.concat(
+                builder.allocator,
+                u8,
+                &.{ "glsl compile ", name },
+            ) catch @panic("oom"),
+            .owner = builder,
+            .makeFn = &make,
+        }),
         .input_path = input_path,
         .output_path = output_path,
         .shader_stage = shader_stage,
@@ -62,9 +71,11 @@ pub fn make(step: *Step, progress_node: *std.Progress.Node) !void {
     try args_list.append(self.builder.allocator, self.input_path);
 
     const output_path_arg_index = args_list.items.len;
+
     try args_list.append(self.builder.allocator, self.output_path);
 
     cache_manifest.hash.addListOfBytes(args_list.items);
+
     const input_file_index = try cache_manifest.addFile(self.input_path, std.math.maxInt(u32));
 
     const found_existing = try step.cacheHit(&cache_manifest);
@@ -88,14 +99,30 @@ pub fn make(step: *Step, progress_node: *std.Progress.Node) !void {
         input_file.contents = try input_file_opened.readToEndAlloc(self.builder.allocator, std.math.maxInt(usize));
     }
 
-    const includes = try getIncludes(self.builder.allocator, input_file.contents.?);
-
     const source_directory = std.fs.path.dirname(self.input_path).?;
 
-    for (includes) |include| {
-        const include_path = try std.fs.path.join(self.builder.allocator, &.{ source_directory, include });
+    const includes = try getIncludesRecursive(self.builder.allocator, source_directory, input_file.contents.?);
 
-        try cache_manifest.addFilePost(include_path);
+    for (includes) |include| {
+        // const include_path = try std.fs.path.join(self.builder.allocator, &.{ source_directory, include });
+        const include_path = include;
+
+        cache_manifest.addFilePost(include_path) catch |e| {
+            switch (e) {
+                error.FileNotFound => {
+                    const error_message = try std.fmt.allocPrint(
+                        self.builder.allocator,
+                        "Could not find include file \"{s}\"",
+                        .{include_path},
+                    );
+
+                    self.step.result_error_msgs.append(self.builder.allocator, error_message) catch {};
+
+                    return e;
+                },
+                else => return e,
+            }
+        };
     }
 
     const digest = cache_manifest.final();
@@ -116,6 +143,25 @@ pub fn make(step: *Step, progress_node: *std.Progress.Node) !void {
         self.glsl_compiler.addArg(arg);
     }
 
+    self.glsl_compiler.addCheck(.{ .expect_stderr_exact = "" });
+
+    errdefer {
+        //The build runner will assert fail if the length of this string is zero
+        self.step.result_stderr = " ";
+
+        const error_message = self.glsl_compiler.step.result_error_msgs.items[0];
+
+        var info_log_lines = std.mem.tokenize(u8, error_message, &.{'\n'});
+
+        while (info_log_lines.next()) |info_log_line| {
+            const error_token: []const u8 = "error: ";
+
+            if (std.mem.startsWith(u8, info_log_line, error_token)) {
+                self.step.result_error_msgs.append(self.builder.allocator, info_log_line[error_token.len..]) catch {};
+            }
+        }
+    }
+
     try self.glsl_compiler.step.makeFn(&self.glsl_compiler.step, progress_node);
 
     try cache_manifest.writeManifest();
@@ -132,6 +178,51 @@ pub fn compileModule(
     const step = GlslCompileStep.create(builder, quanta_dependency, input, input, output, stage, mode);
 
     return builder.createModule(.{ .root_source_file = std.Build.LazyPath{ .generated = &step.generated_file } });
+}
+
+///Returns a linear list of all includes, including transitive ones
+pub fn getIncludesRecursive(
+    allocator: std.mem.Allocator,
+    source_directory: []const u8,
+    source: []const u8,
+) ![][]const u8 {
+    const includes_inital = try getIncludes(allocator, source);
+
+    var includes: std.ArrayListUnmanaged([]const u8) = .{};
+
+    for (includes_inital) |include| {
+        const include_path = try std.fs.path.join(allocator, &.{ source_directory, include });
+
+        try includes.append(allocator, include_path);
+    }
+
+    for (includes_inital) |include| {
+        const directory = try std.fs.path.join(allocator, &.{
+            source_directory,
+            std.fs.path.dirname(include) orelse "",
+        });
+        defer allocator.free(directory);
+
+        const include_path = try std.fs.path.join(allocator, &.{ source_directory, include });
+        defer allocator.free(include_path);
+
+        const include_contents = std.fs.cwd().readFileAlloc(allocator, include_path, std.math.maxInt(usize)) catch |e| {
+            switch (e) {
+                error.FileNotFound => {
+                    std.log.info("include_path = {s}", .{include_path});
+
+                    return e;
+                },
+                else => return e,
+            }
+        };
+
+        const sub_includes = try getIncludesRecursive(allocator, directory, include_contents);
+
+        try includes.appendSlice(allocator, sub_includes);
+    }
+
+    return includes.items;
 }
 
 pub fn getIncludes(
