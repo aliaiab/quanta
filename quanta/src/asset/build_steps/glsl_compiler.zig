@@ -7,7 +7,63 @@ const glslang_c = @cImport(
 
 extern fn glslang_default_resource() callconv(.C) *const glslang_c.glslang_resource_t;
 
+fn glslIncludeLocalFunc(
+    context: ?*anyopaque,
+    header_name: [*c]const u8,
+    includer_name: [*c]const u8,
+    include_depth: usize,
+) callconv(.C) [*c]glslang_c.glsl_include_result_t {
+    _ = context;
+    std.log.err("HELLO FROM INCLUDE FUNC: header_name = {s}, includer_name = {s}, include_depth = {}", .{
+        header_name,
+        includer_name,
+        include_depth,
+    });
+
+    const result = std.heap.c_allocator.create(glslang_c.glsl_include_result_t) catch @panic("");
+
+    return result;
+}
+
+fn glslIncludeResultFree(context: ?*anyopaque, glsl_include_result: [*c]glslang_c.glsl_include_result_t) callconv(.C) c_int {
+    _ = context;
+
+    std.heap.c_allocator.destroy(@as(*glslang_c.glsl_include_result_t, @ptrCast(glsl_include_result)));
+    return 0;
+}
+
 pub fn main() !void {
+    var process_args_iterator = std.process.args();
+
+    _ = process_args_iterator.next().?;
+
+    const arg_optimize = process_args_iterator.next().?;
+
+    const shader_optimize = std.meta.stringToEnum(std.builtin.OptimizeMode, arg_optimize).?;
+
+    const arg_stage = process_args_iterator.next().?;
+
+    const Stage = enum {
+        vertex,
+        fragment,
+        compute,
+    };
+
+    const stage = std.meta.stringToEnum(Stage, arg_stage).?;
+
+    const arg_input_path = process_args_iterator.next().?;
+
+    const source_file_data = try std.fs.cwd().readFileAllocOptions(
+        std.heap.page_allocator,
+        arg_input_path,
+        std.math.maxInt(u32),
+        null,
+        1,
+        0,
+    );
+
+    const arg_output_path = process_args_iterator.next().?;
+
     std.log.info("Hello from glsl_compiler", .{});
 
     if (glslang_c.glslang_initialize_process() == 0) {
@@ -16,38 +72,72 @@ pub fn main() !void {
 
     defer glslang_c.glslang_finalize_process();
 
-    //TODO: deduce from file name
-    const shader_stage = glslang_c.GLSLANG_STAGE_VERTEX;
+    const shader_stage: c_uint = switch (stage) {
+        .vertex => glslang_c.GLSLANG_STAGE_VERTEX,
+        .fragment => glslang_c.GLSLANG_STAGE_FRAGMENT,
+        .compute => glslang_c.GLSLANG_STAGE_COMPUTE,
+    };
 
-    const input = glslang_c.glslang_input_t{
+    const struct_glslang_input_s = extern struct {
+        language: glslang_c.glslang_source_t,
+        stage: glslang_c.glslang_stage_t,
+        client: glslang_c.glslang_client_t,
+        client_version: glslang_c.glslang_target_client_version_t,
+        target_language: glslang_c.glslang_target_language_t,
+        target_language_version: glslang_c.glslang_target_language_version_t,
+        code: [*c]const u8,
+        default_version: c_int,
+        default_profile: glslang_c.glslang_profile_t,
+        force_default_version_and_profile: c_int,
+        forward_compatible: c_int,
+        messages: glslang_c.glslang_messages_t,
+        resource: [*c]const glslang_c.glslang_resource_t,
+        callbacks: glslang_c.glsl_include_callbacks_t,
+        context: ?*anyopaque,
+    };
+
+    var input: struct_glslang_input_s = .{
         .language = glslang_c.GLSLANG_SOURCE_GLSL,
         .stage = shader_stage,
         .client = glslang_c.GLSLANG_CLIENT_VULKAN,
         .client_version = glslang_c.GLSLANG_TARGET_VULKAN_1_3,
         .target_language = glslang_c.GLSLANG_TARGET_SPV,
-        .target_language_version = glslang_c.GLSLANG_TARGET_SPV_1_6,
-        .code = test_glsl_vertex_shader,
+        .target_language_version = glslang_c.GLSLANG_TARGET_SPV_1_5,
+        .code = source_file_data.ptr,
         .default_version = 450,
         .default_profile = glslang_c.GLSLANG_NO_PROFILE,
         .force_default_version_and_profile = @intFromBool(false),
         .forward_compatible = @intFromBool(false),
-        .messages = glslang_c.GLSLANG_MSG_DEFAULT_BIT,
+        .messages = glslang_c.GLSLANG_MSG_DEFAULT_BIT | glslang_c.GLSLANG_MSG_DEBUG_INFO_BIT | glslang_c.GLSLANG_MSG_ENHANCED,
         .resource = glslang_default_resource(),
+        .callbacks = .{
+            // .include_local = &glslIncludeLocalFunc,
+            // .include_system = &glslIncludeLocalFunc,
+            // .free_include_result = &glslIncludeResultFree,
+            .include_local = null,
+            .include_system = null,
+            .free_include_result = null,
+        },
+        .context = null,
     };
 
-    const shader = glslang_c.glslang_shader_create(&input) orelse return error.FailedToCreateShader;
+    const shader = glslang_c.glslang_shader_create(@ptrCast(&input)) orelse return error.FailedToCreateShader;
     defer glslang_c.glslang_shader_delete(shader);
 
+    // glslang_c.glslang_shader_set_preamble(shader, "#extension GL_GOOGLE_include_directive : enable\n");
+    glslang_c.glslang_shader_set_options(shader, glslang_c.GLSLANG_SHADER_AUTO_MAP_LOCATIONS);
+
     errdefer {
+        std.log.err("{s}", .{arg_input_path});
         std.log.err("{s}", .{glslang_c.glslang_shader_get_info_log(shader)});
         std.log.err("{s}", .{glslang_c.glslang_shader_get_info_debug_log(shader)});
     }
 
-    if (glslang_c.glslang_shader_preprocess(shader, &input) == 0) {
+    if (glslang_c.glslang_shader_preprocess(shader, @ptrCast(&input)) == 0) {
         return error.CompileFailed;
     }
 
-    if (glslang_c.glslang_shader_parse(shader, &input) == 0) {
+    if (glslang_c.glslang_shader_parse(shader, @ptrCast(&input)) == 0) {
         return error.CompileFailed;
     }
 
@@ -60,12 +150,34 @@ pub fn main() !void {
         return error.LinkFailed;
     }
 
-    glslang_c.glslang_program_SPIRV_generate(program, shader_stage);
+    if (glslang_c.glslang_program_map_io(program) == 0) {
+        return error.InputOutputMappingFailed;
+    }
+
+    const file_path = try std.heap.page_allocator.dupeZ(u8, arg_input_path);
+
+    glslang_c.glslang_program_add_source_text(program, shader_stage, source_file_data.ptr, source_file_data.len);
+    glslang_c.glslang_program_set_source_file(program, shader_stage, file_path);
+
+    var spirv_options: glslang_c.glslang_spv_options_t = .{
+        .generate_debug_info = shader_optimize == .Debug and false,
+        .strip_debug_info = shader_optimize != .Debug,
+        .disable_optimizer = shader_optimize == .Debug,
+        .optimize_size = shader_optimize == .ReleaseSmall,
+        .disassemble = false,
+        .validate = true,
+        .emit_nonsemantic_shader_debug_info = shader_optimize == .Debug and false,
+        .emit_nonsemantic_shader_debug_source = shader_optimize == .Debug and false,
+    };
+
+    glslang_c.glslang_program_SPIRV_generate_with_options(program, shader_stage, &spirv_options);
 
     const spirv_messages = glslang_c.glslang_program_SPIRV_get_messages(program);
 
     if (spirv_messages != null) {
         std.log.err("{s}", .{spirv_messages});
+
+        return error.SpirvGenerationFailed;
     }
 
     const binary_size = glslang_c.glslang_program_SPIRV_get_size(program);
@@ -75,140 +187,7 @@ pub fn main() !void {
 
     std.log.info("Generated binary: len = {}", .{spirv_data.len});
 
-    std.fs.cwd().makeDir("zig-out/") catch {};
-
-    try std.fs.cwd().writeFile("zig-out/compiled.vert.spv", std.mem.sliceAsBytes(spirv_data));
+    try std.fs.cwd().writeFile(arg_output_path, std.mem.sliceAsBytes(spirv_data));
 }
 
 const std = @import("std");
-
-const test_glsl_vertex_shader =
-    \\#version 450
-    \\#extension GL_EXT_scalar_block_layout : enable
-    \\#extension GL_ARB_shader_draw_parameters : enable
-    \\
-    \\#define u32 uint
-    \\
-    \\layout(push_constant, scalar) uniform Constants
-    \\{
-    \\    mat4 view_projection;
-    \\    u32 point_light_count;
-    \\    vec3 view_position;
-    \\} constants;
-    \\
-    \\struct AmbientLight 
-    \\{
-    \\    uint diffuse;
-    \\};
-    \\
-    \\struct DirectionalLight 
-    \\{
-    \\    vec3 direction;
-    \\    float intensity;
-    \\    uint diffuse;
-    \\};
-    \\
-    \\//Should really be a uniform buffer, not a storage buffer
-    \\layout(binding = 10, scalar) restrict readonly buffer SceneUniforms
-    \\{
-    \\    mat4 view_projection;
-    \\    vec3 view_position;
-    \\
-    \\    u32 point_light_count;
-    \\    AmbientLight ambient_light;
-    \\
-    \\    DirectionalLight directional_light;
-    \\    bool use_directional_light;
-    \\    mat4 directional_light_view_projection;
-    \\} scene_uniforms;
-    \\
-    \\struct Vertex 
-    \\{
-    \\    int normal;
-    \\    uint color;
-    \\    uint uv;
-    \\};
-    \\
-    \\layout(set = 0, binding = 0, scalar) restrict readonly buffer VertexPositions
-    \\{
-    \\    uvec2 vertex_positions[];
-    \\};
-    \\
-    \\layout(set = 0, binding = 1, scalar) restrict readonly buffer Vertices
-    \\{
-    \\    Vertex vertices[];
-    \\};
-    \\
-    \\layout(set = 0, binding = 2, scalar) restrict readonly buffer Transforms
-    \\{
-    \\    mat4x3 transforms[];
-    \\};
-    \\
-    \\layout(set = 0, binding = 3, scalar) restrict readonly buffer MaterialIndicies
-    \\{
-    \\    uint material_indices[];
-    \\};
-    \\
-    \\struct DrawIndexedIndirectCommand
-    \\{
-    \\    u32 index_count;
-    \\    u32 instance_count;
-    \\    u32 first_index;
-    \\    u32 vertex_offset;
-    \\    u32 first_instance; 
-    \\    u32 instance_index;
-    \\};
-    \\
-    \\layout(set = 0, binding = 4, scalar) restrict readonly buffer DrawCommands
-    \\{
-    \\    DrawIndexedIndirectCommand draw_commands[];
-    \\};
-    \\
-    \\layout(location = 0) out Out
-    \\{
-    \\    flat uint material_index;
-    \\    flat uint triangle_index;
-    \\    vec3 position;
-    \\    vec4 position_light_space;
-    \\    vec3 normal;
-    \\    vec4 color;
-    \\    vec2 uv;
-    \\} out_data;
-    \\
-    \\void main() 
-    \\{
-    \\    uint instance_index = draw_commands[gl_DrawIDARB].instance_index;
-    \\    
-    \\    Vertex vertex = vertices[gl_VertexIndex]; 
-    \\    mat4 transform = mat4(transforms[instance_index]);
-    \\
-    \\    uvec2 position_quantised = vertex_positions[gl_VertexIndex];
-    \\
-    \\    vec2 position_xy = unpackHalf2x16(position_quantised[0]);
-    \\    vec2 position_zw = unpackHalf2x16(position_quantised[1]);
-    \\
-    \\    vec3 dequantised_position = vec3(position_xy.x, position_xy.y, position_zw.x);
-    \\
-    \\    vec4 translation = transform * vec4(dequantised_position, 1.0);
-    \\
-    \\    float quantisation_scale = float((1 << (10 - 1)) - 1);
-    \\
-    \\    vec3 dequantised_normal = vec3(
-    \\        (float(int(bitfieldExtract(vertex.normal, 0, 10)))),
-    \\        (float(int(bitfieldExtract(vertex.normal, 10, 10)))),
-    \\        (float(int(bitfieldExtract(vertex.normal, 20, 10))))
-    \\    ) / quantisation_scale;
-    \\
-    \\    vec2 dequantised_uv = unpackHalf2x16(vertex.uv);
-    \\
-    \\    out_data.position = vec3(translation);
-    \\    out_data.position_light_space = scene_uniforms.directional_light_view_projection * vec4(out_data.position, 1);
-    \\    out_data.color = unpackUnorm4x8(vertex.color);
-    \\    out_data.normal = normalize(mat3(transpose(inverse(transform))) * dequantised_normal);
-    \\    out_data.uv = dequantised_uv;
-    \\    out_data.material_index = material_indices[instance_index];
-    \\    out_data.triangle_index = gl_VertexIndex / 3;
-    \\
-    \\    gl_Position = scene_uniforms.view_projection * translation;
-    \\}
-;

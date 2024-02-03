@@ -2,28 +2,50 @@
 #extension GL_EXT_scalar_block_layout : enable
 #extension GL_EXT_nonuniform_qualifier : enable
 
+#if 0
+
+#include "stdint.glsl"
 #include "math.glsl"
 
+#else 
+
+#define u8 uint8_t
+#define u16 uint16_t
 #define u32 uint
+#define u64 uint64_t
+
+#define i8 int8_t
+#define i16 int16_t
+#define i32 int
+#define i64 int64_t
+
+#define f16 lowp
+#define f32 float
+#define f64 double
+
+#define PI 3.14159265359
+#define TAU 2 * PI
+
+#endif
 
 struct AmbientLight 
 {
-    uint diffuse;
+    u32 diffuse;
 };
 
 struct DirectionalLight 
 {
     vec3 direction;
-    float intensity;
-    uint diffuse;
+    f32 intensity;
+    u32 diffuse;
     mat4 view_projection;
 };
 
 struct PointLight 
 {
     vec3 position;
-    float intensity;
-    uint diffuse;
+    f32 intensity;
+    u32 diffuse;
 };
 
 //Should really be a uniform buffer, not a storage buffer
@@ -40,8 +62,8 @@ layout(binding = 10, scalar) restrict readonly buffer SceneUniforms
 
 in Out
 {
-    flat uint material_index;
-    flat uint triangle_index;
+    flat u32 material_index;
+    flat u32 triangle_index;
     vec3 position;
     vec4 position_light_space;
     vec3 normal;
@@ -53,12 +75,12 @@ out vec4 output_color;
 
 struct Material
 {
-    uint albedo_index;
-    uint albedo;
-    uint metalness_index;
-    float metalness;
-    uint roughness_index;
-    float roughness;
+    u32 albedo_index;
+    u32 albedo;
+    u32 metalness_index;
+    f32 metalness;
+    u32 roughness_index;
+    f32 roughness;
 };
 
 layout(binding = 5, scalar) restrict readonly buffer Materials
@@ -81,42 +103,42 @@ layout(binding = 11, scalar) restrict readonly buffer DirectionalLights
 layout(binding = 8) uniform samplerCube environment_sampler;
 layout(binding = 9) uniform sampler2D shadow_sampler;
 
-float distributionGGX(vec3 N, vec3 H, float roughness)
+f32 distributionGGX(vec3 N, vec3 H, f32 roughness)
 {
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float n_dot_h = max(dot(N, H), 0.0);
-    float n_dot_h2 = n_dot_h * n_dot_h;
+    f32 a = roughness * roughness;
+    f32 a2 = a * a;
+    f32 n_dot_h = max(dot(N, H), 0.0);
+    f32 n_dot_h2 = n_dot_h * n_dot_h;
 	
-    float num = a2;
-    float denom = n_dot_h2 * (a2 - 1.0) + 1.0;
+    f32 num = a2;
+    f32 denom = n_dot_h2 * (a2 - 1.0) + 1.0;
     denom = PI * denom * denom;
 	
     return num / denom;
 }
 
-float geometrySchlickGGX(float n_dot_v, float roughness)
+f32 geometrySchlickGGX(f32 n_dot_v, f32 roughness)
 {
-    float r = roughness + 1.0;
-    float k = (r * r) / 8.0;
+    f32 r = roughness + 1.0;
+    f32 k = (r * r) / 8.0;
 
-    float num = n_dot_v;
-    float denom = n_dot_v * (1.0 - k) + k;
+    f32 num = n_dot_v;
+    f32 denom = n_dot_v * (1.0 - k) + k;
 	
     return num / denom;
 }
 
-float geometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
+f32 geometrySmith(vec3 N, vec3 V, vec3 L, f32 roughness)
 {
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    float ggx2 = geometrySchlickGGX(NdotV, roughness);
-    float ggx1 = geometrySchlickGGX(NdotL, roughness);
+    f32 NdotV = max(dot(N, V), 0.0);
+    f32 NdotL = max(dot(N, L), 0.0);
+    f32 ggx2 = geometrySchlickGGX(NdotV, roughness);
+    f32 ggx1 = geometrySchlickGGX(NdotL, roughness);
 	
     return ggx1 * ggx2;
 }
 
-vec3 fresnelSchlick(float cos_theta, vec3 F0)
+vec3 fresnelSchlick(f32 cos_theta, vec3 F0)
 {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
 }  
@@ -127,13 +149,13 @@ vec4 bsdf(
     vec3 view_direction,
     vec3 light_direction,
     vec4 albedo,
-    float roughness,
-    float metallic,
+    f32 roughness,
+    f32 metallic,
     vec3 F0,
 ) 
 {
     vec3 half_direction = normalize(view_direction + light_direction);
-    float n_dot_l = max(dot(normal, light_direction), 0.0);
+    f32 n_dot_l = max(dot(normal, light_direction), 0.0);
 
     vec3 kS = F;
     vec3 kD = vec3(1.0) - kS;
@@ -141,12 +163,12 @@ vec4 bsdf(
 
     vec3 diffuse = kD * albedo.rgb / PI; 
 
-    float NDF = distributionGGX(normal, half_direction, roughness);        
-    float G = geometrySmith(normal, view_direction, light_direction, roughness);      
+    f32 NDF = distributionGGX(normal, half_direction, roughness);        
+    f32 G = geometrySmith(normal, view_direction, light_direction, roughness);      
     vec3 F = fresnelSchlick(max(dot(half_direction, view_direction), 0.0), F0);       
 
     vec3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(normal, view_direction), 0.0) * n_dot_l + 0.0001;
+    f32 denominator = 4.0 * max(dot(normal, view_direction), 0.0) * n_dot_l + 0.0001;
     vec3 specular = numerator / denominator;  
 
     return diffuse + specular;
@@ -155,8 +177,8 @@ vec4 bsdf(
 
 vec4 directionalLightContribution(
     vec4 albedo,
-    float roughness,
-    float metallic,
+    f32 roughness,
+    f32 metallic,
     vec3 F0,
     DirectionalLight directional_light,
     vec3 normal, 
@@ -170,18 +192,18 @@ vec4 directionalLightContribution(
     vec3 half_direction = normalize(view_direction + light_direction);
     vec3 radiance = vec3(light_color);
 
-    float NDF = distributionGGX(normal, half_direction, roughness);        
-    float G = geometrySmith(normal, view_direction, light_direction, roughness);      
+    f32 NDF = distributionGGX(normal, half_direction, roughness);        
+    f32 G = geometrySmith(normal, view_direction, light_direction, roughness);      
     vec3 F = fresnelSchlick(max(dot(half_direction, view_direction), 0.0), F0);       
 
     vec3 kS = F;
     vec3 kD = vec3(1.0) - kS;
     kD *= 1.0 - metallic;	
 
-    float n_dot_l = max(dot(normal, light_direction), 0.0);
+    f32 n_dot_l = max(dot(normal, light_direction), 0.0);
 
     vec3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(normal, view_direction), 0.0) * n_dot_l + 0.0001;
+    f32 denominator = 4.0 * max(dot(normal, view_direction), 0.0) * n_dot_l + 0.0001;
     vec3 specular = numerator / denominator;  
 
     return vec4((kD * albedo.rgb / PI + specular) * radiance * n_dot_l * directional_light.intensity, 0); 
@@ -189,8 +211,8 @@ vec4 directionalLightContribution(
 
 vec4 pointLightContribution(
     vec4 albedo,
-    float roughness,
-    float metallic,
+    f32 roughness,
+    f32 metallic,
     vec3 F0,
     PointLight point_light, 
     vec3 normal, 
@@ -199,28 +221,28 @@ vec4 pointLightContribution(
 ) 
 {
     //point lights are spheres with a radius of 1cm 
-    const float emitter_radius = 0.01;
+    const f32 emitter_radius = 0.01;
 
     vec4 light_color = unpackUnorm4x8(point_light.diffuse);
 
     vec3 light_direction = normalize(point_light.position - position);
     vec3 half_direction = normalize(view_direction + light_direction);
-    float light_distance = distance(position, point_light.position);
-    float attenuation = point_light.intensity / max(light_distance * light_distance, emitter_radius * emitter_radius);
+    f32 light_distance = distance(position, point_light.position);
+    f32 attenuation = point_light.intensity / max(light_distance * light_distance, emitter_radius * emitter_radius);
     vec3 radiance = vec3(light_color) * attenuation;
 
-    float NDF = distributionGGX(normal, half_direction, roughness);        
-    float G = geometrySmith(normal, view_direction, light_direction, roughness);      
+    f32 NDF = distributionGGX(normal, half_direction, roughness);        
+    f32 G = geometrySmith(normal, view_direction, light_direction, roughness);      
     vec3 F = fresnelSchlick(max(dot(half_direction, view_direction), 0.0), F0);       
 
     vec3 kS = F;
     vec3 kD = vec3(1.0) - kS;
     kD *= 1.0 - metallic;
 
-    float n_dot_l = max(dot(normal, light_direction), 0.0);
+    f32 n_dot_l = max(dot(normal, light_direction), 0.0);
 
     vec3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(normal, view_direction), 0.0) * n_dot_l + 0.0001;
+    f32 denominator = 4.0 * max(dot(normal, view_direction), 0.0) * n_dot_l + 0.0001;
     vec3 specular = numerator / denominator;  
 
     return vec4((kD * albedo.rgb / PI + specular) * radiance * n_dot_l, 0); 
@@ -233,8 +255,8 @@ void main()
     vec3 view_direction = normalize(scene_uniforms.view_position - in_data.position);
 
     vec4 albedo = in_data.color * unpackUnorm4x8(material.albedo);
-    float roughness = material.roughness;
-    float metallic = material.metalness;
+    f32 roughness = material.roughness;
+    f32 metallic = material.metalness;
 
     if (material.albedo_index != 0)
     {
@@ -262,10 +284,10 @@ void main()
 
         projection_coordinates = projection_coordinates * 0.5 + 0.5;
 
-        float current_depth = projection_coordinates.z;
-        float closest_depth = texture(shadow_sampler, projection_coordinates.xy).r;
+        f32 current_depth = projection_coordinates.z;
+        f32 closest_depth = texture(shadow_sampler, projection_coordinates.xy).r;
 
-        float shadow = current_depth < closest_depth ? 1 : 0;
+        f32 shadow = current_depth < closest_depth ? 1 : 0;
 
         // if (projection_coordinates.z > 1)
         // {
@@ -284,10 +306,10 @@ void main()
         ) * (1 - shadow); 
     }
 
-    uint point_light_count = scene_uniforms.point_light_count;
+    u32 point_light_count = scene_uniforms.point_light_count;
 
     {
-        uint i = 0;
+        u32 i = 0;
 
         while (i < point_light_count)
         {

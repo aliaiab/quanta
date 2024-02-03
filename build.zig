@@ -80,13 +80,9 @@ pub fn build(builder: *std.Build) !void {
     glsl_compiler.addIncludePath(.{ .path = builder.pathFromRoot("quanta/lib/glslang/") });
     glsl_compiler.root_module.addImport("glslang", glslang_module);
 
-    builder.install_tls.step.dependOn(&builder.addInstallArtifact(glsl_compiler, .{}).step);
+    const install_glsl_compiler = builder.addInstallArtifact(glsl_compiler, .{});
 
-    const glsl_compiler_step = builder.step("glsl_compiler", "Run the glsl_compiler standalone (temporary option for testing)");
-
-    const run_glsl_compiler = builder.addRunArtifact(glsl_compiler);
-
-    glsl_compiler_step.dependOn(&run_glsl_compiler.step);
+    builder.install_tls.step.dependOn(&install_glsl_compiler.step);
 
     var self_dependency: std.Build.Dependency = .{
         .builder = builder,
@@ -100,6 +96,8 @@ pub fn build(builder: *std.Build) !void {
             .optimize = optimize,
         },
     );
+
+    glsl_compile_step.step.dependOn(&install_glsl_compiler.step);
 
     const options = builder.addOptions();
 
@@ -126,6 +124,18 @@ pub fn build(builder: *std.Build) !void {
     quanta_module.linkSystemLibrary("xkbcommon", .{});
     quanta_module.linkSystemLibrary("xcb-xinput", .{});
 
+    //TODO: allow user to override asset compiler
+    const asset_compiler = builder.addExecutable(.{
+        .name = "asset_compiler",
+        .root_source_file = std.Build.LazyPath.relative("quanta/src/asset/compiler_main.zig"),
+        .target = builder.host,
+        .optimize = .ReleaseSafe,
+    });
+
+    asset_compiler.root_module.addImport("quanta", quanta_module);
+
+    builder.install_tls.step.dependOn(&builder.addInstallArtifact(asset_compiler, .{}).step);
+
     //tests
     {
         const test_step = builder.step("test", "Run the tests");
@@ -141,8 +151,6 @@ pub fn build(builder: *std.Build) !void {
         test_step.dependOn(&run_quanta_tests.step);
     }
 }
-
-pub const GlslCompileStep = quanta.asset.build_steps.GlslCompileStep;
 
 pub const GlslCompileOptions = struct {
     ///The directory containing source glsl files
@@ -212,6 +220,8 @@ pub fn addGlslCompileStep(
         //eg: comp
         const stage_path_extension = std.fs.path.extension(path_stem);
 
+        const GlslCompileStep = quanta.asset.build_steps.GlslCompileStep;
+
         const string_to_stage = std.ComptimeStringMap(GlslCompileStep.ShaderStage, .{
             .{ ".vert", .vertex },
             .{ ".frag", .fragment },
@@ -226,6 +236,7 @@ pub fn addGlslCompileStep(
 
         const spv_module = GlslCompileStep.compileModule(
             builder,
+            quanta_dependency,
             options.optimize orelse .Debug,
             string_to_stage.get(stage_path_extension).?,
             actual_path,
@@ -268,17 +279,7 @@ pub fn addAssetCompileStep(
     quanta_dependency: *std.Build.Dependency,
     config: AssetCompileOptions,
 ) AssetCompileStep {
-    const quanta_module = quanta_dependency.module("quanta");
-
-    //TODO: allow user to override asset compiler
-    const asset_compiler = builder.addExecutable(.{
-        .name = "asset_compiler",
-        .root_source_file = quanta_dependency.path("quanta/src/asset/compiler_main.zig"),
-        .target = builder.host,
-        .optimize = .ReleaseSafe,
-    });
-
-    asset_compiler.root_module.addImport("quanta", quanta_module);
+    const asset_compiler = quanta_dependency.artifact("asset_compiler");
 
     const run_asset_compiler = builder.addRunArtifact(asset_compiler);
 

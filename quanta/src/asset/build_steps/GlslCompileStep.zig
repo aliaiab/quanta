@@ -12,6 +12,7 @@ pub const ShaderStage = enum {
 pub const base_id: Step.Id = .custom;
 
 step: Step,
+glsl_compiler: *std.Build.Step.Run,
 builder: *std.Build,
 input_path: []const u8,
 output_path: []const u8,
@@ -21,6 +22,7 @@ generated_file: std.Build.GeneratedFile,
 
 pub fn create(
     builder: *std.Build,
+    quanta_dependency: *std.Build.Dependency,
     name: []const u8,
     input_path: []const u8,
     output_path: []const u8,
@@ -29,8 +31,11 @@ pub fn create(
 ) *GlslCompileStep {
     const self = builder.allocator.create(GlslCompileStep) catch unreachable;
 
+    const glsl_compiler = quanta_dependency.artifact("glsl_compiler");
+
     self.* = GlslCompileStep{
         .builder = builder,
+        .glsl_compiler = builder.addRunArtifact(glsl_compiler),
         .step = std.Build.Step.init(.{ .id = base_id, .name = name, .owner = builder, .makeFn = &make }),
         .input_path = input_path,
         .output_path = output_path,
@@ -39,50 +44,23 @@ pub fn create(
         .generated_file = .{ .step = &self.step, .path = null },
     };
 
+    self.step.dependOn(&glsl_compiler.step);
+
     return self;
 }
 
-pub fn make(step: *Step, _: *std.Progress.Node) !void {
+pub fn make(step: *Step, progress_node: *std.Progress.Node) !void {
     const self = step.cast(GlslCompileStep).?;
 
     var cache_manifest = self.builder.cache.obtain();
     defer cache_manifest.deinit();
 
-    const shader_target = "vulkan1.2";
-
-    const shader_optimisation = switch (self.optimize_mode) {
-        .ReleaseFast => "-O",
-        .ReleaseSafe => "-O",
-        .ReleaseSmall => "-Os",
-        .Debug => "-O0",
-    };
-
-    const stage_string = switch (self.shader_stage) {
-        .vertex => "vert",
-        .fragment => "frag",
-        .compute => "comp",
-    };
-
-    const stage_arg = try std.mem.join(self.builder.allocator, "", (&.{ "-fshader-stage=", stage_string }));
-
     var args_list: std.ArrayListUnmanaged([]const u8) = .{};
 
-    try args_list.append(self.builder.allocator, "glslc");
-    try args_list.append(self.builder.allocator, "-fauto-map-locations");
-    try args_list.append(self.builder.allocator, "--target-env=" ++ shader_target);
-    try args_list.append(self.builder.allocator, stage_arg);
+    try args_list.append(self.builder.allocator, @tagName(self.optimize_mode));
+    try args_list.append(self.builder.allocator, @tagName(self.shader_stage));
     try args_list.append(self.builder.allocator, self.input_path);
-    try args_list.append(self.builder.allocator, "-Werror");
-    try args_list.append(self.builder.allocator, "-c");
 
-    try args_list.append(self.builder.allocator, shader_optimisation);
-
-    if (self.optimize_mode == .Debug) {
-        try args_list.append(self.builder.allocator, "-g");
-    }
-
-    try args_list.append(self.builder.allocator, "-fpreserve-bindings");
-    try args_list.append(self.builder.allocator, "-o");
     const output_path_arg_index = args_list.items.len;
     try args_list.append(self.builder.allocator, self.output_path);
 
@@ -134,33 +112,24 @@ pub fn make(step: *Step, _: *std.Progress.Node) !void {
         self.generated_file.path = null;
     }
 
-    const result = try std.process.Child.run(.{
-        .allocator = step.owner.allocator,
-        .argv = args_list.items,
-    });
-
-    switch (result.term) {
-        .Exited => |code| {
-            if (code != 0) {
-                return step.fail("Failed to compile: {s}", .{result.stderr});
-            }
-        },
-        .Signal => {},
-        .Stopped => {},
-        .Unknown => {},
+    for (args_list.items) |arg| {
+        self.glsl_compiler.addArg(arg);
     }
+
+    try self.glsl_compiler.step.makeFn(&self.glsl_compiler.step, progress_node);
 
     try cache_manifest.writeManifest();
 }
 
 pub fn compileModule(
     builder: *std.Build,
+    quanta_dependency: *std.Build.Dependency,
     mode: std.builtin.OptimizeMode,
     stage: GlslCompileStep.ShaderStage,
     input: []const u8,
     output: []const u8,
 ) *std.Build.Module {
-    const step = GlslCompileStep.create(builder, input, input, output, stage, mode);
+    const step = GlslCompileStep.create(builder, quanta_dependency, input, input, output, stage, mode);
 
     return builder.createModule(.{ .root_source_file = std.Build.LazyPath{ .generated = &step.generated_file } });
 }
