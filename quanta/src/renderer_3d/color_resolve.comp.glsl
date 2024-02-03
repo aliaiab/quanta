@@ -1,7 +1,3 @@
-#version 450
-
-layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
-
 layout(rgba16f, binding = 0) uniform restrict readonly image2D read_target;
 layout(rgba8, binding = 1) uniform restrict writeonly image2D write_target;
 
@@ -9,6 +5,8 @@ layout(push_constant) uniform PushConstants
 {
     float exposure;
 } push_constants;
+
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
 
 void main() 
 {

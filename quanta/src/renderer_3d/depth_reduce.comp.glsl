@@ -1,7 +1,4 @@
-#version 450
 #extension GL_EXT_scalar_block_layout : enable
-
-layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
 
 layout(binding = 0, r32f) uniform writeonly image2D out_images[16];
 layout(binding = 1) uniform sampler2D in_images[16];
@@ -11,6 +8,8 @@ layout(push_constant, scalar) uniform block
 	vec2 image_size;
 	uint image_index;
 };
+
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
 
 void main()
 {

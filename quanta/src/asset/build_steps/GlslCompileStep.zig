@@ -93,10 +93,7 @@ pub fn make(step: *Step, progress_node: *std.Progress.Node) !void {
     const input_file: *std.Build.Cache.File = &cache_manifest.files.items[input_file_index];
 
     if (input_file.contents == null) {
-        const input_file_opened = try std.fs.cwd().openFile(self.input_path, .{});
-        defer input_file_opened.close();
-
-        input_file.contents = try input_file_opened.readToEndAlloc(self.builder.allocator, std.math.maxInt(usize));
+        input_file.contents = try std.fs.cwd().readFileAlloc(self.builder.allocator, self.input_path, std.math.maxInt(usize));
     }
 
     const source_directory = std.fs.path.dirname(self.input_path).?;

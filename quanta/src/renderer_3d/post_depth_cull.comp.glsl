@@ -1,12 +1,7 @@
-#version 450
+#extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_scalar_block_layout : enable
 
-#define f64 double
-#define f32 float
-#define u32 uint
-#define i32 int
-
-layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+#include "std/std.glsl"
 
 layout(set = 0, binding = 0, scalar) restrict readonly buffer Transforms
 {
@@ -55,6 +50,8 @@ layout(push_constant) uniform PushConstants
 {
     u32 post_depth_draw_command_offset;
 };
+
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
 
 void main()
 {

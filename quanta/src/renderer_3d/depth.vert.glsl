@@ -1,8 +1,8 @@
-#version 450
+#extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_scalar_block_layout : enable
 #extension GL_ARB_shader_draw_parameters : enable
 
-#define u32 uint
+#include "std/std.glsl"
 
 layout(push_constant) uniform Constants
 {

@@ -499,10 +499,6 @@ pub const Camera = struct {
     }
 };
 
-pub const AmbientLight = extern struct {
-    diffuse: u32,
-};
-
 pub fn beginSceneRender(
     scene: SceneHandle,
     active_views: []const View,
@@ -1313,11 +1309,21 @@ pub const View = struct {
     camera: Camera,
 };
 
+pub const AmbientLight = extern struct {
+    diffuse: u32,
+};
+
 pub const DirectionalLight = extern struct {
     direction: [3]f32,
     intensity: f32,
     diffuse: u32,
     view_projection: [4][4]f32,
+};
+
+pub const PointLight = extern struct {
+    position: [3]f32,
+    intensity: f32,
+    diffuse: u32,
 };
 
 const Scene = struct {
@@ -1639,12 +1645,6 @@ pub fn scenePushMesh(
 
     scene_data.dynamic_draw_count += 1;
 }
-
-pub const PointLight = extern struct {
-    position: [3]f32,
-    intensity: f32,
-    diffuse: u32,
-};
 
 ///Pushes a dynamic point light into the scene
 pub fn scenePushPointLight(scene: SceneHandle, point_light: PointLight) void {

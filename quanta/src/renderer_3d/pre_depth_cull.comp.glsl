@@ -1,12 +1,7 @@
-#version 450
+#extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_scalar_block_layout : enable
 
-#define f64 double
-#define f32 float
-#define u32 uint
-#define i32 int
-
-layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
+#include "std/std.glsl"
 
 layout(set = 0, binding = 0, scalar) restrict readonly buffer Transforms
 {
@@ -137,6 +132,8 @@ bool isOnFrustum(mat4 transform, vec3 center, vec3 extents)
            isOnOrForwardPlane(top_face, global_center, global_extents) &&
            isOnOrForwardPlane(bottom_face, global_center, global_extents);
 }
+
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
 
 void main() 
 {
