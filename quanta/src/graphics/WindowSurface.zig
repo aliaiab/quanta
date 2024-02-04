@@ -12,7 +12,7 @@ pub fn init(window: *windowing.Window) !WindowSurface {
             self.surface = try Context.self.vki.createXcbSurfaceKHR(Context.self.instance, &vk.XcbSurfaceCreateInfoKHR{
                 .connection = @ptrCast(window.impl.connection),
                 .window = @intFromEnum(window.impl.window),
-            }, &Context.self.allocation_callbacks);
+            }, Context.self.allocation_callbacks);
         },
         else => @compileError("Backend unsupported"),
     }
@@ -22,7 +22,7 @@ pub fn init(window: *windowing.Window) !WindowSurface {
 
 pub fn deinit(self: *WindowSurface) void {
     defer self.* = undefined;
-    defer Context.self.vki.destroySurfaceKHR(Context.self.instance, self.surface, &Context.self.allocation_callbacks);
+    defer Context.self.vki.destroySurfaceKHR(Context.self.instance, self.surface, Context.self.allocation_callbacks);
 }
 
 const WindowSurface = @This();

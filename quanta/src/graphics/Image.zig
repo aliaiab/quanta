@@ -113,8 +113,8 @@ pub fn init(
         .queue_family_index_count = 0,
         .p_queue_family_indices = undefined,
         .initial_layout = .undefined,
-    }, &Context.self.allocation_callbacks);
-    errdefer Context.self.vkd.destroyImage(Context.self.device, self.handle, &Context.self.allocation_callbacks);
+    }, Context.self.allocation_callbacks);
+    errdefer Context.self.vkd.destroyImage(Context.self.device, self.handle, Context.self.allocation_callbacks);
 
     var memory_requirements: vk.MemoryRequirements2 = .{ .memory_requirements = undefined };
 
@@ -148,8 +148,8 @@ pub fn init(
             .base_array_layer = 0,
             .layer_count = vk.REMAINING_ARRAY_LAYERS,
         },
-    }, &Context.self.allocation_callbacks);
-    errdefer Context.self.vkd.destroyImageView(Context.self.device, self.view, &Context.self.allocation_callbacks);
+    }, Context.self.allocation_callbacks);
+    errdefer Context.self.vkd.destroyImageView(Context.self.device, self.view, Context.self.allocation_callbacks);
 
     if (layout == .transfer_dst_optimal or usage.transfer_dst_bit) {
         var command_buffer = try CommandBuffer.init(.graphics);
@@ -204,8 +204,8 @@ pub fn init(
 pub fn deinit(self: *Image) void {
     defer self.* = undefined;
 
-    defer Context.self.vkd.destroyImage(Context.self.device, self.handle, &Context.self.allocation_callbacks);
-    defer Context.self.vkd.destroyImageView(Context.self.device, self.view, &Context.self.allocation_callbacks);
+    defer Context.self.vkd.destroyImage(Context.self.device, self.handle, Context.self.allocation_callbacks);
+    defer Context.self.vkd.destroyImageView(Context.self.device, self.view, Context.self.allocation_callbacks);
     defer Context.devicePageFree(self.memory_page);
 }
 
@@ -237,8 +237,8 @@ pub fn createView(self: *const Image, level: u32, level_count: u32) !View {
             .base_array_layer = 0,
             .layer_count = 1,
         },
-    }, &Context.self.allocation_callbacks);
-    errdefer Context.self.vkd.destroyImageView(Context.self.device, view.handle, &Context.self.allocation_callbacks);
+    }, Context.self.allocation_callbacks);
+    errdefer Context.self.vkd.destroyImageView(Context.self.device, view.handle, Context.self.allocation_callbacks);
 
     return view;
 }
@@ -246,7 +246,7 @@ pub fn createView(self: *const Image, level: u32, level_count: u32) !View {
 pub fn destroyView(self: Image, view: Image.View) void {
     _ = self;
 
-    defer Context.self.vkd.destroyImageView(Context.self.device, view.handle, &Context.self.allocation_callbacks);
+    defer Context.self.vkd.destroyImageView(Context.self.device, view.handle, Context.self.allocation_callbacks);
 }
 
 const Image = @This();

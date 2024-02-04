@@ -206,34 +206,54 @@ pub fn drawRectangle(rectangle: Rectangle) void {
 pub fn renderToGraph(
     graph: *quanta.rendering.Graph.Builder,
     draw_data: *const imgui.ImDrawData,
+    ///The output color attachment to render to
+    target: quanta.rendering.Graph.Image(.attachment),
 ) void {
-    const max_vertices = 50_000;
-
-    const vertex_buffer = graph.createBuffer(@src(), max_vertices * @sizeOf(imgui.ImDrawVert));
-
     //upload
-    {
-        _ = graph.beginTransferPass(@src(), .{});
+    //Could be it's own function (but that shouldn't be neccessary)
+    const updated_buffers = blk: {
+        const max_vertices = 50_000;
+        const max_indices = 50_000;
+
+        //Notice how these resources are local to this scope. We pass these resources as inputs to passes, so these variable names needn't be referenced
+        const vertex_buffer = graph.createBuffer(@src(), max_vertices * @sizeOf(imgui.ImDrawVert));
+        const index_buffer = graph.createBuffer(@src(), max_indices * @sizeOf(u16));
+
+        const inputs = graph.beginTransferPass(@src(), .{
+            .vertex_buffer = vertex_buffer,
+            .index_buffer = index_buffer,
+        });
 
         var vertex_offset: usize = 0;
+        var index_offset: usize = 0;
 
         for (0..@intCast(draw_data.CmdListsCount)) |command_list_index| {
             const command_list: *imgui.ImDrawList = draw_data.CmdLists[command_list_index];
 
             const vertices: []const imgui.ImDrawVert = command_list.VtxBuffer.Data[0..@as(usize, @intCast(command_list.VtxBuffer.Size))];
+            const indices: []const u16 = command_list.IdxBuffer.Data[0..@as(usize, @intCast(command_list.IdxBuffer.Size))];
 
             graph.updateBuffer(
-                vertex_buffer,
+                inputs.vertex_buffer,
                 vertex_offset * @sizeOf(imgui.ImDrawVert),
                 imgui.ImDrawVert,
                 vertices,
             );
 
+            graph.updateBuffer(
+                inputs.index_buffer,
+                index_offset * @sizeOf(u16),
+                u16,
+                indices,
+            );
+
             vertex_offset += vertices.len;
+            index_offset += indices.len;
         }
 
-        _ = graph.endTransferPass(.{});
-    }
+        //output my inputs
+        break :blk graph.endTransferPass(inputs);
+    };
 
     //Drawing
     {
@@ -241,12 +261,98 @@ pub fn renderToGraph(
             @src(),
             .{ .code = @alignCast(@embedFile("mesh.vert.spv")) },
             .{ .code = @alignCast(@embedFile("mesh.frag.spv")) },
+            .{
+                .attachment_formats = &.{
+                    graph.imageGetFormat(target),
+                },
+            },
             @sizeOf(MeshPipelinePushData),
         );
 
-        _ = graph.beginRasterPass(@src(), .{});
+        const target_width = graph.imageGetWidth(target);
+        const target_height = graph.imageGetHeight(target);
+
+        const inputs = graph.beginRasterPass(
+            @src(),
+            &.{.{
+                .image = target,
+            }},
+            0,
+            0,
+            target_width,
+            target_height,
+            updated_buffers,
+        );
 
         graph.setRasterPipeline(pipeline);
+        graph.setRasterPipelineResourceBuffer(pipeline, 0, 0, inputs.vertex_buffer);
+
+        graph.setViewport(
+            0,
+            @as(f32, @floatFromInt(target_height)),
+            @as(f32, @floatFromInt(target_width)),
+            -@as(f32, @floatFromInt(target_height)),
+            0,
+            1,
+        );
+
+        graph.setScissor(
+            0,
+            0,
+            target_width,
+            target_height,
+        );
+
+        graph.setIndexBuffer(inputs.index_buffer, .u16);
+
+        var ortho = [4][4]f32{
+            .{ 2.0, 0.0, 0.0, 0.0 },
+            .{ 0.0, -2.0, 0.0, 0.0 },
+            .{ 0.0, 0.0, -1.0, 0.0 },
+            .{ -1.0, 1.0, 0.0, 1.0 },
+        };
+        ortho[0][0] /= @as(f32, @floatFromInt(target_width));
+        ortho[1][1] /= @as(f32, @floatFromInt(target_height));
+
+        var vertex_offset: usize = 0;
+        var index_offset: usize = 0;
+
+        for (0..@intCast(draw_data.CmdListsCount)) |command_list_index| {
+            const command_list: *imgui.ImDrawList = draw_data.CmdLists[command_list_index];
+
+            const vertices: []imgui.ImDrawVert = command_list.VtxBuffer.Data[0..@as(usize, @intCast(command_list.VtxBuffer.Size))];
+            const indices: []u16 = command_list.IdxBuffer.Data[0..@as(usize, @intCast(command_list.IdxBuffer.Size))];
+
+            for (0..@intCast(command_list.CmdBuffer.Size)) |command_index| {
+                const command: imgui.ImDrawCmd = command_list.CmdBuffer.Data[command_index];
+
+                graph.setPushData(MeshPipelinePushData, .{
+                    .projection = ortho,
+                    .texture_index = @as(u32, @intCast(@intFromPtr(command.TextureId))),
+                });
+
+                const window_width = @as(f32, @floatFromInt(target_width));
+                const window_height = @as(f32, @floatFromInt(target_height));
+
+                graph.setScissor(
+                    @as(u32, @intFromFloat(@max(command.ClipRect.x, 0))),
+                    @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))),
+                    @as(u32, @intFromFloat(@min(command.ClipRect.z, window_width))) -| @as(u32, @intFromFloat(@max(command.ClipRect.x, 0))),
+                    @as(u32, @intFromFloat(@min(command.ClipRect.w, window_height))) -| @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))),
+                );
+
+                graph.drawIndexed(
+                    command.ElemCount,
+                    1,
+                    @as(u32, @intCast(index_offset)) + command.IdxOffset,
+                    @as(i32, @intCast(vertex_offset)) + @as(i32, @intCast(command.VtxOffset)),
+                    0,
+                );
+            }
+
+            vertex_offset += vertices.len;
+            index_offset += indices.len;
+        }
 
         _ = graph.endRasterPass(.{});
     }
@@ -310,29 +416,25 @@ pub fn renderImGuiDrawData(
                     0,
                     index_offset * @sizeOf(u16),
                 );
-
-                command_buffer.bufferBarrier(self.vertices_buffer, .{
-                    .source_stage = .{
-                        .copy = true,
-                    },
-                    .source_access = .{ .transfer_write = true },
-                    .destination_stage = .{
-                        .vertex_shader = true,
-                    },
-                    .destination_access = .{ .shader_read = true },
-                });
-
-                command_buffer.bufferBarrier(self.indices_buffer, .{
-                    .source_stage = .{ .copy = true },
-                    .source_access = .{ .transfer_write = true },
-                    .destination_stage = .{ .index_input = true },
-                    .destination_access = .{ .index_read = true },
-                });
             }
         }
 
         //#Color Pass 1: main
         {
+            command_buffer.bufferBarrier(self.vertices_buffer, .{
+                .source_stage = .{ .copy = true },
+                .source_access = .{ .transfer_write = true },
+                .destination_stage = .{ .vertex_shader = true },
+                .destination_access = .{ .shader_read = true },
+            });
+
+            command_buffer.bufferBarrier(self.indices_buffer, .{
+                .source_stage = .{ .copy = true },
+                .source_access = .{ .transfer_write = true },
+                .destination_stage = .{ .index_input = true },
+                .destination_access = .{ .index_read = true },
+            });
+
             command_buffer.beginRenderPass(
                 0,
                 0,
@@ -400,7 +502,14 @@ pub fn renderImGuiDrawData(
                         @as(u32, @intFromFloat(@min(command.ClipRect.z, window_width))) -| @as(u32, @intFromFloat(@max(command.ClipRect.x, 0))),
                         @as(u32, @intFromFloat(@min(command.ClipRect.w, window_height))) -| @as(u32, @intFromFloat(@max(command.ClipRect.y, 0))),
                     );
-                    command_buffer.drawIndexed(command.ElemCount, 1, @as(u32, @intCast(index_offset)) + command.IdxOffset, @as(i32, @intCast(vertex_offset)) + @as(i32, @intCast(command.VtxOffset)), 0);
+
+                    command_buffer.drawIndexed(
+                        command.ElemCount,
+                        1,
+                        @as(u32, @intCast(index_offset)) + command.IdxOffset,
+                        @as(i32, @intCast(vertex_offset)) + @as(i32, @intCast(command.VtxOffset)),
+                        0,
+                    );
                 }
 
                 vertex_offset += vertices.len;

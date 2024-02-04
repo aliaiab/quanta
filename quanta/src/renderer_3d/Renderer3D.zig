@@ -397,8 +397,8 @@ pub fn init(allocator: std.mem.Allocator) !void {
         .query_type = vk.QueryType.timestamp,
         .query_count = 4,
         .pipeline_statistics = vk.QueryPipelineStatisticFlags{},
-    }, &GraphicsContext.self.allocation_callbacks);
-    errdefer GraphicsContext.self.vkd.destroyQueryPool(GraphicsContext.self.device, self.timeline_query_pool, &GraphicsContext.self.allocation_callbacks);
+    }, GraphicsContext.self.allocation_callbacks);
+    errdefer GraphicsContext.self.vkd.destroyQueryPool(GraphicsContext.self.device, self.timeline_query_pool, GraphicsContext.self.allocation_callbacks);
 }
 
 pub fn deinit() void {
@@ -465,7 +465,7 @@ pub fn deinit() void {
     defer for (self.texture_samplers.items) |*sampler| {
         sampler.deinit();
     };
-    defer GraphicsContext.self.vkd.destroyQueryPool(GraphicsContext.self.device, self.timeline_query_pool, &GraphicsContext.self.allocation_callbacks);
+    defer GraphicsContext.self.vkd.destroyQueryPool(GraphicsContext.self.device, self.timeline_query_pool, GraphicsContext.self.allocation_callbacks);
     defer self.scenes.deinit(self.allocator);
 }
 
@@ -1245,7 +1245,7 @@ pub fn endSceneRender(
                 .source_layout = vk.ImageLayout.general,
                 .destination_stage = .{},
                 .destination_access = .{},
-                .destination_layout = .present_src_khr,
+                .destination_layout = .attachment_optimal,
             });
         }
     }

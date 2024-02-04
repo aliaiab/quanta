@@ -351,7 +351,7 @@ pub fn init() !void {
     state.render_graph = quanta.rendering.Graph.Builder.init(state.allocator);
     errdefer state.render_graph.deinit();
 
-    state.render_graph_compile_context = quanta.rendering.Graph.CompileContext.init();
+    state.render_graph_compile_context = quanta.rendering.Graph.CompileContext.init(state.allocator);
     errdefer state.render_graph_compile_context.deinit();
 }
 
@@ -393,7 +393,7 @@ pub fn deinit() void {
     defer state.selected_entities.deinit();
     defer state.asset_storage.deinit();
     defer state.render_graph.deinit();
-    defer state.render_graph_compile_context.deinit(state.allocator);
+    defer state.render_graph_compile_context.deinit();
 }
 
 pub fn update() !UpdateResult {
@@ -502,7 +502,7 @@ pub fn update() !UpdateResult {
         .levels = 1,
     };
 
-    {
+    if (true) {
         try Renderer3D.beginSceneRender(
             state.renderer_scene,
             &.{Renderer3D.View{ .camera = state.camera }},
@@ -520,6 +520,13 @@ pub fn update() !UpdateResult {
         quanta.systems.point_light_system.run(&state.ecs_scene, state.renderer_scene);
         quanta.systems.directional_light_system.run(&state.ecs_scene, state.renderer_scene);
     }
+
+    const graph_swap_image = state.render_graph_compile_context.importExternalImage(
+        &state.render_graph,
+        @src(),
+        color_image,
+        .attachment,
+    );
 
     const enable_imgui = true;
 
@@ -742,7 +749,12 @@ pub fn update() !UpdateResult {
                 image.render_finished,
             ) catch unreachable;
         } else {
-            RendererGui.renderToGraph(&state.render_graph, imgui.igGetDrawData());
+            std.debug.assert(state.render_graph.passes.len == 0);
+            RendererGui.renderToGraph(
+                &state.render_graph,
+                imgui.igGetDrawData(),
+                graph_swap_image,
+            );
         }
     }
 
@@ -752,13 +764,7 @@ pub fn update() !UpdateResult {
 
     state.ecs_scene.endQueryWindow();
 
-    const render_graph_compiled = try state.render_graph_compile_context.compile(
-        state.render_graph,
-        state.allocator,
-    );
-    _ = render_graph_compiled; // autofix
-
-    const debug_render_graph = true;
+    const debug_render_graph = false;
 
     if (debug_render_graph) {
         for (state.render_graph.raster_pipelines.items(.reference_count), 0..) |reference_count, index| {
@@ -769,11 +775,73 @@ pub fn update() !UpdateResult {
             std.log.info("Referenced buffer[{}] {} times", .{ index, reference_count });
         }
 
-        // std.os.exit(0);
+        for (0..state.render_graph.passes.len) |pass_index| {
+            const pass_tag = state.render_graph.passes.items(.tag)[pass_index];
+            const pass_id = state.render_graph.passes.items(.handle)[pass_index];
+
+            std.log.info("\n    defined pass({s})[{}]: id = 0x{x}", .{ @tagName(pass_tag), pass_index, pass_id });
+
+            std.log.info("reference_count: {}", .{state.render_graph.passes.items(.reference_count)[pass_index]});
+
+            const input_offset = state.render_graph.passes.items(.input_offset)[pass_index];
+            const input_count = state.render_graph.passes.items(.input_count)[pass_index];
+
+            const output_offset = state.render_graph.passes.items(.output_offset)[pass_index];
+            const output_count = state.render_graph.passes.items(.output_count)[pass_index];
+
+            const command_offset = state.render_graph.passes.items(.command_offset)[pass_index];
+            const command_count = state.render_graph.passes.items(.command_count)[pass_index];
+
+            std.log.info("pass_inputs: count = {}", .{input_count});
+
+            for (0..input_count) |input_index| {
+                std.log.info("input[{}]: reference_count: {}", .{
+                    input_index,
+                    state.render_graph.pass_inputs.items(.reference_count)[input_offset + input_index],
+                });
+            }
+
+            std.log.info("pass_commands: count = {}", .{command_count});
+
+            for (0..command_count) |command_index| {
+                const command_tag = state.render_graph.commands.items(.tag)[command_offset + command_index];
+
+                std.log.info("command: {s}", .{@tagName(command_tag)});
+            }
+
+            std.log.info("pass_outputs: count = {}", .{output_count});
+
+            for (0..output_count) |output_index| {
+                std.log.info("output[{}]: reference_count: {}", .{
+                    output_index,
+                    state.render_graph.pass_inputs.items(.reference_count)[output_offset + output_index],
+                });
+            }
+        }
     }
+
+    const render_graph_compiled = try state.render_graph_compile_context.compile(
+        state.render_graph,
+    );
 
     //clear the built render graph after it's no longer needed
     state.render_graph.clear();
+
+    render_graph_compiled.graphics_command_buffer.imageBarrier(color_image, .{
+        .source_stage = .{ .color_attachment_output = true },
+        .source_access = .{ .color_attachment_write = true },
+        .source_layout = .attachment_optimal,
+        .destination_stage = .{},
+        .destination_access = .{},
+        .destination_layout = .present_src_khr,
+    });
+
+    render_graph_compiled.graphics_command_buffer.end();
+
+    try render_graph_compiled.graphics_command_buffer.submitAndWait();
+
+    // render_graph_compiled.graphics_command_buffer.wait_fence.wait();
+    // render_graph_compiled.graphics_command_buffer.wait_fence.reset();
 
     try state.swapchain.present();
     try state.swapchain.swap();

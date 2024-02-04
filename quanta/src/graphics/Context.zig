@@ -6,7 +6,7 @@ pub const vulkan_version = std.SemanticVersion{
     .patch = 0,
 };
 
-const use_custom_allocator: bool = true;
+const use_custom_allocator: bool = builtin.mode == .Debug and false;
 
 pub const BaseDispatch = vk.BaseWrapper(.{
     .createInstance = true,
@@ -129,9 +129,9 @@ pub const DeviceDispatch = vk.DeviceWrapper(.{
     .cmdEndQuery = true,
     .getQueryPoolResults = true,
     .getBufferDeviceAddress = true,
-    .getDescriptorEXT = true,
     .waitSemaphores = true,
     .acquireNextImage2KHR = true,
+    // .getDescriptorEXT = true,
 });
 
 var vkGetInstanceProcAddr: vk.PfnGetInstanceProcAddr = undefined;
@@ -140,7 +140,12 @@ fn getInstanceProcAddress(instance: vk.Instance, name: [*:0]const u8) vk.PfnVoid
     return vkGetInstanceProcAddr(instance, name);
 }
 
-fn debugUtilsMessengerCallback(message_severity: vk.DebugUtilsMessageSeverityFlagsEXT, message_types: vk.DebugUtilsMessageTypeFlagsEXT, p_callback_data: ?*const vk.DebugUtilsMessengerCallbackDataEXT, p_user_data: ?*anyopaque) callconv(vk.vulkan_call_conv) vk.Bool32 {
+fn debugUtilsMessengerCallback(
+    message_severity: vk.DebugUtilsMessageSeverityFlagsEXT,
+    message_types: vk.DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: ?*const vk.DebugUtilsMessengerCallbackDataEXT,
+    p_user_data: ?*anyopaque,
+) callconv(vk.vulkan_call_conv) vk.Bool32 {
     _ = message_types;
     _ = p_user_data;
 
@@ -157,7 +162,12 @@ fn debugUtilsMessengerCallback(message_severity: vk.DebugUtilsMessageSeverityFla
     return vk.FALSE;
 }
 
-fn vulkanAllocate(user_data: ?*anyopaque, size: usize, alignment: usize, _: vk.SystemAllocationScope) callconv(vk.vulkan_call_conv) ?*anyopaque {
+fn vulkanAllocate(
+    user_data: ?*anyopaque,
+    size: usize,
+    alignment: usize,
+    _: vk.SystemAllocationScope,
+) callconv(vk.vulkan_call_conv) ?*anyopaque {
     _ = user_data;
 
     const memory = (self.allocator.rawAlloc(size + @sizeOf(usize), @as(u8, @intCast(alignment)), @returnAddress()) orelse
@@ -170,7 +180,13 @@ fn vulkanAllocate(user_data: ?*anyopaque, size: usize, alignment: usize, _: vk.S
     return memory.ptr + @sizeOf(usize);
 }
 
-fn vulkanReallocate(user_data: ?*anyopaque, original: ?*anyopaque, size: usize, alignment: usize, _: vk.SystemAllocationScope) callconv(vk.vulkan_call_conv) ?*anyopaque {
+fn vulkanReallocate(
+    user_data: ?*anyopaque,
+    original: ?*anyopaque,
+    size: usize,
+    alignment: usize,
+    _: vk.SystemAllocationScope,
+) callconv(vk.vulkan_call_conv) ?*anyopaque {
     const original_pointer = @as([*]u8, @ptrCast(original.?)) - @sizeOf(usize);
     const old_size = @as(*usize, @ptrCast(@alignCast(original_pointer))).*;
 
@@ -185,7 +201,6 @@ fn vulkanReallocate(user_data: ?*anyopaque, original: ?*anyopaque, size: usize, 
 
         const allocation_ptr = memory_ptr + @sizeOf(usize);
 
-        // @memcpy(allocation_ptr, original_pointer + @sizeOf(usize), old_size);
         @memcpy(allocation_ptr[0..old_size], memory[@sizeOf(usize) .. @sizeOf(usize) + old_size]);
 
         vulkanFree(user_data, original);
@@ -202,7 +217,10 @@ fn vulkanReallocate(user_data: ?*anyopaque, original: ?*anyopaque, size: usize, 
     return memory.ptr + @sizeOf(usize);
 }
 
-fn vulkanFree(user_data: ?*anyopaque, memory: ?*anyopaque) callconv(vk.vulkan_call_conv) void {
+fn vulkanFree(
+    user_data: ?*anyopaque,
+    memory: ?*anyopaque,
+) callconv(vk.vulkan_call_conv) void {
     if (memory == null) return;
 
     _ = user_data;
@@ -212,7 +230,6 @@ fn vulkanFree(user_data: ?*anyopaque, memory: ?*anyopaque) callconv(vk.vulkan_ca
     //TODO: This is VERY dodgy, and we *might* have to store alignment in the allocation
     const alignment = 256;
 
-    // self.allocator.free(pointer[0 .. size + @sizeOf(usize)]);
     self.allocator.rawFree(pointer[0 .. size + @sizeOf(usize)], std.math.log2(alignment), @returnAddress());
 }
 
@@ -223,7 +240,8 @@ vulkan_loader: std.DynLib,
 vkb: BaseDispatch,
 vki: InstanceDispatch,
 vkd: DeviceDispatch,
-allocation_callbacks: vk.AllocationCallbacks,
+allocation_callbacks_data: vk.AllocationCallbacks,
+allocation_callbacks: ?*vk.AllocationCallbacks,
 instance: vk.Instance,
 device: vk.Device,
 physical_device: vk.PhysicalDevice,
@@ -258,7 +276,8 @@ optional_extensions: OptionalExtensions,
 ///Required *device* extensions
 pub const RequiredExtensions = struct {
     khr_swapchain: [:0]const u8 = vk.extension_info.khr_swapchain.name,
-    ext_descriptor_buffer: [:0]const u8 = vk.extension_info.ext_descriptor_buffer.name,
+    //TODO: for future implementation of descriptor buffer
+    // ext_descriptor_buffer: [:0]const u8 = vk.extension_info.ext_descriptor_buffer.name,
 };
 
 ///Optional *device* extensions
@@ -284,14 +303,15 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
     vkGetInstanceProcAddr = self.vulkan_loader.lookup(@TypeOf(vkGetInstanceProcAddr), "vkGetInstanceProcAddr") orelse return error.LoaderProcedureNotFound;
 
-    self.allocation_callbacks = .{
+    self.allocation_callbacks_data = .{
         .p_user_data = null,
-        .pfn_allocation = if (use_custom_allocator) &vulkanAllocate else null,
-        .pfn_reallocation = if (use_custom_allocator) &vulkanReallocate else null,
-        .pfn_free = if (use_custom_allocator) &vulkanFree else null,
+        .pfn_allocation = &vulkanAllocate,
+        .pfn_reallocation = &vulkanReallocate,
+        .pfn_free = &vulkanFree,
         .pfn_internal_allocation = null,
         .pfn_internal_free = null,
     };
+    self.allocation_callbacks = if (use_custom_allocator) &self.allocation_callbacks_data else null;
 
     self.vkb = try BaseDispatch.load(getInstanceProcAddress);
 
@@ -390,11 +410,11 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
         .pp_enabled_layer_names = requested_layers.ptr,
         .enabled_extension_count = @as(u32, @intCast(instance_extentions.len)),
         .pp_enabled_extension_names = instance_extentions.ptr,
-    }, &self.allocation_callbacks);
+    }, self.allocation_callbacks);
 
     self.vki = try InstanceDispatch.load(self.instance, getInstanceProcAddress);
 
-    errdefer self.vki.destroyInstance(self.instance, &self.allocation_callbacks);
+    errdefer self.vki.destroyInstance(self.instance, self.allocation_callbacks);
 
     if (enable_debug_messenger) {
         self.debug_messenger = try self.vki.createDebugUtilsMessengerEXT(self.instance, &.{
@@ -403,10 +423,10 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
             .message_type = .{ .performance_bit_ext = true, .validation_bit_ext = enable_khronos_validation },
             .pfn_user_callback = &debugUtilsMessengerCallback,
             .p_user_data = null,
-        }, &self.allocation_callbacks);
+        }, self.allocation_callbacks);
     }
 
-    errdefer if (enable_debug_messenger) self.vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, &self.allocation_callbacks);
+    errdefer if (enable_debug_messenger) self.vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, self.allocation_callbacks);
 
     self.surface = try WindowSurface.init(window);
     errdefer self.surface.deinit();
@@ -741,18 +761,18 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
             .pp_enabled_layer_names = undefined,
         };
 
-        self.device = try self.vki.createDevice(self.physical_device, &device_create_info, &self.allocation_callbacks);
+        self.device = try self.vki.createDevice(self.physical_device, &device_create_info, self.allocation_callbacks);
 
         self.vkd = try DeviceDispatch.load(self.device, self.vki.dispatch.vkGetDeviceProcAddr);
 
-        errdefer self.vkd.destroyDevice(self.device, &self.allocation_callbacks);
+        errdefer self.vkd.destroyDevice(self.device, self.allocation_callbacks);
 
         if (self.graphics_family_index) |index| {
             self.graphics_queue = self.vkd.getDeviceQueue(self.device, index, 0);
             self.graphics_command_pool = try self.vkd.createCommandPool(self.device, &.{
                 .flags = .{ .reset_command_buffer_bit = true },
                 .queue_family_index = index,
-            }, &self.allocation_callbacks);
+            }, self.allocation_callbacks);
         }
 
         if (self.present_family_index) |index| {
@@ -760,7 +780,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
             self.present_command_pool = try self.vkd.createCommandPool(self.device, &.{
                 .flags = .{ .reset_command_buffer_bit = true },
                 .queue_family_index = index,
-            }, &self.allocation_callbacks);
+            }, self.allocation_callbacks);
         }
 
         if (self.compute_family_index) |index| {
@@ -768,7 +788,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
             self.compute_command_pool = try self.vkd.createCommandPool(self.device, &.{
                 .flags = .{ .reset_command_buffer_bit = true },
                 .queue_family_index = index,
-            }, &self.allocation_callbacks);
+            }, self.allocation_callbacks);
         }
 
         if (self.transfer_family_index) |index| {
@@ -779,7 +799,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
             self.transfer_command_pool = try self.vkd.createCommandPool(self.device, &.{
                 .flags = .{ .reset_command_buffer_bit = true },
                 .queue_family_index = self.graphics_family_index.?,
-            }, &self.allocation_callbacks);
+            }, self.allocation_callbacks);
         }
     }
 
@@ -793,10 +813,10 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
                 .initial_data_size = pipeline_cache_data.len,
                 .p_initial_data = if (pipeline_cache_data.len != 0) pipeline_cache_data.ptr else undefined,
             },
-            &self.allocation_callbacks,
+            self.allocation_callbacks,
         );
     }
-    errdefer self.vkd.destroyPipelineCache(self.device, self.pipeline_cache, &self.allocation_callbacks);
+    errdefer self.vkd.destroyPipelineCache(self.device, self.pipeline_cache, self.allocation_callbacks);
 
     self.memories_by_type = try self.allocator.alloc(std.ArrayListUnmanaged(DeviceMemory), self.physical_device_memory_properties.memory_heap_count);
     errdefer self.allocator.free(self.memories_by_type);
@@ -820,15 +840,15 @@ pub fn deinit() void {
     self.vkd.deviceWaitIdle(self.device) catch unreachable;
 
     defer self.vulkan_loader.close();
-    defer self.vki.destroyInstance(self.instance, &self.allocation_callbacks);
-    defer if (enable_debug_messenger) self.vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, &self.allocation_callbacks);
+    defer self.vki.destroyInstance(self.instance, self.allocation_callbacks);
+    defer if (enable_debug_messenger) self.vki.destroyDebugUtilsMessengerEXT(self.instance, self.debug_messenger, self.allocation_callbacks);
     defer self.surface.deinit();
-    defer self.vkd.destroyDevice(self.device, &self.allocation_callbacks);
-    defer if (self.graphics_command_pool != .null_handle) self.vkd.destroyCommandPool(self.device, self.graphics_command_pool, &self.allocation_callbacks);
-    defer if (self.present_command_pool != .null_handle) self.vkd.destroyCommandPool(self.device, self.present_command_pool, &self.allocation_callbacks);
-    defer if (self.compute_command_pool != .null_handle) self.vkd.destroyCommandPool(self.device, self.compute_command_pool, &self.allocation_callbacks);
-    defer if (self.transfer_command_pool != .null_handle) self.vkd.destroyCommandPool(self.device, self.transfer_command_pool, &self.allocation_callbacks);
-    defer self.vkd.destroyPipelineCache(self.device, self.pipeline_cache, &self.allocation_callbacks);
+    defer self.vkd.destroyDevice(self.device, self.allocation_callbacks);
+    defer if (self.graphics_command_pool != .null_handle) self.vkd.destroyCommandPool(self.device, self.graphics_command_pool, self.allocation_callbacks);
+    defer if (self.present_command_pool != .null_handle) self.vkd.destroyCommandPool(self.device, self.present_command_pool, self.allocation_callbacks);
+    defer if (self.compute_command_pool != .null_handle) self.vkd.destroyCommandPool(self.device, self.compute_command_pool, self.allocation_callbacks);
+    defer if (self.transfer_command_pool != .null_handle) self.vkd.destroyCommandPool(self.device, self.transfer_command_pool, self.allocation_callbacks);
+    defer self.vkd.destroyPipelineCache(self.device, self.pipeline_cache, self.allocation_callbacks);
     defer self.allocator.free(self.memories_by_type);
     defer for (self.memories_by_type) |*memories| {
         for (memories.items) |*memory| {
@@ -961,7 +981,7 @@ pub fn deviceAllocateWithMemoryType(size: usize, memory_type: MemoryType, dedica
         .p_next = &memory_allocate_flags_info,
         .allocation_size = size,
         .memory_type_index = memory_type.index,
-    }, &self.allocation_callbacks);
+    }, self.allocation_callbacks);
 }
 
 pub fn deviceAllocate(requirements: vk.MemoryRequirements, properties: vk.MemoryPropertyFlags) !vk.DeviceMemory {
@@ -969,7 +989,7 @@ pub fn deviceAllocate(requirements: vk.MemoryRequirements, properties: vk.Memory
 }
 
 pub fn deviceFree(memory: vk.DeviceMemory) void {
-    self.vkd.freeMemory(self.device, memory, &self.allocation_callbacks);
+    self.vkd.freeMemory(self.device, memory, self.allocation_callbacks);
 }
 
 pub fn deviceAllocateHostMemory(
@@ -985,7 +1005,7 @@ pub fn deviceAllocateHostMemory(
         },
         .allocation_size = host_memory.len,
         .memory_type_index = try getMemoryTypeIndexHostPointer(host_memory.ptr, properties),
-    }, &self.allocation_callbacks);
+    }, self.allocation_callbacks);
 }
 
 pub const DeviceMemory = struct {

@@ -41,9 +41,9 @@ pub fn initBinary() !Semaphore {
             // .p_next = &create_semaphore_type,
             .flags = .{},
         },
-        &Context.self.allocation_callbacks,
+        Context.self.allocation_callbacks,
     );
-    errdefer Context.self.vkd.destroySemaphore(Context.self.device, self.handle, &Context.self.allocation_callbacks);
+    errdefer Context.self.vkd.destroySemaphore(Context.self.device, self.handle, Context.self.allocation_callbacks);
 
     return self;
 }
@@ -51,7 +51,7 @@ pub fn initBinary() !Semaphore {
 pub fn deinit(self: *Semaphore) void {
     defer self.* = undefined;
 
-    Context.self.vkd.destroySemaphore(Context.self.device, self.handle, &Context.self.allocation_callbacks);
+    Context.self.vkd.destroySemaphore(Context.self.device, self.handle, Context.self.allocation_callbacks);
 }
 
 pub fn signal(self: Semaphore, value: u64) void {

@@ -130,11 +130,11 @@ pub fn init(
     errdefer allocator.free(self.descriptor_sets);
 
     for (self.descriptor_set_layouts, 0..) |*descriptor_set_layout, i| {
-        descriptor_set_layout.* = try Context.self.vkd.createDescriptorSetLayout(Context.self.device, &descriptor_set_layout_infos[i], &Context.self.allocation_callbacks);
+        descriptor_set_layout.* = try Context.self.vkd.createDescriptorSetLayout(Context.self.device, &descriptor_set_layout_infos[i], Context.self.allocation_callbacks);
     }
 
     errdefer for (self.descriptor_set_layouts) |descriptor_set_layout| {
-        Context.self.vkd.destroyDescriptorSetLayout(Context.self.device, descriptor_set_layout, &Context.self.allocation_callbacks);
+        Context.self.vkd.destroyDescriptorSetLayout(Context.self.device, descriptor_set_layout, Context.self.allocation_callbacks);
     };
 
     self.descriptor_pool = try Context.self.vkd.createDescriptorPool(Context.self.device, &.{
@@ -144,8 +144,8 @@ pub fn init(
         .max_sets = 1,
         .pool_size_count = @as(u32, @intCast(descriptor_pool_sizes.len)),
         .p_pool_sizes = descriptor_pool_sizes.ptr,
-    }, &Context.self.allocation_callbacks);
-    errdefer Context.self.vkd.destroyDescriptorPool(Context.self.device, self.descriptor_pool, &Context.self.allocation_callbacks);
+    }, Context.self.allocation_callbacks);
+    errdefer Context.self.vkd.destroyDescriptorPool(Context.self.device, self.descriptor_pool, Context.self.allocation_callbacks);
 
     try Context.self.vkd.allocateDescriptorSets(Context.self.device, &.{
         .descriptor_pool = self.descriptor_pool,
@@ -167,15 +167,15 @@ pub fn init(
                 .size = @sizeOf(PushDataType orelse void),
             },
         },
-    }, &Context.self.allocation_callbacks);
-    errdefer Context.self.vkd.destroyPipelineLayout(Context.self.device, self.layout, &Context.self.allocation_callbacks);
+    }, Context.self.allocation_callbacks);
+    errdefer Context.self.vkd.destroyPipelineLayout(Context.self.device, self.layout, Context.self.allocation_callbacks);
 
     self.compute_shader_module = try Context.self.vkd.createShaderModule(Context.self.device, &.{
         .flags = .{},
         .code_size = shader_code.len,
         .p_code = @as([*]const u32, @ptrCast(shader_code.ptr)),
-    }, &Context.self.allocation_callbacks);
-    errdefer Context.self.vkd.destroyShaderModule(Context.self.device, self.compute_shader_module, &Context.self.allocation_callbacks);
+    }, Context.self.allocation_callbacks);
+    errdefer Context.self.vkd.destroyShaderModule(Context.self.device, self.compute_shader_module, Context.self.allocation_callbacks);
 
     _ = try Context.self.vkd.createComputePipelines(Context.self.device, Context.self.pipeline_cache, 1, &[_]vk.ComputePipelineCreateInfo{.{
         .flags = .{},
@@ -212,8 +212,8 @@ pub fn init(
         .layout = self.layout,
         .base_pipeline_handle = .null_handle,
         .base_pipeline_index = 0,
-    }}, &Context.self.allocation_callbacks, @as([*]vk.Pipeline, @ptrCast(&self.handle)));
-    errdefer Context.self.vkd.destroyPipeline(Context.self.device, self.handle, &Context.self.allocation_callbacks);
+    }}, Context.self.allocation_callbacks, @as([*]vk.Pipeline, @ptrCast(&self.handle)));
+    errdefer Context.self.vkd.destroyPipeline(Context.self.device, self.handle, Context.self.allocation_callbacks);
 
     return self;
 }
@@ -221,15 +221,15 @@ pub fn init(
 pub fn deinit(self: *ComputePipeline, allocator: std.mem.Allocator) void {
     defer self.* = undefined;
 
-    defer Context.self.vkd.destroyPipelineLayout(Context.self.device, self.layout, &Context.self.allocation_callbacks);
-    defer Context.self.vkd.destroyDescriptorPool(Context.self.device, self.descriptor_pool, &Context.self.allocation_callbacks);
+    defer Context.self.vkd.destroyPipelineLayout(Context.self.device, self.layout, Context.self.allocation_callbacks);
+    defer Context.self.vkd.destroyDescriptorPool(Context.self.device, self.descriptor_pool, Context.self.allocation_callbacks);
     defer allocator.free(self.descriptor_set_layouts);
     defer for (self.descriptor_set_layouts) |descriptor_set_layout| {
-        Context.self.vkd.destroyDescriptorSetLayout(Context.self.device, descriptor_set_layout, &Context.self.allocation_callbacks);
+        Context.self.vkd.destroyDescriptorSetLayout(Context.self.device, descriptor_set_layout, Context.self.allocation_callbacks);
     };
     defer allocator.free(self.descriptor_sets);
-    defer Context.self.vkd.destroyShaderModule(Context.self.device, self.compute_shader_module, &Context.self.allocation_callbacks);
-    defer Context.self.vkd.destroyPipeline(Context.self.device, self.handle, &Context.self.allocation_callbacks);
+    defer Context.self.vkd.destroyShaderModule(Context.self.device, self.compute_shader_module, Context.self.allocation_callbacks);
+    defer Context.self.vkd.destroyPipeline(Context.self.device, self.handle, Context.self.allocation_callbacks);
 }
 
 pub fn setDescriptorImage(

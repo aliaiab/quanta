@@ -120,8 +120,8 @@ pub fn init(size: usize, usage: Usage) !Buffer {
         .p_queue_family_indices = undefined,
     };
 
-    self.handle = try Context.self.vkd.createBuffer(Context.self.device, &create_info, &Context.self.allocation_callbacks);
-    errdefer Context.self.vkd.destroyBuffer(Context.self.device, self.handle, &Context.self.allocation_callbacks);
+    self.handle = try Context.self.vkd.createBuffer(Context.self.device, &create_info, Context.self.allocation_callbacks);
+    errdefer Context.self.vkd.destroyBuffer(Context.self.device, self.handle, Context.self.allocation_callbacks);
 
     var memory_requirements: vk.MemoryRequirements2 = .{
         .memory_requirements = undefined,
@@ -162,7 +162,7 @@ pub fn init(size: usize, usage: Usage) !Buffer {
         },
     );
 
-    if (true)
+    if (false)
         Context.self.vkd.getDescriptorEXT(
             Context.self.device,
             &vk.DescriptorGetInfoEXT{
@@ -220,14 +220,14 @@ fn initDataHostMemory(usage: Usage, host_memory: []const u8) !Buffer {
         .p_queue_family_indices = undefined,
     };
 
-    self.handle = try Context.self.vkd.createBuffer(Context.self.device, &create_info, &Context.self.allocation_callbacks);
-    errdefer Context.self.vkd.destroyBuffer(Context.self.device, self.handle, &Context.self.allocation_callbacks);
+    self.handle = try Context.self.vkd.createBuffer(Context.self.device, &create_info, Context.self.allocation_callbacks);
+    errdefer Context.self.vkd.destroyBuffer(Context.self.device, self.handle, Context.self.allocation_callbacks);
 
     self.alignment = 0;
 
     self.memory = try Context.deviceAllocateHostMemory(.{ .host_visible_bit = true, .host_coherent_bit = true, .host_cached_bit = true }, //vk.MemoryPropertyFlags
         host_memory);
-    errdefer Context.self.vkd.freeMemory(Context.self.device, self.memory, &Context.self.allocation_callbacks);
+    errdefer Context.self.vkd.freeMemory(Context.self.device, self.memory, Context.self.allocation_callbacks);
 
     try Context.self.vkd.bindBufferMemory(Context.self.device, self.handle, self.memory, 0);
 
@@ -237,7 +237,7 @@ fn initDataHostMemory(usage: Usage, host_memory: []const u8) !Buffer {
 pub fn deinit(self: *Buffer) void {
     defer self.* = undefined;
 
-    defer Context.self.vkd.destroyBuffer(Context.self.device, self.handle, &Context.self.allocation_callbacks);
+    defer Context.self.vkd.destroyBuffer(Context.self.device, self.handle, Context.self.allocation_callbacks);
     defer Context.devicePageFree(self.memory_page);
 }
 

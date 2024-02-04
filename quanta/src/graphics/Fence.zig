@@ -11,7 +11,7 @@ pub fn init() !Fence {
         .handle = .null_handle,
     };
 
-    self.handle = try Context.self.vkd.createFence(Context.self.device, &.{ .flags = .{ .signaled_bit = false } }, &Context.self.allocation_callbacks);
+    self.handle = try Context.self.vkd.createFence(Context.self.device, &.{ .flags = .{ .signaled_bit = false } }, Context.self.allocation_callbacks);
 
     return self;
 }
@@ -19,7 +19,7 @@ pub fn init() !Fence {
 pub fn deinit(self: *Fence) void {
     defer self.* = undefined;
 
-    defer Context.self.vkd.destroyFence(Context.self.device, self.handle, &Context.self.allocation_callbacks);
+    defer Context.self.vkd.destroyFence(Context.self.device, self.handle, Context.self.allocation_callbacks);
 }
 
 pub fn wait(self: Fence) void {

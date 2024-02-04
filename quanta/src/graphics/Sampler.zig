@@ -80,7 +80,7 @@ pub fn init(min_filter: FilterMode, mag_filter: FilterMode, address_mode_u: Addr
             .border_color = vk.BorderColor.float_opaque_black,
             .unnormalized_coordinates = vk.FALSE,
         },
-        &Context.self.allocation_callbacks,
+        Context.self.allocation_callbacks,
     );
 
     return self;
@@ -89,5 +89,5 @@ pub fn init(min_filter: FilterMode, mag_filter: FilterMode, address_mode_u: Addr
 pub fn deinit(self: *Sampler) void {
     defer self.* = undefined;
 
-    defer Context.self.vkd.destroySampler(Context.self.device, self.handle, &Context.self.allocation_callbacks);
+    defer Context.self.vkd.destroySampler(Context.self.device, self.handle, Context.self.allocation_callbacks);
 }

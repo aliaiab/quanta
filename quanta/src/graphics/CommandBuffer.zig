@@ -24,6 +24,7 @@ local_size_x: u32,
 local_size_y: u32,
 local_size_z: u32,
 is_graphics_pipeline: bool,
+is_render_pass_instance: bool,
 
 pub fn init(queue: Queue) !CommandBuffer {
     var self: CommandBuffer = .{
@@ -35,6 +36,7 @@ pub fn init(queue: Queue) !CommandBuffer {
         .local_size_y = 0,
         .local_size_z = 0,
         .is_graphics_pipeline = false,
+        .is_render_pass_instance = false,
     };
 
     self.wait_fence = try Fence.init();
@@ -259,6 +261,7 @@ pub fn bufferBarrier(self: CommandBuffer, buffer: Buffer, barrier: BufferBarrier
     Context.self.vkd.cmdPipelineBarrier2(self.handle, &.{
         .dependency_flags = .{
             .by_region_bit = true,
+            .view_local_bit = self.is_render_pass_instance,
         },
         .memory_barrier_count = 0,
         .p_memory_barriers = undefined,
@@ -325,7 +328,7 @@ pub const Attachment = struct {
 };
 
 pub fn beginRenderPass(
-    self: CommandBuffer,
+    self: *CommandBuffer,
     offset_x: i32,
     offset_y: i32,
     width: u32,
@@ -397,10 +400,14 @@ pub fn beginRenderPass(
         .p_depth_attachment = if (depth_attachment != null) &depth_attachment_info else null,
         .p_stencil_attachment = null,
     });
+
+    self.is_render_pass_instance = true;
 }
 
-pub fn endRenderPass(self: CommandBuffer) void {
+pub fn endRenderPass(self: *CommandBuffer) void {
     Context.self.vkd.cmdEndRendering(self.handle);
+
+    self.is_render_pass_instance = false;
 }
 
 pub fn setGraphicsPipeline(self: *CommandBuffer, pipeline: GraphicsPipeline) void {
@@ -443,9 +450,13 @@ pub fn setVertexBuffer(self: CommandBuffer, buffer: Buffer) void {
 }
 
 pub fn setPushData(self: CommandBuffer, comptime T: type, data: T) void {
+    self.setPushDataBytes(std.mem.asBytes(&data));
+}
+
+pub fn setPushDataBytes(self: CommandBuffer, data: []const u8) void {
     const shader_stages: vk.ShaderStageFlags = if (self.is_graphics_pipeline) .{ .vertex_bit = true, .fragment_bit = true } else .{ .compute_bit = true };
 
-    Context.self.vkd.cmdPushConstants(self.handle, self.pipeline_layout, shader_stages, 0, @sizeOf(T), &data);
+    Context.self.vkd.cmdPushConstants(self.handle, self.pipeline_layout, shader_stages, 0, @intCast(data.len), data.ptr);
 }
 
 pub fn setViewport(self: CommandBuffer, x: f32, y: f32, width: f32, height: f32, min_depth: f32, max_depth: f32) void {
@@ -511,7 +522,15 @@ pub fn copyEntireBuffer(
 pub fn updateBuffer(self: CommandBuffer, destination: Buffer, offset: usize, comptime T: type, data: []const T) void {
     std.debug.assert((data.len * @sizeOf(T)) <= 65536);
 
-    Context.self.vkd.cmdUpdateBuffer(self.handle, destination.handle, offset, data.len * @sizeOf(T), data.ptr);
+    Context.self.vkd.cmdUpdateBuffer(
+        self.handle,
+        destination.handle,
+        std.mem.alignForward(usize, offset, 4),
+        std.mem.alignBackward(usize, data.len * @sizeOf(T), 4),
+        data.ptr,
+    );
+
+    @compileError("Unsupported");
 }
 
 pub fn fillBuffer(self: CommandBuffer, source: Buffer, offset: usize, size: usize, value: u32) void {

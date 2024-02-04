@@ -11,7 +11,7 @@ pub fn init() !Event {
         .handle = .null_handle,
     };
 
-    self.handle = try Context.self.vkd.createEvent(Context.self.device, &.{ .flags = .{} }, &Context.self.allocation_callbacks);
+    self.handle = try Context.self.vkd.createEvent(Context.self.device, &.{ .flags = .{} }, Context.self.allocation_callbacks);
 
     return self;
 }
@@ -19,7 +19,7 @@ pub fn init() !Event {
 pub fn deinit(self: *Event) void {
     defer self.* = undefined;
 
-    defer Context.self.vkd.destroyEvent(Context.self.device, self.handle, &Context.self.allocation_callbacks);
+    defer Context.self.vkd.destroyEvent(Context.self.device, self.handle, Context.self.allocation_callbacks);
 }
 
 ///Returns true if the event is signaled, otherwise it returns false
