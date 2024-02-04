@@ -70,6 +70,10 @@ var state: struct {
     cloned_entity_last_frame: bool = false,
     mouse_pressed_last_Frame: bool = false,
 
+    ///Main global render graph
+    render_graph: quanta.rendering.Graph.Builder = undefined,
+    render_graph_compile_context: quanta.rendering.Graph.CompileContext = undefined,
+
     delta_time: f32 = 0.016,
 } = .{};
 
@@ -343,6 +347,12 @@ pub fn init() !void {
 
     state.entity_debugger_commands = quanta.ecs.CommandBuffer.init(state.allocator);
     state.selected_entities = std.ArrayList(quanta.ecs.ComponentStore.Entity).init(state.allocator);
+
+    state.render_graph = quanta.rendering.Graph.Builder.init(state.allocator);
+    errdefer state.render_graph.deinit();
+
+    state.render_graph_compile_context = quanta.rendering.Graph.CompileContext.init();
+    errdefer state.render_graph_compile_context.deinit();
 }
 
 pub fn deinit() void {
@@ -382,6 +392,8 @@ pub fn deinit() void {
     defer state.entity_debugger_commands.deinit();
     defer state.selected_entities.deinit();
     defer state.asset_storage.deinit();
+    defer state.render_graph.deinit();
+    defer state.render_graph_compile_context.deinit(state.allocator);
 }
 
 pub fn update() !UpdateResult {
@@ -719,7 +731,9 @@ pub fn update() !UpdateResult {
 
         imgui.igRender();
 
-        {
+        const use_traditional_renderer = false;
+
+        if (use_traditional_renderer) {
             RendererGui.begin();
             RendererGui.renderImGuiDrawData(
                 imgui.igGetDrawData(),
@@ -727,6 +741,8 @@ pub fn update() !UpdateResult {
                 image.image_acquired,
                 image.render_finished,
             ) catch unreachable;
+        } else {
+            RendererGui.renderToGraph(&state.render_graph, imgui.igGetDrawData());
         }
     }
 
@@ -735,6 +751,29 @@ pub fn update() !UpdateResult {
     }
 
     state.ecs_scene.endQueryWindow();
+
+    const render_graph_compiled = try state.render_graph_compile_context.compile(
+        state.render_graph,
+        state.allocator,
+    );
+    _ = render_graph_compiled; // autofix
+
+    const debug_render_graph = true;
+
+    if (debug_render_graph) {
+        for (state.render_graph.raster_pipelines.items(.reference_count), 0..) |reference_count, index| {
+            std.log.info("Referenced raster pipline[{}] {} times", .{ index, reference_count });
+        }
+
+        for (state.render_graph.buffers.items(.reference_count), 0..) |reference_count, index| {
+            std.log.info("Referenced buffer[{}] {} times", .{ index, reference_count });
+        }
+
+        // std.os.exit(0);
+    }
+
+    //clear the built render graph after it's no longer needed
+    state.render_graph.clear();
 
     try state.swapchain.present();
     try state.swapchain.swap();

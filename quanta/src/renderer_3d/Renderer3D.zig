@@ -299,7 +299,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
             },
         },
         null,
-        null,
+        0,
     );
     errdefer self.color_pipeline.deinit(allocator);
 
@@ -323,7 +323,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
             },
         },
         null,
-        SkyPipelinePushConstants,
+        @sizeOf(SkyPipelinePushConstants),
     );
     errdefer self.sky_pipeline.deinit(allocator);
 
@@ -345,7 +345,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
             },
         },
         null,
-        DepthPassPushConstants,
+        @sizeOf(DepthPassPushConstants),
     );
     errdefer self.depth_pipeline.deinit(allocator);
 
@@ -367,7 +367,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
             },
         },
         null,
-        DepthPassPushConstants,
+        @sizeOf(DepthPassPushConstants),
     );
     errdefer self.shadow_pipeline.deinit(allocator);
 
@@ -1112,25 +1112,26 @@ pub fn endSceneRender(
         //Deferred Color Pass
         {}
 
-        command_buffer.imageBarrier(self.radiance_color_image, .{
-            .source_stage = .{ .compute_shader = true },
-            .source_access = .{ .shader_read = true },
-            .destination_stage = .{
-                .color_attachment_output = true,
-            },
-            .destination_access = .{
-                .color_attachment_write = true,
-            },
-            .destination_layout = .attachment_optimal,
-        });
-
         //Forward Color Pass
         {
-            command_buffer.imageBarrier(target, .{
-                .source_stage = .{ .all_commands = true },
-                .source_access = .{},
-                .destination_stage = .{ .color_attachment_output = true },
-                .destination_access = .{ .color_attachment_write = true },
+            //TODO: is this neccesary: I think it is *IF* we intend to observe any writes to target (such as some renderered result that runs before render3d)
+            // command_buffer.imageBarrier(target, .{
+            //     .source_stage = .{ .all_commands = true },
+            //     .source_access = .{},
+            //     .destination_stage = .{ .color_attachment_output = true },
+            //     .destination_access = .{ .color_attachment_write = true },
+            //     .destination_layout = .attachment_optimal,
+            // });
+
+            command_buffer.imageBarrier(self.radiance_color_image, .{
+                .source_stage = .{ .compute_shader = true },
+                .source_access = .{ .shader_read = true },
+                .destination_stage = .{
+                    .color_attachment_output = true,
+                },
+                .destination_access = .{
+                    .color_attachment_write = true,
+                },
                 .destination_layout = .attachment_optimal,
             });
 
@@ -1214,37 +1215,39 @@ pub fn endSceneRender(
             .destination_layout = vk.ImageLayout.shader_read_only_optimal,
         });
 
-        command_buffer.imageBarrier(target, .{
-            .source_stage = .{},
-            .source_access = .{},
-            .source_layout = .undefined,
-            .destination_stage = .{
-                .compute_shader = true,
-            },
-            .destination_access = .{ .shader_write = true },
-            .destination_layout = vk.ImageLayout.general,
-        });
-
         //Color resolve
         {
+            //input
+            command_buffer.imageBarrier(target, .{
+                .source_stage = .{},
+                .source_access = .{},
+                .source_layout = .undefined,
+                .destination_stage = .{
+                    .compute_shader = true,
+                },
+                .destination_access = .{ .shader_write = true },
+                .destination_layout = vk.ImageLayout.general,
+            });
+
             self.color_resolve_pipeline.setDescriptorImageWithLayout(0, 0, self.radiance_color_image, .general);
             self.color_resolve_pipeline.setDescriptorImageWithLayout(1, 0, target, .general);
 
             command_buffer.setComputePipeline(self.color_resolve_pipeline);
             command_buffer.setPushData(ColorResolvePushData, .{ .exposure = self.camera.exposure });
             command_buffer.computeDispatch(target.width, target.height, 1);
-        }
 
-        command_buffer.imageBarrier(target, .{
-            .source_stage = .{
-                .compute_shader = true,
-            },
-            .source_access = .{ .shader_write = true },
-            .source_layout = vk.ImageLayout.general,
-            .destination_stage = .{},
-            .destination_access = .{},
-            .destination_layout = .present_src_khr,
-        });
+            //output
+            command_buffer.imageBarrier(target, .{
+                .source_stage = .{
+                    .compute_shader = true,
+                },
+                .source_access = .{ .shader_write = true },
+                .source_layout = vk.ImageLayout.general,
+                .destination_stage = .{},
+                .destination_access = .{},
+                .destination_layout = .present_src_khr,
+            });
+        }
     }
 
     const timeline_submit_info: vk.TimelineSemaphoreSubmitInfo = .{

@@ -196,10 +196,10 @@ pub fn init(
     allocator: std.mem.Allocator,
     options: Options,
     comptime VertexType: ?type,
-    comptime PushDataType: ?type,
+    push_data_size: usize,
 ) !GraphicsPipeline {
-    if (@sizeOf(PushDataType orelse void) > 128) {
-        @compileLog("PushData cannot be larger than 128 bytes");
+    if (push_data_size > 128) {
+        return error.PushDataTooLarge;
     }
 
     var reflect_result: spirv.reflect.Result = std.mem.zeroes(spirv.reflect.Result);
@@ -319,7 +319,7 @@ pub fn init(
         .flags = .{},
         .set_layout_count = @as(u32, @intCast(self.descriptor_set_layouts.len)),
         .p_set_layouts = self.descriptor_set_layouts.ptr,
-        .push_constant_range_count = if (PushDataType != null) 1 else 0,
+        .push_constant_range_count = if (push_data_size > 0) 1 else 0,
         .p_push_constant_ranges = &[_]vk.PushConstantRange{
             .{
                 .stage_flags = .{
@@ -327,7 +327,7 @@ pub fn init(
                     .fragment_bit = true,
                 },
                 .offset = 0,
-                .size = @sizeOf(PushDataType orelse void),
+                .size = @intCast(push_data_size),
             },
         },
     }, &Context.self.allocation_callbacks);

@@ -87,7 +87,7 @@ pub fn init(allocator: std.mem.Allocator, swapchain: graphics.Swapchain) !void {
             },
         },
         null,
-        MeshPipelinePushData,
+        @sizeOf(MeshPipelinePushData),
     );
     errdefer self.mesh_pipeline.deinit(self.allocator);
 
@@ -201,6 +201,55 @@ pub const Rectangle = extern struct {
 
 pub fn drawRectangle(rectangle: Rectangle) void {
     self.rectangles.append(self.allocator, rectangle) catch unreachable;
+}
+
+pub fn renderToGraph(
+    graph: *quanta.rendering.Graph.Builder,
+    draw_data: *const imgui.ImDrawData,
+) void {
+    const max_vertices = 50_000;
+
+    const vertex_buffer = graph.createBuffer(@src(), max_vertices * @sizeOf(imgui.ImDrawVert));
+
+    //upload
+    {
+        _ = graph.beginTransferPass(@src(), .{});
+
+        var vertex_offset: usize = 0;
+
+        for (0..@intCast(draw_data.CmdListsCount)) |command_list_index| {
+            const command_list: *imgui.ImDrawList = draw_data.CmdLists[command_list_index];
+
+            const vertices: []const imgui.ImDrawVert = command_list.VtxBuffer.Data[0..@as(usize, @intCast(command_list.VtxBuffer.Size))];
+
+            graph.updateBuffer(
+                vertex_buffer,
+                vertex_offset * @sizeOf(imgui.ImDrawVert),
+                imgui.ImDrawVert,
+                vertices,
+            );
+
+            vertex_offset += vertices.len;
+        }
+
+        _ = graph.endTransferPass(.{});
+    }
+
+    //Drawing
+    {
+        const pipeline = graph.createRasterPipeline(
+            @src(),
+            .{ .code = @alignCast(@embedFile("mesh.vert.spv")) },
+            .{ .code = @alignCast(@embedFile("mesh.frag.spv")) },
+            @sizeOf(MeshPipelinePushData),
+        );
+
+        _ = graph.beginRasterPass(@src(), .{});
+
+        graph.setRasterPipeline(pipeline);
+
+        _ = graph.endRasterPass(.{});
+    }
 }
 
 pub fn renderImGuiDrawData(

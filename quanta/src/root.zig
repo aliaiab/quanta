@@ -1,4 +1,5 @@
 pub const graphics = @import("graphics.zig");
+pub const rendering = @import("rendering.zig");
 pub const windowing = @import("windowing.zig");
 pub const asset = @import("asset.zig");
 pub const ecs = @import("ecs.zig");
