@@ -71,8 +71,8 @@ var state: struct {
     mouse_pressed_last_Frame: bool = false,
 
     ///Main global render graph
-    render_graph: quanta.rendering.Graph.Builder = undefined,
-    render_graph_compile_context: quanta.rendering.Graph.CompileContext = undefined,
+    render_graph: quanta.rendering.graph.Builder = undefined,
+    render_graph_compile_context: quanta.rendering.graph.CompileContext = undefined,
 
     delta_time: f32 = 0.016,
 } = .{};
@@ -348,10 +348,10 @@ pub fn init() !void {
     state.entity_debugger_commands = quanta.ecs.CommandBuffer.init(state.allocator);
     state.selected_entities = std.ArrayList(quanta.ecs.ComponentStore.Entity).init(state.allocator);
 
-    state.render_graph = quanta.rendering.Graph.Builder.init(state.allocator);
+    state.render_graph = quanta.rendering.graph.Builder.init(state.allocator);
     errdefer state.render_graph.deinit();
 
-    state.render_graph_compile_context = quanta.rendering.Graph.CompileContext.init(state.allocator);
+    state.render_graph_compile_context = quanta.rendering.graph.CompileContext.init(state.allocator);
     errdefer state.render_graph_compile_context.deinit();
 }
 
