@@ -6,7 +6,7 @@ pub const vulkan_version = std.SemanticVersion{
     .patch = 0,
 };
 
-const use_custom_allocator: bool = builtin.mode == .Debug and false;
+const use_custom_allocator: bool = builtin.mode == .Debug;
 
 pub const BaseDispatch = vk.BaseWrapper(.{
     .createInstance = true,
@@ -183,38 +183,38 @@ fn vulkanAllocate(
 fn vulkanReallocate(
     user_data: ?*anyopaque,
     original: ?*anyopaque,
-    size: usize,
+    new_size: usize,
     alignment: usize,
     _: vk.SystemAllocationScope,
 ) callconv(vk.vulkan_call_conv) ?*anyopaque {
     const original_pointer = @as([*]u8, @ptrCast(original.?)) - @sizeOf(usize);
     const old_size = @as(*usize, @ptrCast(@alignCast(original_pointer))).*;
 
-    const memory = original_pointer[0 .. old_size + @sizeOf(usize)];
+    const old_memory = original_pointer[0 .. old_size + @sizeOf(usize)];
 
-    if (size > old_size) {
-        const memory_ptr = self.allocator.rawAlloc(size + @sizeOf(usize), @as(u8, @intCast(alignment)), @returnAddress()) orelse {
+    if (new_size > old_size) {
+        const memory_ptr = self.allocator.rawAlloc(new_size + @sizeOf(usize), @as(u8, @intCast(alignment)), @returnAddress()) orelse {
             @panic("Allocation failed!");
         };
 
-        @as(*usize, @ptrCast(@alignCast(memory_ptr))).* = size;
+        @as(*usize, @ptrCast(@alignCast(memory_ptr))).* = new_size;
 
         const allocation_ptr = memory_ptr + @sizeOf(usize);
 
-        @memcpy(allocation_ptr[0..old_size], memory[@sizeOf(usize) .. @sizeOf(usize) + old_size]);
+        @memcpy(allocation_ptr[0..old_size], old_memory[@sizeOf(usize) .. @sizeOf(usize) + old_size]);
 
         vulkanFree(user_data, original);
 
         return allocation_ptr;
     } else {
-        if (!self.allocator.rawResize(memory, @as(u8, @intCast(alignment)), size, @returnAddress())) {
+        if (!self.allocator.rawResize(old_memory, @as(u8, @intCast(alignment)), new_size, @returnAddress())) {
             @panic("Allocation failed!");
         }
     }
 
-    @as(*usize, @ptrCast(@alignCast(memory.ptr))).* = size;
+    @as(*usize, @ptrCast(@alignCast(old_memory.ptr))).* = new_size;
 
-    return memory.ptr + @sizeOf(usize);
+    return old_memory.ptr + @sizeOf(usize);
 }
 
 fn vulkanFree(

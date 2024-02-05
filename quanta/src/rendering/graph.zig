@@ -1,12 +1,177 @@
 //!Render Graph implementation built on top of quanta.graphics
 
-pub fn init() Graph {
-    return undefined;
-}
+pub const IndexType = enum {
+    u16,
+    u32,
+};
 
-pub fn deinit(self: *Graph) void {
-    self.* = undefined;
-}
+pub const Command = union(enum) {
+    update_buffer: struct {
+        buffer: Buffer,
+        buffer_offset: usize,
+        contents: []const u8,
+    },
+    update_image: struct {
+        image: ImageUntyped,
+        image_offset: usize,
+        contents: []const u8,
+    },
+    set_raster_pipeline: struct {
+        pipeline: RasterPipeline,
+    },
+    set_raster_pipeline_resource_buffer: struct {
+        pipeline: RasterPipeline,
+        binding_index: u32,
+        array_index: u32,
+        buffer: Buffer,
+    },
+    set_raster_pipeline_image_sampler: struct {
+        pipeline: RasterPipeline,
+        binding_index: u32,
+        array_index: u32,
+        image: ImageUntyped,
+        sampler: Sampler,
+    },
+    set_viewport: struct {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        min_depth: f32,
+        max_depth: f32,
+    },
+    set_scissor: struct {
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    },
+    set_index_buffer: struct {
+        index_buffer: Buffer,
+        type: IndexType,
+    },
+    set_push_data: struct {
+        contents: []const u8,
+    },
+    draw_indexed: struct {
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
+    },
+};
+
+///List of all commands in a graph
+///Not ordered globally. Does not have random access
+pub const Commands = struct {
+    tags: std.ArrayListUnmanaged(std.meta.Tag(Command)) = .{},
+    ///List of Command payloads
+    data: std.ArrayListUnmanaged(u8) = .{},
+
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        self.tags.deinit(allocator);
+        self.data.deinit(allocator);
+
+        self.* = undefined;
+    }
+
+    pub fn reset(self: *@This()) void {
+        self.tags.items.len = 0;
+        self.data.items.len = 0;
+    }
+
+    ///Returns the offset where the command was encoded
+    pub fn add(
+        self: *@This(),
+        allocator: std.mem.Allocator,
+        command: Command,
+    ) void {
+        self.tags.append(allocator, command) catch unreachable;
+
+        switch (command) {
+            inline else => |command_data| {
+                self.data.appendSlice(
+                    allocator,
+                    std.mem.asBytes(&command_data),
+                ) catch unreachable;
+            },
+        }
+    }
+
+    pub fn iterator(
+        self: *const @This(),
+        index: usize,
+        count: usize,
+        data_offset: usize,
+    ) Iterator {
+        return .{
+            .commands = self,
+            .start_index = index,
+            .end_index = index + count,
+            .data_offset = data_offset,
+        };
+    }
+
+    pub const Tag = std.meta.Tag(Command);
+
+    pub const Iterator = struct {
+        commands: *const CommandsType,
+        start_index: usize,
+        end_index: usize,
+        data_offset: usize = 0,
+
+        pub fn next(self: *@This()) ?Command {
+            if (self.start_index == self.end_index) return null;
+            defer self.start_index += 1;
+
+            const tag = self.commands.tags.items[self.start_index];
+
+            switch (tag) {
+                inline else => |tag_comp| {
+                    const Payload = std.meta.TagPayload(Command, tag_comp);
+
+                    const payload_offset = self.data_offset;
+                    const payload_size = @sizeOf(Payload);
+
+                    const payload_bytes = self.commands.data.items[payload_offset .. payload_offset + payload_size];
+
+                    defer self.data_offset += payload_size;
+
+                    return @unionInit(
+                        Command,
+                        @tagName(tag_comp),
+                        std.mem.bytesAsValue(Payload, payload_bytes).*,
+                    );
+                },
+            }
+        }
+    };
+
+    test {
+        var commands = @This(){};
+        defer commands.deinit(std.testing.allocator);
+
+        commands.reset();
+
+        _ = commands.add(
+            std.testing.allocator,
+            .{ .update_buffer = .{
+                .buffer = undefined,
+                .buffer_offset = 0,
+                .contents = "contents",
+            } },
+        );
+
+        var iter = commands.iterator(0, commands.tags.items.len, 0);
+
+        while (iter.next()) |command| {
+            std.log.warn("command = {}", .{command});
+        }
+    }
+
+    const CommandsType = @This();
+};
 
 ///Graph builder for compiling a graph
 ///Works like an immediate-mode-gui-type api
@@ -42,6 +207,10 @@ pub const Builder = struct {
         height: u32,
         depth: u32,
     }) = .{},
+    samplers: std.MultiArrayList(struct {
+        handle: Sampler,
+        reference_count: u32,
+    }) = .{},
     ///List of top level passes (not render passes)
     passes: std.MultiArrayList(struct {
         handle: u64,
@@ -50,6 +219,7 @@ pub const Builder = struct {
         //Ordered Command list
         command_offset: u32,
         command_count: u32,
+        command_data_offset: u32,
         input_offset: u32,
         //Could we make these counts u8? (max 255 inputs/outputs)
         input_count: u16,
@@ -87,17 +257,7 @@ pub const Builder = struct {
         //Represents any transformations that were applied during the pass
         transform: InputOutputTransform,
     }) = .{},
-    ///Ordered list of commands
-    commands: std.MultiArrayList(Command),
-    ///TODO: is this too cumbersome/unoptimal?
-    update_buffer_commands: std.ArrayListUnmanaged(Command.UpdateBuffer) = .{},
-    set_pipeline_commands: std.ArrayListUnmanaged(Command.SetRasterPipeline) = .{},
-    set_raster_pipeline_resource_buffer_commands: std.ArrayListUnmanaged(Command.SetRasterPipelineResourceBuffer) = .{},
-    set_viewport_commands: std.ArrayListUnmanaged(Command.SetViewport) = .{},
-    set_scissor_commands: std.ArrayListUnmanaged(Command.SetScissor) = .{},
-    set_index_buffer_commands: std.ArrayListUnmanaged(Command.SetIndexBuffer) = .{},
-    set_push_data_commands: std.ArrayListUnmanaged(Command.SetPushData) = .{},
-    draw_indexed_commands: std.ArrayListUnmanaged(Command.DrawIndexed) = .{},
+    commands: Commands,
 
     ///TODO: Handle nested passes?
     current_pass_index: u32,
@@ -120,73 +280,6 @@ pub const Builder = struct {
         raster,
     };
 
-    ///High level command as part of a pass
-    pub const Command = struct {
-        index: u32,
-        tag: Tag,
-
-        pub const Tag = enum {
-            update_buffer,
-            set_raster_pipeline,
-            set_raster_pipeline_resource_buffer,
-            set_viewport,
-            set_scissor,
-            set_index_buffer,
-            set_push_data,
-            draw_indexed,
-        };
-
-        pub const UpdateBuffer = struct {
-            buffer: Buffer,
-            buffer_offset: usize,
-            contents: []const u8,
-        };
-
-        pub const SetRasterPipeline = struct {
-            pipeline: RasterPipeline,
-        };
-
-        pub const SetRasterPipelineResourceBuffer = struct {
-            pipeline: RasterPipeline,
-            binding_index: u32,
-            array_index: u32,
-            buffer: Buffer,
-        };
-
-        pub const SetViewport = struct {
-            x: f32,
-            y: f32,
-            width: f32,
-            height: f32,
-            min_depth: f32,
-            max_depth: f32,
-        };
-
-        pub const SetScissor = struct {
-            x: u32,
-            y: u32,
-            width: u32,
-            height: u32,
-        };
-
-        pub const SetIndexBuffer = struct {
-            index_buffer: Buffer,
-            type: IndexType,
-        };
-
-        pub const SetPushData = struct {
-            contents: []const u8,
-        };
-
-        pub const DrawIndexed = struct {
-            index_count: u32,
-            instance_count: u32,
-            first_index: u32,
-            vertex_offset: i32,
-            first_instance: u32,
-        };
-    };
-
     ///Compile time constant to include debug information into each graph builder
     ///Includes source locations for each
     pub const include_debug_info = false;
@@ -199,7 +292,6 @@ pub const Builder = struct {
             .buffers = .{},
             .passes = .{},
             .commands = .{},
-            .update_buffer_commands = .{},
             .current_pass_index = 0,
         };
     }
@@ -208,21 +300,13 @@ pub const Builder = struct {
         self.raster_pipelines.deinit(self.allocator);
         self.buffers.deinit(self.allocator);
         self.images.deinit(self.allocator);
+        self.samplers.deinit(self.allocator);
 
         self.passes.deinit(self.allocator);
         self.pass_inputs.deinit(self.allocator);
         self.pass_outputs.deinit(self.allocator);
 
         self.commands.deinit(self.allocator);
-
-        self.update_buffer_commands.deinit(self.allocator);
-        self.set_pipeline_commands.deinit(self.allocator);
-        self.set_raster_pipeline_resource_buffer_commands.deinit(self.allocator);
-        self.set_viewport_commands.deinit(self.allocator);
-        self.set_scissor_commands.deinit(self.allocator);
-        self.set_index_buffer_commands.deinit(self.allocator);
-        self.set_push_data_commands.deinit(self.allocator);
-        self.draw_indexed_commands.deinit(self.allocator);
         self.scratch_allocator.deinit();
 
         self.* = undefined;
@@ -233,18 +317,12 @@ pub const Builder = struct {
         self.raster_pipelines.len = 0;
         self.buffers.len = 0;
         self.images.len = 0;
+        self.samplers.len = 0;
+
         self.passes.len = 0;
         self.pass_inputs.len = 0;
         self.pass_outputs.len = 0;
-        self.commands.len = 0;
-        self.set_pipeline_commands.items.len = 0;
-        self.set_raster_pipeline_resource_buffer_commands.items.len = 0;
-        self.update_buffer_commands.items.len = 0;
-        self.set_viewport_commands.items.len = 0;
-        self.set_scissor_commands.items.len = 0;
-        self.set_index_buffer_commands.items.len = 0;
-        self.set_push_data_commands.items.len = 0;
-        self.draw_indexed_commands.items.len = 0;
+        self.commands.reset();
         self.current_pass_index = 0;
 
         _ = self.scratch_allocator.reset(std.heap.ArenaAllocator.ResetMode{ .retain_capacity = {} });
@@ -383,10 +461,18 @@ pub const Builder = struct {
         self: *@This(),
         comptime src: SourceLocation,
     ) Sampler {
-        _ = self; // autofix
-        _ = src; // autofix
+        const handle_id = comptime idFromSourceLocation(src);
 
-        @compileError("Unimplemented");
+        const handle: Sampler = .{
+            .id = handle_id,
+        };
+
+        self.samplers.append(self.allocator, .{
+            .handle = .{ .id = handle_id },
+            .reference_count = 0,
+        }) catch unreachable;
+
+        return handle;
     }
 
     pub fn InputType(comptime InputTuple: type) type {
@@ -399,13 +485,16 @@ pub const Builder = struct {
                 Buffer => {
                     field_type = PassInput(Buffer);
                 },
+                Image(.general) => {
+                    field_type = PassInput(Image(.general));
+                },
                 else => {
                     if (@hasDecl(tuple_field.type, "pass_input")) {
                         field_type = tuple_field.type;
                     } else if (@hasDecl(tuple_field.type, "pass_output")) {
                         field_type = PassInput(tuple_field.type.ResourceType);
                     } else {
-                        @compileError("Input Type not supported");
+                        field_type = InputType(tuple_field.type);
                     }
                 },
             }
@@ -455,7 +544,21 @@ pub const Builder = struct {
                         .resource = field,
                     };
                 },
-                Image(.general), Image(.attachment) => @compileError(""),
+                Image(.general) => {
+                    self.pass_inputs.append(self.allocator, .{
+                        .pass_index = null,
+                        .reference_count = 0,
+                        .resource_type = .image,
+                        .resource_handle = .{ .id = field.id },
+                        .layout = .general,
+                        .transform = InputOutputTransform.no_op,
+                    }) catch unreachable;
+
+                    @field(result, input.name) = PassInput(Image(.general)){
+                        .index = input_index,
+                        .resource = field,
+                    };
+                },
                 else => {
                     if (@hasDecl(input.type, "pass_input")) {
                         @field(result, input.name) = @field(inputs, input.name);
@@ -476,7 +579,10 @@ pub const Builder = struct {
                             .resource = field.resource,
                         };
                     } else {
-                        @compileError("Input Type not supported");
+                        // @compileError("Input Type not supported");
+                        // field_type = InputType(tuple_field.type);
+
+                        @field(result, input.name) = self.parseInputs(field);
                     }
                 },
             }
@@ -541,13 +647,13 @@ pub const Builder = struct {
                         self.pass_outputs.append(self.allocator, .{
                             .pass_index = self.current_pass_index,
                             .reference_count = 0,
-                            .resource_type = .buffer,
+                            .resource_type = if (output.type.ResourceType == Buffer) .buffer else .image,
                             .resource_handle = .{ .id = field.resource.id },
                             .layout = .general,
                             .transform = InputOutputTransform.no_op,
                         }) catch unreachable;
 
-                        @field(result, output.name) = PassOutput(Buffer){
+                        @field(result, output.name) = PassOutput(output.type.ResourceType){
                             .index = output_index,
                             .resource = field.resource,
                         };
@@ -588,8 +694,9 @@ pub const Builder = struct {
         self.passes.append(self.allocator, .{
             .handle = pass_id,
             .reference_count = 0,
-            .command_offset = @intCast(self.commands.len),
+            .command_offset = @intCast(self.commands.tags.items.len),
             .command_count = 0,
+            .command_data_offset = @intCast(self.commands.data.items.len),
             .tag = .transfer,
             .input_offset = @intCast(self.pass_inputs.len),
             .input_count = std.meta.fields(@TypeOf(inputs)).len,
@@ -611,7 +718,7 @@ pub const Builder = struct {
     ) OutputType(@TypeOf(outputs)) {
         const output_result = self.parseOutputs(outputs);
 
-        const command_count = self.commands.len - self.passes.items(.command_offset)[self.current_pass_index];
+        const command_count = self.commands.tags.items.len - self.passes.items(.command_offset)[self.current_pass_index];
         const output_count = self.pass_outputs.len - self.passes.items(.output_offset)[self.current_pass_index];
 
         self.passes.items(.command_count)[self.current_pass_index] = @intCast(command_count);
@@ -633,16 +740,31 @@ pub const Builder = struct {
     ) void {
         self.referencePassInput(buffer);
 
-        self.commands.append(self.allocator, .{
-            .tag = .update_buffer,
-            .index = @intCast(self.update_buffer_commands.items.len),
-        }) catch unreachable;
+        self.commands.add(self.allocator, .{
+            .update_buffer = .{
+                .buffer = buffer.resource,
+                .buffer_offset = buffer_offset,
+                .contents = std.mem.sliceAsBytes(contents),
+            },
+        });
+    }
 
-        self.update_buffer_commands.append(self.allocator, .{
-            .buffer = buffer.resource,
-            .buffer_offset = buffer_offset,
-            .contents = std.mem.sliceAsBytes(contents),
-        }) catch unreachable;
+    pub fn updateImage(
+        self: *@This(),
+        image: PassInput(Image(.general)),
+        offset: usize,
+        comptime T: type,
+        contents: []const T,
+    ) void {
+        self.referencePassInput(image);
+
+        self.commands.add(self.allocator, .{
+            .update_image = .{
+                .image = .{ .id = image.resource.id },
+                .image_offset = offset,
+                .contents = std.mem.sliceAsBytes(contents),
+            },
+        });
     }
 
     pub const RasterAttachment = struct {
@@ -678,8 +800,9 @@ pub const Builder = struct {
         self.passes.append(self.allocator, .{
             .handle = pass_id,
             .reference_count = 0,
-            .command_offset = @intCast(self.commands.len),
+            .command_offset = @intCast(self.commands.tags.items.len),
             .command_count = 0,
+            .command_data_offset = @intCast(self.commands.data.items.len),
             .tag = .raster,
             .input_offset = @intCast(self.pass_inputs.len),
             .input_count = std.meta.fields(@TypeOf(inputs)).len,
@@ -699,7 +822,7 @@ pub const Builder = struct {
         self: *@This(),
         outputs: anytype,
     ) @TypeOf(outputs) {
-        const command_count = self.commands.len - self.passes.items(.command_offset)[self.current_pass_index];
+        const command_count = self.commands.tags.items.len - self.passes.items(.command_offset)[self.current_pass_index];
 
         self.passes.items(.command_count)[self.current_pass_index] = @intCast(command_count);
 
@@ -713,14 +836,11 @@ pub const Builder = struct {
         const pipeline_index = self.referenceRasterPipeline(pipeline);
         _ = pipeline_index; // autofix
 
-        self.commands.append(self.allocator, .{
-            .tag = .set_raster_pipeline,
-            .index = @intCast(self.set_pipeline_commands.items.len),
-        }) catch unreachable;
-
-        self.set_pipeline_commands.append(self.allocator, .{
-            .pipeline = pipeline,
-        }) catch unreachable;
+        self.commands.add(self.allocator, .{
+            .set_raster_pipeline = .{
+                .pipeline = pipeline,
+            },
+        });
     }
 
     pub fn setPushData(
@@ -728,14 +848,11 @@ pub const Builder = struct {
         comptime T: type,
         data: T,
     ) void {
-        self.commands.append(self.allocator, .{
-            .tag = .set_push_data,
-            .index = @intCast(self.set_push_data_commands.items.len),
-        }) catch unreachable;
-
-        self.set_push_data_commands.append(self.allocator, .{
-            .contents = self.scratch_allocator.allocator().dupe(u8, std.mem.asBytes(&data)) catch unreachable,
-        }) catch unreachable;
+        self.commands.add(self.allocator, .{
+            .set_push_data = .{
+                .contents = self.scratch_allocator.allocator().dupe(u8, std.mem.asBytes(&data)) catch unreachable,
+            },
+        });
     }
 
     ///Dynamically set a resource binding in a shader interface
@@ -748,17 +865,36 @@ pub const Builder = struct {
     ) void {
         self.referencePassInput(buffer);
 
-        self.commands.append(self.allocator, .{
-            .tag = .set_raster_pipeline_resource_buffer,
-            .index = @intCast(self.set_raster_pipeline_resource_buffer_commands.items.len),
-        }) catch unreachable;
+        self.commands.add(self.allocator, .{
+            .set_raster_pipeline_resource_buffer = .{
+                .pipeline = pipeline,
+                .binding_index = binding_index,
+                .array_index = array_index,
+                .buffer = buffer.resource,
+            },
+        });
+    }
 
-        self.set_raster_pipeline_resource_buffer_commands.append(self.allocator, .{
-            .pipeline = pipeline,
-            .binding_index = binding_index,
-            .array_index = array_index,
-            .buffer = buffer.resource,
-        }) catch unreachable;
+    pub fn setRasterPipelineImageSampler(
+        self: *@This(),
+        pipeline: RasterPipeline,
+        binding_index: u32,
+        array_index: u32,
+        image: PassInput(Image(.general)),
+        sampler: Sampler,
+    ) void {
+        self.referencePassInput(image);
+        _ = self.referenceResource(sampler);
+
+        self.commands.add(self.allocator, .{
+            .set_raster_pipeline_image_sampler = .{
+                .pipeline = pipeline,
+                .binding_index = binding_index,
+                .array_index = array_index,
+                .image = .{ .id = image.resource.id },
+                .sampler = sampler,
+            },
+        });
     }
 
     pub fn setViewport(
@@ -770,19 +906,16 @@ pub const Builder = struct {
         min_depth: f32,
         max_depth: f32,
     ) void {
-        self.commands.append(self.allocator, .{
-            .tag = .set_viewport,
-            .index = @intCast(self.set_viewport_commands.items.len),
-        }) catch unreachable;
-
-        self.set_viewport_commands.append(self.allocator, .{
-            .x = x,
-            .y = y,
-            .width = width,
-            .height = height,
-            .min_depth = min_depth,
-            .max_depth = max_depth,
-        }) catch unreachable;
+        self.commands.add(self.allocator, .{
+            .set_viewport = .{
+                .x = x,
+                .y = y,
+                .width = width,
+                .height = height,
+                .min_depth = min_depth,
+                .max_depth = max_depth,
+            },
+        });
     }
 
     pub fn setScissor(
@@ -792,23 +925,15 @@ pub const Builder = struct {
         width: u32,
         height: u32,
     ) void {
-        self.commands.append(self.allocator, .{
-            .tag = .set_scissor,
-            .index = @intCast(self.set_scissor_commands.items.len),
-        }) catch unreachable;
-
-        self.set_scissor_commands.append(self.allocator, .{
-            .x = x,
-            .y = y,
-            .width = width,
-            .height = height,
-        }) catch unreachable;
+        self.commands.add(self.allocator, .{
+            .set_scissor = .{
+                .x = x,
+                .y = y,
+                .width = width,
+                .height = height,
+            },
+        });
     }
-
-    pub const IndexType = enum {
-        u16,
-        u32,
-    };
 
     pub fn setIndexBuffer(
         self: *@This(),
@@ -817,15 +942,12 @@ pub const Builder = struct {
     ) void {
         self.referencePassInput(buffer);
 
-        self.commands.append(self.allocator, .{
-            .tag = .set_index_buffer,
-            .index = @intCast(self.set_index_buffer_commands.items.len),
-        }) catch unreachable;
-
-        self.set_index_buffer_commands.append(self.allocator, .{
-            .index_buffer = buffer.resource,
-            .type = index_type,
-        }) catch unreachable;
+        self.commands.add(self.allocator, .{
+            .set_index_buffer = .{
+                .index_buffer = buffer.resource,
+                .type = index_type,
+            },
+        });
     }
 
     pub fn drawIndexed(
@@ -836,18 +958,15 @@ pub const Builder = struct {
         vertex_offset: i32,
         first_instance: u32,
     ) void {
-        self.commands.append(self.allocator, .{
-            .tag = .draw_indexed,
-            .index = @intCast(self.draw_indexed_commands.items.len),
-        }) catch unreachable;
-
-        self.draw_indexed_commands.append(self.allocator, .{
-            .index_count = index_count,
-            .instance_count = instance_count,
-            .first_index = first_index,
-            .vertex_offset = vertex_offset,
-            .first_instance = first_instance,
-        }) catch unreachable;
+        self.commands.add(self.allocator, .{
+            .draw_indexed = .{
+                .index_count = index_count,
+                .instance_count = instance_count,
+                .first_index = first_index,
+                .vertex_offset = vertex_offset,
+                .first_instance = first_instance,
+            },
+        });
     }
 
     ///Incrementes the refence count for buffer and resolves the buffer index
@@ -866,6 +985,7 @@ pub const Builder = struct {
             RasterPipeline => &self.raster_pipelines,
             Buffer => &self.buffers,
             Image(.general), Image(.attachment) => &self.images,
+            Sampler => &self.samplers,
             else => @compileError("Resource Type not yet supported"),
         };
 
@@ -1103,14 +1223,15 @@ pub const CompileContext = struct {
                 const command_offset = builder.passes.items(.command_offset)[pass_index];
                 const command_count = builder.passes.items(.command_count)[pass_index];
 
-                for (0..command_count) |command_index| {
-                    const command_tag = builder.commands.items(.tag)[command_offset + command_index];
-                    const command_data_index = builder.commands.items(.index)[command_offset + command_index];
+                var command_iter = builder.commands.iterator(
+                    command_offset,
+                    command_count,
+                    builder.passes.items(.command_data_offset)[pass_index],
+                );
 
-                    switch (command_tag) {
-                        .update_buffer => {
-                            const update_buffer = builder.update_buffer_commands.items[command_data_index];
-
+                while (command_iter.next()) |command| {
+                    switch (command) {
+                        .update_buffer => |update_buffer| {
                             //TODO: move this to staging resource allocation?
                             self.preAllocateStagingMemory(update_buffer.contents.len);
                         },
@@ -1139,6 +1260,14 @@ pub const CompileContext = struct {
 
                 const command_offset = builder.passes.items(.command_offset)[pass_index];
                 const command_count = builder.passes.items(.command_count)[pass_index];
+                const command_data_offset = builder.passes.items(.command_data_offset)[pass_index];
+
+                var command_iter = builder.commands.iterator(
+                    command_offset,
+                    command_count,
+                    command_data_offset,
+                );
+
                 const pass_tag = builder.passes.items(.tag)[pass_index];
 
                 var current_pipline: ?*graphics.GraphicsPipeline = null;
@@ -1151,14 +1280,9 @@ pub const CompileContext = struct {
                 defer pass_buffer_barriers.deinit(self.allocator);
 
                 //barrier prepass
-                for (0..command_count) |command_index| {
-                    const command_tag = builder.commands.items(.tag)[command_offset + command_index];
-                    const command_data_index = builder.commands.items(.index)[command_offset + command_index];
-
-                    switch (command_tag) {
-                        .update_buffer => {
-                            const update_buffer = builder.update_buffer_commands.items[command_data_index];
-
+                while (command_iter.next()) |command| {
+                    switch (command) {
+                        .update_buffer => |update_buffer| {
                             const buffer = self.buffers.getPtr(update_buffer.buffer.id).?;
 
                             const barrier_result = try buffer_barrier_map.getOrPut(self.allocator, buffer);
@@ -1168,9 +1292,7 @@ pub const CompileContext = struct {
                                 barrier_result.value_ptr.source_access = .{ .transfer_write = true };
                             }
                         },
-                        .set_raster_pipeline_resource_buffer => {
-                            const command_data = builder.set_raster_pipeline_resource_buffer_commands.items[command_data_index];
-
+                        .set_raster_pipeline_resource_buffer => |command_data| {
                             const buffer = self.buffers.getPtr(command_data.buffer.id).?;
 
                             const buffer_barrier = buffer_barrier_map.get(buffer);
@@ -1192,15 +1314,10 @@ pub const CompileContext = struct {
                                 });
                             }
                         },
-                        .set_index_buffer => {
-                            const command_data = builder.set_index_buffer_commands.items[command_data_index];
-
+                        .set_index_buffer => |command_data| {
                             current_index_buffer = self.buffers.getPtr(command_data.index_buffer.id).?;
                         },
                         .draw_indexed => {
-                            const command_data = builder.draw_indexed_commands.items[command_data_index];
-                            _ = command_data; // autofix
-
                             const index_buffer_barrier = buffer_barrier_map.get(current_index_buffer.?);
 
                             if (index_buffer_barrier) |barrier| {
@@ -1253,14 +1370,15 @@ pub const CompileContext = struct {
                 current_pipline = null;
                 current_index_buffer = null;
 
-                for (0..command_count) |command_index| {
-                    const command_tag = builder.commands.items(.tag)[command_offset + command_index];
-                    const command_data_index = builder.commands.items(.index)[command_offset + command_index];
+                command_iter = builder.commands.iterator(
+                    command_offset,
+                    command_count,
+                    command_data_offset,
+                );
 
-                    switch (command_tag) {
-                        .update_buffer => {
-                            const update_buffer = builder.update_buffer_commands.items[command_data_index];
-
+                while (command_iter.next()) |command| {
+                    switch (command) {
+                        .update_buffer => |update_buffer| {
                             const buffer = self.buffers.getPtr(update_buffer.buffer.id).?;
 
                             const staging_contents = try self.allocateStagingBuffer(update_buffer.contents.len);
@@ -1276,18 +1394,17 @@ pub const CompileContext = struct {
                                 update_buffer.contents.len,
                             );
                         },
-                        .set_raster_pipeline => {
-                            const set_raster_pipeline = builder.set_pipeline_commands.items[command_data_index];
-
+                        .update_image => {
+                            @panic("");
+                        },
+                        .set_raster_pipeline => |set_raster_pipeline| {
                             const pipeline = self.raster_pipelines.getPtr(set_raster_pipeline.pipeline.id).?;
 
                             command_buffer.setGraphicsPipeline(pipeline.*);
 
                             current_pipline = pipeline;
                         },
-                        .set_raster_pipeline_resource_buffer => {
-                            const command_data = builder.set_raster_pipeline_resource_buffer_commands.items[command_data_index];
-
+                        .set_raster_pipeline_resource_buffer => |command_data| {
                             const buffer = self.buffers.getPtr(command_data.buffer.id).?;
 
                             current_pipline.?.setDescriptorBuffer(
@@ -1296,9 +1413,10 @@ pub const CompileContext = struct {
                                 buffer.*,
                             );
                         },
-                        .set_viewport => {
-                            const command_data = builder.set_viewport_commands.items[command_data_index];
-
+                        .set_raster_pipeline_image_sampler => {
+                            @panic("");
+                        },
+                        .set_viewport => |command_data| {
                             command_buffer.setViewport(
                                 command_data.x,
                                 command_data.y,
@@ -1308,9 +1426,7 @@ pub const CompileContext = struct {
                                 command_data.max_depth,
                             );
                         },
-                        .set_scissor => {
-                            const command_data = builder.set_scissor_commands.items[command_data_index];
-
+                        .set_scissor => |command_data| {
                             command_buffer.setScissor(
                                 command_data.x,
                                 command_data.y,
@@ -1318,9 +1434,7 @@ pub const CompileContext = struct {
                                 command_data.height,
                             );
                         },
-                        .set_index_buffer => {
-                            const command_data = builder.set_index_buffer_commands.items[command_data_index];
-
+                        .set_index_buffer => |command_data| {
                             current_index_buffer = self.buffers.getPtr(command_data.index_buffer.id).?;
 
                             command_buffer.setIndexBuffer(current_index_buffer.?.*, switch (command_data.type) {
@@ -1328,14 +1442,10 @@ pub const CompileContext = struct {
                                 .u32 => .u32,
                             });
                         },
-                        .set_push_data => {
-                            const command_data = builder.set_push_data_commands.items[command_data_index];
-
+                        .set_push_data => |command_data| {
                             command_buffer.setPushDataBytes(command_data.contents);
                         },
-                        .draw_indexed => {
-                            const command_data = builder.draw_indexed_commands.items[command_data_index];
-
+                        .draw_indexed => |command_data| {
                             command_buffer.drawIndexed(
                                 command_data.index_count,
                                 command_data.instance_count,

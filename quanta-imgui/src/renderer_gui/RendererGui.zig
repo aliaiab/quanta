@@ -145,7 +145,11 @@ fn initImGui() !void {
 
     imgui.ImFontAtlas_GetTexDataAsRGBA32(io.Fonts, &pixel_pointer, &width, &height, &out_bytes_per_pixel);
 
-    const font_texture = try createTexture(pixel_pointer[0 .. @as(u32, @intCast(width)) * @as(u32, @intCast(height)) * @sizeOf(u32)], @as(u32, @intCast(width)), @as(u32, @intCast(height)));
+    const font_texture = try createTexture(
+        pixel_pointer[0 .. @as(u32, @intCast(width)) * @as(u32, @intCast(height)) * @sizeOf(u32)],
+        @as(u32, @intCast(width)),
+        @as(u32, @intCast(height)),
+    );
 
     io.Fonts.*.TexID = @as(*anyopaque, @ptrFromInt(@intFromEnum(font_texture)));
 }
@@ -204,11 +208,46 @@ pub fn drawRectangle(rectangle: Rectangle) void {
 }
 
 pub fn renderToGraph(
-    graph: *quanta.rendering.Graph.Builder,
+    graph: *quanta.rendering.graph.Builder,
     draw_data: *const imgui.ImDrawData,
     ///The output color attachment to render to
-    target: quanta.rendering.Graph.Image(.attachment),
+    target: quanta.rendering.graph.Image(.attachment),
 ) void {
+    const font_sampler = graph.createSampler(@src());
+
+    const font_atlas = blk: {
+        const io: *imgui.ImGuiIO = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
+
+        var pixel_pointer: [*c]u8 = undefined;
+        var width: c_int = 0;
+        var height: c_int = 0;
+        var out_bytes_per_pixel: c_int = 0;
+
+        const image_contents_size: usize = @as(usize, @intCast(width)) * @as(usize, @intCast(height)) * @sizeOf(u32);
+
+        imgui.ImFontAtlas_GetTexDataAsRGBA32(io.Fonts, &pixel_pointer, &width, &height, &out_bytes_per_pixel);
+
+        const font_image = graph.createImage(
+            @src(),
+            .general,
+            .r8g8b8a8_srgb,
+            @intCast(width),
+            @intCast(height),
+            1,
+        );
+
+        const inputs = graph.beginTransferPass(@src(), .{ .font_image = font_image });
+
+        graph.updateImage(
+            inputs.font_image,
+            0,
+            u8,
+            pixel_pointer[0..image_contents_size],
+        );
+
+        break :blk graph.endTransferPass(inputs);
+    };
+
     //upload
     //Could be it's own function (but that shouldn't be neccessary)
     const updated_buffers = blk: {
@@ -281,11 +320,21 @@ pub fn renderToGraph(
             0,
             target_width,
             target_height,
-            updated_buffers,
+            .{
+                .updated_buffers = updated_buffers,
+                .font_atlas = font_atlas,
+            },
         );
 
         graph.setRasterPipeline(pipeline);
-        graph.setRasterPipelineResourceBuffer(pipeline, 0, 0, inputs.vertex_buffer);
+        graph.setRasterPipelineResourceBuffer(pipeline, 0, 0, inputs.updated_buffers.vertex_buffer);
+        if (false) graph.setRasterPipelineImageSampler(
+            pipeline,
+            1,
+            0,
+            inputs.font_atlas.font_image,
+            font_sampler,
+        );
 
         graph.setViewport(
             0,
@@ -303,7 +352,7 @@ pub fn renderToGraph(
             target_height,
         );
 
-        graph.setIndexBuffer(inputs.index_buffer, .u16);
+        graph.setIndexBuffer(inputs.updated_buffers.index_buffer, .u16);
 
         var ortho = [4][4]f32{
             .{ 2.0, 0.0, 0.0, 0.0 },
