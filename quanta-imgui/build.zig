@@ -12,7 +12,7 @@ pub fn build(builder: *Build) !void {
         .source_directory = builder.pathFromRoot("src/renderer_gui/shaders.zon"),
     });
 
-    const quanta_imgui_module = builder.addModule("quanta-imgui", .{
+    const quanta_imgui_module = builder.addModule("quanta_imgui", .{
         .root_source_file = .{ .path = builder.pathFromRoot("src/root.zig") },
         .imports = &.{
             .{ .name = "quanta", .module = quanta_dependency.module("quanta") },

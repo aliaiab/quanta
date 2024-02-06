@@ -30,7 +30,7 @@ void main()
         texture_sample = vec4(1);
     }
 
-    texture_sample = vec4(1);
+    // texture_sample = vec4(1);
 
     out_color = in_data.color * texture_sample;
     // out_color = vec4(1, 0, 0, 1);

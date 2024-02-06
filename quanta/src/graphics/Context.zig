@@ -1,4 +1,5 @@
-pub const enable_khronos_validation = builtin.mode == .Debug;
+///TODO: FIXME: Disabling validation layers is currently causing a very strange *bug* where the gpu seems to stall
+pub const enable_khronos_validation = builtin.mode == .Debug or true;
 pub const enable_debug_messenger = enable_khronos_validation;
 pub const vulkan_version = std.SemanticVersion{
     .major = 1,

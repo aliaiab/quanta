@@ -25,7 +25,7 @@ pub fn build(builder: *std.Build) !void {
     builder.installArtifact(exe);
 
     exe.root_module.addImport("quanta", quanta_module);
-    exe.root_module.addImport("quanta-imgui", quanta_imgui_dependency.module("quanta-imgui"));
+    exe.root_module.addImport("quanta_imgui", quanta_imgui_dependency.module("quanta_imgui"));
 
     const compile_assets = quanta.addAssetCompileStep(
         builder,

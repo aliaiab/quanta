@@ -197,7 +197,6 @@ pub const Builder = struct {
         //TODO: make this a dynamic size?
         size: usize,
     }),
-    ///Need to handle imported images
     images: std.MultiArrayList(struct {
         handle: ImageUntyped,
         reference_count: u32,
@@ -215,24 +214,14 @@ pub const Builder = struct {
     passes: std.MultiArrayList(struct {
         handle: u64,
         reference_count: u32,
-        tag: PassTag,
-        //Ordered Command list
+        data: PassData,
         command_offset: u32,
         command_count: u32,
         command_data_offset: u32,
         input_offset: u32,
-        //Could we make these counts u8? (max 255 inputs/outputs)
         input_count: u16,
         output_offset: u32,
         output_count: u16,
-
-        //For raster pass
-        //TODO: store passes of different types in different arrays?
-        render_offset_x: i32,
-        render_offset_y: i32,
-        render_width: u32,
-        render_height: u32,
-        attachments: []const RasterAttachment,
     }),
     pass_inputs: std.MultiArrayList(struct {
         //What pass is this from, if any
@@ -260,6 +249,7 @@ pub const Builder = struct {
     commands: Commands,
 
     ///TODO: Handle nested passes?
+    ///We could have some kind of context? (IE when we call beginPass*, we context 'switch')
     current_pass_index: u32,
 
     ///Represents a transformation (potential mutation) applied to a resource
@@ -275,9 +265,16 @@ pub const Builder = struct {
         };
     };
 
-    pub const PassTag = enum {
-        transfer,
-        raster,
+    pub const PassData = union(enum) {
+        transfer: void,
+        raster: struct {
+            render_offset_x: i32,
+            render_offset_y: i32,
+            render_width: u32,
+            render_height: u32,
+            attachments: []const RasterAttachment,
+        },
+        compute: void,
     };
 
     ///Compile time constant to include debug information into each graph builder
@@ -322,20 +319,17 @@ pub const Builder = struct {
         self.passes.len = 0;
         self.pass_inputs.len = 0;
         self.pass_outputs.len = 0;
-        self.commands.reset();
         self.current_pass_index = 0;
 
-        _ = self.scratch_allocator.reset(std.heap.ArenaAllocator.ResetMode{ .retain_capacity = {} });
+        self.commands.reset();
 
-        std.debug.assert(self.passes.len == 0);
+        _ = self.scratch_allocator.reset(std.heap.ArenaAllocator.ResetMode{ .retain_capacity = {} });
     }
 
     const CreateRasterPipelineOptions = struct {
         attachment_formats: []const ImageFormat,
     };
 
-    ///Resource creation
-    ///Can be created outside or inside a pass
     pub fn createRasterPipeline(
         self: *@This(),
         comptime src: SourceLocation,
@@ -372,7 +366,6 @@ pub const Builder = struct {
         @compileError("Not yet implemented");
     }
 
-    ///Create a buffer with a fixed size
     pub fn createBuffer(
         self: *@This(),
         comptime src: SourceLocation,
@@ -565,10 +558,16 @@ pub const Builder = struct {
                     } else if (@hasDecl(input.type, "pass_output")) {
                         self.referencePassOutput(field);
 
+                        // @compileLog(input.type);
+
                         self.pass_inputs.append(self.allocator, .{
                             .pass_index = self.pass_outputs.items(.pass_index)[field.index],
                             .reference_count = 0,
-                            .resource_type = .buffer,
+                            .resource_type = switch (input.type) {
+                                PassOutput(Buffer) => .buffer,
+                                PassOutput(Image(.general)) => .image,
+                                else => @compileError("Resource type not supported"),
+                            },
                             .resource_handle = .{ .id = field.resource.id },
                             .layout = .general,
                             .transform = InputOutputTransform.no_op,
@@ -689,25 +688,7 @@ pub const Builder = struct {
     ) InputType(@TypeOf(inputs)) {
         const pass_id = comptime idFromSourceLocation(src);
 
-        self.current_pass_index = @intCast(self.passes.len);
-
-        self.passes.append(self.allocator, .{
-            .handle = pass_id,
-            .reference_count = 0,
-            .command_offset = @intCast(self.commands.tags.items.len),
-            .command_count = 0,
-            .command_data_offset = @intCast(self.commands.data.items.len),
-            .tag = .transfer,
-            .input_offset = @intCast(self.pass_inputs.len),
-            .input_count = std.meta.fields(@TypeOf(inputs)).len,
-            .output_offset = @intCast(self.pass_outputs.len),
-            .output_count = 0,
-            .render_offset_x = 0,
-            .render_offset_y = 0,
-            .render_width = 1,
-            .render_height = 1,
-            .attachments = &.{},
-        }) catch unreachable;
+        self.beginPassGeneric(pass_id, .transfer, std.meta.fields(@TypeOf(inputs)).len);
 
         return self.parseInputs(inputs);
     }
@@ -718,11 +699,7 @@ pub const Builder = struct {
     ) OutputType(@TypeOf(outputs)) {
         const output_result = self.parseOutputs(outputs);
 
-        const command_count = self.commands.tags.items.len - self.passes.items(.command_offset)[self.current_pass_index];
-        const output_count = self.pass_outputs.len - self.passes.items(.output_offset)[self.current_pass_index];
-
-        self.passes.items(.command_count)[self.current_pass_index] = @intCast(command_count);
-        self.passes.items(.output_count)[self.current_pass_index] = @intCast(output_count);
+        self.endPassGeneric();
 
         return output_result;
     }
@@ -770,7 +747,7 @@ pub const Builder = struct {
     pub const RasterAttachment = struct {
         image: Image(.attachment),
         clear: ?Clear = null,
-        ///TODO: determine this at graph compile
+        ///TODO: determine this at graph compile?
         store: bool = true,
 
         pub const Clear = union(enum) {
@@ -793,27 +770,18 @@ pub const Builder = struct {
     ) InputType(@TypeOf(inputs)) {
         const pass_id = comptime idFromSourceLocation(src);
 
-        self.current_pass_index = @intCast(self.passes.len);
-
         const attachments_allocated = self.scratch_allocator.allocator().dupe(RasterAttachment, attachments) catch unreachable;
 
-        self.passes.append(self.allocator, .{
-            .handle = pass_id,
-            .reference_count = 0,
-            .command_offset = @intCast(self.commands.tags.items.len),
-            .command_count = 0,
-            .command_data_offset = @intCast(self.commands.data.items.len),
-            .tag = .raster,
-            .input_offset = @intCast(self.pass_inputs.len),
-            .input_count = std.meta.fields(@TypeOf(inputs)).len,
-            .output_offset = @intCast(self.pass_outputs.len),
-            .output_count = 0,
-            .attachments = attachments_allocated,
-            .render_offset_x = offset_x,
-            .render_offset_y = offset_y,
-            .render_width = width,
-            .render_height = height,
-        }) catch unreachable;
+        self.beginPassGeneric(pass_id, .{
+            .raster = .{
+                .render_offset_x = offset_x,
+                .render_offset_y = offset_y,
+                .render_width = width,
+                .render_height = height,
+                //TODO: IMPORTANT! add attachments as implicit inputs to the pass
+                .attachments = attachments_allocated,
+            },
+        }, std.meta.fields(@TypeOf(inputs)).len);
 
         return self.parseInputs(inputs);
     }
@@ -822,11 +790,43 @@ pub const Builder = struct {
         self: *@This(),
         outputs: anytype,
     ) @TypeOf(outputs) {
-        const command_count = self.commands.tags.items.len - self.passes.items(.command_offset)[self.current_pass_index];
-
-        self.passes.items(.command_count)[self.current_pass_index] = @intCast(command_count);
+        self.endPassGeneric();
 
         return outputs;
+    }
+
+    fn beginPassGeneric(
+        self: *@This(),
+        id: u64,
+        data: PassData,
+        input_count: usize,
+    ) void {
+        self.current_pass_index = @intCast(self.passes.len);
+
+        self.passes.append(self.allocator, .{
+            .handle = id,
+            .reference_count = 0,
+            .command_offset = @intCast(self.commands.tags.items.len),
+            .command_count = 0,
+            .command_data_offset = @intCast(self.commands.data.items.len),
+            .data = data,
+            .input_offset = @intCast(self.pass_inputs.len),
+            .input_count = @intCast(input_count),
+            .output_offset = @intCast(self.pass_outputs.len),
+            .output_count = 0,
+        }) catch unreachable;
+    }
+
+    fn endPassGeneric(
+        self: *@This(),
+    ) void {
+        const command_count = self.commands.tags.items.len - self.passes.items(.command_offset)[self.current_pass_index];
+        const input_count = self.pass_inputs.len - self.passes.items(.input_offset)[self.current_pass_index];
+        const output_count = self.pass_outputs.len - self.passes.items(.output_offset)[self.current_pass_index];
+
+        self.passes.items(.command_count)[self.current_pass_index] = @intCast(command_count);
+        self.passes.items(.output_count)[self.current_pass_index] = @intCast(output_count);
+        self.passes.items(.input_count)[self.current_pass_index] = @intCast(input_count);
     }
 
     pub fn setRasterPipeline(
@@ -1023,6 +1023,7 @@ pub const Builder = struct {
 ///Contains all graphics resources (pipelines, buffers, textures ect..)
 pub const CompileContext = struct {
     allocator: std.mem.Allocator,
+    scratch_allocator: std.heap.ArenaAllocator,
     ///TODO: better way to do this?
     double_buffer: [2]struct {
         graphics_command_buffer: ?graphics.CommandBuffer = null,
@@ -1043,10 +1044,12 @@ pub const CompileContext = struct {
         //TODO: use pointer for external image maybe?
         image: graphics.Image,
     }) = .{},
+    samplers: std.AutoArrayHashMapUnmanaged(u64, graphics.Sampler) = .{},
 
     pub fn init(allocator: std.mem.Allocator) CompileContext {
         return .{
             .allocator = allocator,
+            .scratch_allocator = std.heap.ArenaAllocator.init(allocator),
         };
     }
 
@@ -1065,6 +1068,10 @@ pub const CompileContext = struct {
             }
         }
 
+        for (self.samplers.values()) |*sampler| {
+            sampler.deinit();
+        }
+
         for (&self.double_buffer) |*buffer| {
             if (buffer.graphics_command_buffer != null) buffer.graphics_command_buffer.?.deinit();
 
@@ -1076,6 +1083,8 @@ pub const CompileContext = struct {
         self.raster_pipelines.deinit(self.allocator);
         self.buffers.deinit(self.allocator);
         self.images.deinit(self.allocator);
+        self.samplers.deinit(self.allocator);
+        self.scratch_allocator.deinit();
 
         self.* = undefined;
     }
@@ -1113,6 +1122,8 @@ pub const CompileContext = struct {
         defer {
             self.buffer_index = if (self.buffer_index != 0) 1 else 0;
         }
+
+        defer _ = self.scratch_allocator.reset(.retain_capacity);
 
         const compile_buffer = &self.double_buffer[self.buffer_index];
 
@@ -1195,11 +1206,73 @@ pub const CompileContext = struct {
                 get_or_put_res.value_ptr.* = try graphics.Buffer.init(buffer_size, .index);
                 errdefer get_or_put_res.value_ptr.deinit();
             }
+
+            for (builder.images.items(.reference_count), 0..) |reference_count, image_index| {
+                if (reference_count == 0) {
+                    //TODO: deallocate unreferenced pipelines if they have a backing store
+                    continue;
+                }
+
+                const handle: ImageUntyped = builder.images.items(.handle)[image_index];
+
+                const get_or_put_res = try self.images.getOrPut(self.allocator, handle.id);
+
+                //cache hit
+                if (get_or_put_res.found_existing) {
+                    continue;
+                }
+
+                const image_width = builder.images.items(.width)[image_index];
+                const image_height = builder.images.items(.height)[image_index];
+                const image_depth = builder.images.items(.depth)[image_index];
+                const image_format = builder.images.items(.format)[image_index];
+
+                get_or_put_res.value_ptr.*.image = try graphics.Image.init(
+                    .@"2d",
+                    image_width,
+                    image_height,
+                    image_depth,
+                    1,
+                    @enumFromInt(@intFromEnum(image_format)),
+                    .shader_read_only_optimal,
+                    .{
+                        .transfer_dst_bit = true,
+                        .sampled_bit = true,
+                    },
+                );
+                errdefer get_or_put_res.value_ptr.image.deinit();
+            }
+
+            for (builder.samplers.items(.reference_count), 0..) |reference_count, sampler_index| {
+                if (reference_count == 0) {
+                    //TODO: deallocate unreferenced pipelines if they have a backing store
+                    continue;
+                }
+
+                const handle: Sampler = builder.samplers.items(.handle)[sampler_index];
+
+                const get_or_put_res = try self.samplers.getOrPut(self.allocator, handle.id);
+
+                //cache hit
+                if (get_or_put_res.found_existing) {
+                    continue;
+                }
+
+                get_or_put_res.value_ptr.* = try graphics.Sampler.init(
+                    .nearest,
+                    .nearest,
+                    .repeat,
+                    .repeat,
+                    .repeat,
+                    null,
+                );
+                errdefer get_or_put_res.value_ptr.deinit();
+            }
         }
 
         //ordered list of dependencies for the root pass
         var dependencies: std.ArrayListUnmanaged(Dependency) = .{};
-        defer dependencies.deinit(self.allocator);
+        defer dependencies.deinit(self.scratch_allocator.allocator());
 
         //Second pass: pass dependency analysis
         {
@@ -1213,7 +1286,7 @@ pub const CompileContext = struct {
             );
         }
 
-        //Staging memory allocate pass
+        //Staging memory preallocate pass
         {
             for (dependencies.items) |*dependency| {
                 if (dependency.generated_commands) continue;
@@ -1232,8 +1305,10 @@ pub const CompileContext = struct {
                 while (command_iter.next()) |command| {
                     switch (command) {
                         .update_buffer => |update_buffer| {
-                            //TODO: move this to staging resource allocation?
-                            self.preAllocateStagingMemory(update_buffer.contents.len);
+                            self.preAllocateStagingMemory(1, update_buffer.contents.len);
+                        },
+                        .update_image => |update_image| {
+                            self.preAllocateStagingMemory(4, update_image.contents.len);
                         },
                         else => {},
                     }
@@ -1248,9 +1323,10 @@ pub const CompileContext = struct {
             try command_buffer.begin();
             // defer command_buffer.end();
 
-            //add to this if you write to a resource, or read from one
-            var buffer_barrier_map: std.AutoHashMapUnmanaged(*const graphics.Buffer, graphics.CommandBuffer.BufferBarrier) = .{};
-            defer buffer_barrier_map.deinit(self.allocator);
+            var barrier_map: BarrierMap = .{
+                .context = self,
+            };
+            defer barrier_map.deinit();
 
             for (dependencies.items) |*dependency| {
                 if (dependency.generated_commands) continue;
@@ -1261,6 +1337,7 @@ pub const CompileContext = struct {
                 const command_offset = builder.passes.items(.command_offset)[pass_index];
                 const command_count = builder.passes.items(.command_count)[pass_index];
                 const command_data_offset = builder.passes.items(.command_data_offset)[pass_index];
+                const pass_data: Builder.PassData = builder.passes.items(.data)[pass_index];
 
                 var command_iter = builder.commands.iterator(
                     command_offset,
@@ -1268,16 +1345,8 @@ pub const CompileContext = struct {
                     command_data_offset,
                 );
 
-                const pass_tag = builder.passes.items(.tag)[pass_index];
-
                 var current_pipline: ?*graphics.GraphicsPipeline = null;
                 var current_index_buffer: ?*graphics.Buffer = null;
-
-                var pass_buffer_barriers: std.ArrayListUnmanaged(struct {
-                    buffer: *const graphics.Buffer,
-                    barrier: graphics.CommandBuffer.BufferBarrier,
-                }) = .{};
-                defer pass_buffer_barriers.deinit(self.allocator);
 
                 //barrier prepass
                 while (command_iter.next()) |command| {
@@ -1285,67 +1354,71 @@ pub const CompileContext = struct {
                         .update_buffer => |update_buffer| {
                             const buffer = self.buffers.getPtr(update_buffer.buffer.id).?;
 
-                            const barrier_result = try buffer_barrier_map.getOrPut(self.allocator, buffer);
+                            try barrier_map.writeBuffer(
+                                buffer,
+                                .{ .copy = true },
+                                .{ .transfer_write = true },
+                            );
+                        },
+                        .update_image => |update_image| {
+                            const image = &self.images.getPtr(update_image.image.id).?.image;
 
-                            if (!barrier_result.found_existing) {
-                                barrier_result.value_ptr.source_stage = .{ .copy = true };
-                                barrier_result.value_ptr.source_access = .{ .transfer_write = true };
-                            }
+                            try barrier_map.writeImage(
+                                image,
+                                .{ .copy = true },
+                                .{ .transfer_write = true },
+                            );
                         },
                         .set_raster_pipeline_resource_buffer => |command_data| {
                             const buffer = self.buffers.getPtr(command_data.buffer.id).?;
 
-                            const buffer_barrier = buffer_barrier_map.get(buffer);
+                            barrier_map.readBuffer(
+                                buffer,
+                                .{ .vertex_shader = true },
+                                .{ .shader_read = true },
+                            );
+                        },
+                        .set_raster_pipeline_image_sampler => |command_data| {
+                            const image = &self.images.getPtr(command_data.image.id).?.image;
 
-                            if (buffer_barrier) |barrier| {
-                                //emit the actual complete barrier
-                                try pass_buffer_barriers.append(self.allocator, .{
-                                    .buffer = buffer,
-                                    .barrier = .{
-                                        .source_access = barrier.source_access,
-                                        .source_stage = barrier.source_stage,
-                                        .destination_stage = .{
-                                            .vertex_shader = true,
-                                        },
-                                        .destination_access = .{
-                                            .shader_read = true,
-                                        },
-                                    },
-                                });
-                            }
+                            barrier_map.readImage(
+                                image,
+                                .{
+                                    .fragment_shader = true,
+                                },
+                                .{
+                                    .shader_read = true,
+                                },
+                            );
                         },
                         .set_index_buffer => |command_data| {
                             current_index_buffer = self.buffers.getPtr(command_data.index_buffer.id).?;
                         },
                         .draw_indexed => {
-                            const index_buffer_barrier = buffer_barrier_map.get(current_index_buffer.?);
-
-                            if (index_buffer_barrier) |barrier| {
-                                try pass_buffer_barriers.append(self.allocator, .{
-                                    .buffer = current_index_buffer.?,
-                                    .barrier = .{
-                                        .source_access = barrier.source_access,
-                                        .source_stage = barrier.source_stage,
-                                        .destination_stage = .{ .index_input = true },
-                                        .destination_access = .{ .index_read = true },
-                                    },
-                                });
-                            }
+                            barrier_map.readBuffer(
+                                current_index_buffer.?,
+                                .{ .index_input = true },
+                                .{ .index_read = true },
+                            );
                         },
                         else => {},
                     }
                 }
 
-                for (pass_buffer_barriers.items) |barrier| {
-                    command_buffer.bufferBarrier(barrier.buffer.*, barrier.barrier);
+                for (barrier_map.buffer_map.keys(), barrier_map.buffer_map.values()) |buffer, barrier| {
+                    command_buffer.bufferBarrier(buffer.*, barrier);
                 }
 
-                if (pass_tag == .raster) {
-                    const x = builder.passes.items(.render_offset_x)[pass_index];
-                    const y = builder.passes.items(.render_offset_y)[pass_index];
-                    const width = builder.passes.items(.render_width)[pass_index];
-                    const height = builder.passes.items(.render_height)[pass_index];
-                    const attachments_input = builder.passes.items(.attachments)[pass_index];
+                for (barrier_map.image_map.keys(), barrier_map.image_map.values()) |image, barrier| {
+                    command_buffer.imageBarrier(image.*, barrier);
+                }
+
+                if (pass_data == .raster) {
+                    const x = pass_data.raster.render_offset_x;
+                    const y = pass_data.raster.render_offset_y;
+                    const width = pass_data.raster.render_width;
+                    const height = pass_data.raster.render_height;
+                    const attachments_input = pass_data.raster.attachments;
 
                     const attachments = try self.allocator.alloc(graphics.CommandBuffer.Attachment, attachments_input.len);
                     defer self.allocator.free(attachments);
@@ -1353,7 +1426,7 @@ pub const CompileContext = struct {
                     for (attachments_input, attachments) |input, *output| {
                         output.image = &self.images.getPtr(input.image.id).?.image;
                         output.clear = null;
-                        output.store = true;
+                        output.store = input.store;
                     }
 
                     command_buffer.beginRenderPass(
@@ -1365,7 +1438,7 @@ pub const CompileContext = struct {
                         null,
                     );
                 }
-                defer if (pass_tag == .raster) command_buffer.endRenderPass();
+                defer if (pass_data == .raster) command_buffer.endRenderPass();
 
                 current_pipline = null;
                 current_index_buffer = null;
@@ -1381,21 +1454,32 @@ pub const CompileContext = struct {
                         .update_buffer => |update_buffer| {
                             const buffer = self.buffers.getPtr(update_buffer.buffer.id).?;
 
-                            const staging_contents = try self.allocateStagingBuffer(update_buffer.contents.len);
+                            const staging_contents = try self.allocateStagingBuffer(1, update_buffer.contents.len);
 
-                            @memcpy(staging_contents.mapped_region[0..staging_contents.size], update_buffer.contents);
+                            @memcpy(staging_contents.mapped_region, update_buffer.contents);
 
                             command_buffer.copyBuffer(
                                 staging_contents.buffer.*,
                                 staging_contents.offset,
-                                staging_contents.size,
+                                staging_contents.mapped_region.len,
                                 buffer.*,
                                 update_buffer.buffer_offset,
                                 update_buffer.contents.len,
                             );
                         },
-                        .update_image => {
-                            @panic("");
+                        .update_image => |update_image| {
+                            const image = self.images.getPtr(update_image.image.id).?.image;
+
+                            const staging_contents = try self.allocateStagingBuffer(4, update_image.contents.len);
+
+                            @memcpy(staging_contents.mapped_region, update_image.contents);
+
+                            command_buffer.copyBufferToImageOffset(
+                                staging_contents.buffer.*,
+                                staging_contents.offset,
+                                staging_contents.mapped_region.len,
+                                image,
+                            );
                         },
                         .set_raster_pipeline => |set_raster_pipeline| {
                             const pipeline = self.raster_pipelines.getPtr(set_raster_pipeline.pipeline.id).?;
@@ -1413,8 +1497,16 @@ pub const CompileContext = struct {
                                 buffer.*,
                             );
                         },
-                        .set_raster_pipeline_image_sampler => {
-                            @panic("");
+                        .set_raster_pipeline_image_sampler => |command_data| {
+                            const image = &self.images.getPtr(command_data.image.id).?.image;
+                            const sampler = self.samplers.getPtr(command_data.sampler.id).?;
+
+                            current_pipline.?.setDescriptorImageSampler(
+                                command_data.binding_index,
+                                command_data.array_index,
+                                image.*,
+                                sampler.*,
+                            );
                         },
                         .set_viewport => |command_data| {
                             command_buffer.setViewport(
@@ -1482,9 +1574,8 @@ pub const CompileContext = struct {
         const input_offset = passes.items(.input_offset)[pass_index];
         const input_count = passes.items(.input_count)[pass_index];
 
-        //TODO: use arena scratch buffer
-        const pass_dependencies = try self.allocator.alloc(Dependency, input_count);
-        defer self.allocator.free(pass_dependencies);
+        const pass_dependencies = try self.scratch_allocator.allocator().alloc(Dependency, input_count);
+        defer self.scratch_allocator.allocator().free(pass_dependencies);
 
         var dependency_count: u32 = 0;
 
@@ -1519,42 +1610,49 @@ pub const CompileContext = struct {
                 dependencies,
             );
         } else {
-            try dependencies.append(self.allocator, .{
+            try dependencies.append(self.scratch_allocator.allocator(), .{
                 .reference_count = 1,
                 .pass_index = pass_index,
             });
         }
     }
 
-    fn preAllocateStagingMemory(self: *@This(), size: usize) void {
+    fn preAllocateStagingMemory(
+        self: *@This(),
+        alignment: usize,
+        size: usize,
+    ) void {
         const frame_data = &self.double_buffer[self.buffer_index];
+
+        frame_data.staging_buffer_size = std.mem.alignForward(usize, frame_data.staging_buffer_size, alignment);
 
         frame_data.staging_buffer_size += size;
     }
 
     const StagingBuffer = struct {
         buffer: *const graphics.Buffer,
-        mapped_region: [*]u8,
         offset: usize,
-        size: usize,
+        mapped_region: []u8,
     };
 
     ///Allocate staging memory immediately to from a pool
     ///Will get returned to the pool when the command buffer is done
     fn allocateStagingBuffer(
         self: *@This(),
+        alignment: usize,
         size: usize,
     ) !StagingBuffer {
         const frame_data = &self.double_buffer[self.buffer_index];
+
+        frame_data.staging_buffer_offset = std.mem.alignForward(usize, frame_data.staging_buffer_offset, alignment);
 
         defer frame_data.staging_buffer_offset += size;
 
         if (frame_data.staging_buffer != null and frame_data.staging_buffer_size <= frame_data.staging_buffer.?.size) {
             return StagingBuffer{
                 .buffer = &frame_data.staging_buffer.?,
-                .mapped_region = frame_data.staging_buffer_mapping + frame_data.staging_buffer_offset,
+                .mapped_region = (frame_data.staging_buffer_mapping + frame_data.staging_buffer_offset)[0..size],
                 .offset = frame_data.staging_buffer_offset,
-                .size = size,
             };
         }
 
@@ -1571,11 +1669,142 @@ pub const CompileContext = struct {
 
         return StagingBuffer{
             .buffer = &frame_data.staging_buffer.?,
-            .mapped_region = frame_data.staging_buffer_mapping + frame_data.staging_buffer_offset,
+            .mapped_region = (frame_data.staging_buffer_mapping + frame_data.staging_buffer_offset)[0..size],
             .offset = frame_data.staging_buffer_offset,
-            .size = size,
         };
     }
+
+    const CompilerContext = @This();
+
+    pub const BarrierMap = struct {
+        context: *CompilerContext,
+        ///Potential barriers (created on resource write)
+        buffer_map: std.AutoArrayHashMapUnmanaged(
+            *const graphics.Buffer,
+            graphics.CommandBuffer.BufferBarrier,
+        ) = .{},
+        image_map: std.AutoArrayHashMapUnmanaged(
+            *const graphics.Image,
+            graphics.CommandBuffer.ImageBarrier,
+        ) = .{},
+
+        pub fn deinit(self: *@This()) void {
+            self.buffer_map.deinit(self.context.scratch_allocator.allocator());
+            self.image_map.deinit(self.context.scratch_allocator.allocator());
+
+            self.* = undefined;
+        }
+
+        pub fn readBuffer(
+            self: *@This(),
+            buffer: *const graphics.Buffer,
+            stage: graphics.CommandBuffer.PipelineStage,
+            access: graphics.CommandBuffer.ResourceAccess,
+        ) void {
+            const maybe_buffer_barrier = self.buffer_map.getPtr(buffer);
+
+            if (maybe_buffer_barrier) |out_barrier| {
+                updateBarrierMask(
+                    &out_barrier.*.destination_stage,
+                    &out_barrier.*.destination_access,
+                    stage,
+                    access,
+                );
+            }
+        }
+
+        pub fn writeBuffer(
+            self: *@This(),
+            buffer: *const graphics.Buffer,
+            stage: graphics.CommandBuffer.PipelineStage,
+            access: graphics.CommandBuffer.ResourceAccess,
+        ) !void {
+            const barrier_result = try self.buffer_map.getOrPut(
+                self.context.scratch_allocator.allocator(),
+                buffer,
+            );
+
+            if (!barrier_result.found_existing) {
+                barrier_result.value_ptr.* = .{
+                    .source_stage = stage,
+                    .source_access = access,
+                    .destination_stage = .{},
+                    .destination_access = .{},
+                };
+            } else {
+                updateBarrierMask(
+                    &barrier_result.value_ptr.*.source_stage,
+                    &barrier_result.value_ptr.*.source_access,
+                    stage,
+                    access,
+                );
+            }
+        }
+
+        pub fn readImage(
+            self: *@This(),
+            image: *const graphics.Image,
+            stage: graphics.CommandBuffer.PipelineStage,
+            access: graphics.CommandBuffer.ResourceAccess,
+        ) void {
+            const maybe_barrier = self.image_map.getPtr(image);
+
+            if (maybe_barrier) |out_barrier| {
+                updateBarrierMask(
+                    &out_barrier.*.destination_stage,
+                    &out_barrier.*.destination_access,
+                    stage,
+                    access,
+                );
+            }
+        }
+
+        pub fn writeImage(
+            self: *@This(),
+            image: *const graphics.Image,
+            stage: graphics.CommandBuffer.PipelineStage,
+            access: graphics.CommandBuffer.ResourceAccess,
+        ) !void {
+            const barrier_result = try self.image_map.getOrPut(
+                self.context.scratch_allocator.allocator(),
+                image,
+            );
+
+            if (!barrier_result.found_existing) {
+                barrier_result.value_ptr.* = .{
+                    .source_stage = stage,
+                    .source_access = access,
+                    .destination_stage = .{},
+                    .destination_access = .{},
+                };
+            } else {
+                updateBarrierMask(
+                    &barrier_result.value_ptr.*.source_stage,
+                    &barrier_result.value_ptr.*.source_access,
+                    stage,
+                    access,
+                );
+            }
+        }
+
+        fn updateBarrierMask(
+            dst_stage: *graphics.CommandBuffer.PipelineStage,
+            dst_access: *graphics.CommandBuffer.ResourceAccess,
+            stage: graphics.CommandBuffer.PipelineStage,
+            access: graphics.CommandBuffer.ResourceAccess,
+        ) void {
+            const incoming_stage: u16 = @bitCast(stage);
+            const incoming_access: u16 = @bitCast(access);
+
+            const current_stage: u16 = @bitCast(dst_stage.*);
+            const current_access: u16 = @bitCast(dst_access.*);
+
+            //Sets the barrier bits if the incoming ones are true
+            //Preserves existing barrier flags
+            dst_stage.* = @bitCast(current_stage | incoming_stage);
+            dst_access.* = @bitCast(current_access | incoming_access);
+        }
+    };
 
     pub const CompileResult = struct {
         ///Command buffer to be submitted to graphics queue
@@ -1584,11 +1813,6 @@ pub const CompileContext = struct {
 
     const graphics = @import("../graphics.zig");
 };
-
-comptime {
-    const input: PassInput(Image(.attachment)) = undefined;
-    _ = input; // autofix
-}
 
 pub fn PassInput(comptime Resource: type) type {
     return struct {

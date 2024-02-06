@@ -107,7 +107,7 @@ fn placePendingBarriers(self: CommandBuffer) void {
     defer self.consecutive_image_barrier_count = 0;
 }
 
-pub const PipelineStage = packed struct {
+pub const PipelineStage = packed struct(u16) {
     all_commands: bool = false,
     all_graphics: bool = false,
     color_attachment_output: bool = false,
@@ -121,6 +121,7 @@ pub const PipelineStage = packed struct {
     copy: bool = false,
     top_of_pipe: bool = false,
     bottom_of_pipe: bool = false,
+    padding: u3 = 0,
 };
 
 inline fn getVkPipelineStage(pipeline_stage: PipelineStage) vk.PipelineStageFlags2 {
@@ -140,7 +141,7 @@ inline fn getVkPipelineStage(pipeline_stage: PipelineStage) vk.PipelineStageFlag
     };
 }
 
-pub const ResourceAccess = packed struct {
+pub const ResourceAccess = packed struct(u16) {
     color_attachment_read: bool = false,
     color_attachment_write: bool = false,
     depth_attachment_read: bool = false,
@@ -153,6 +154,7 @@ pub const ResourceAccess = packed struct {
     transfer_read: bool = false,
     transfer_write: bool = false,
     index_read: bool = false,
+    padding: u4 = 0,
 };
 
 inline fn getVkResourceAccess(resource_access: ResourceAccess) vk.AccessFlags2 {
@@ -251,10 +253,10 @@ pub fn imageBarrier(
 }
 
 pub const BufferBarrier = struct {
-    source_stage: PipelineStage,
-    source_access: ResourceAccess,
-    destination_stage: PipelineStage,
-    destination_access: ResourceAccess,
+    source_stage: PipelineStage = .{},
+    source_access: ResourceAccess = .{},
+    destination_stage: PipelineStage = .{},
+    destination_access: ResourceAccess = .{},
 };
 
 pub fn bufferBarrier(self: CommandBuffer, buffer: Buffer, barrier: BufferBarrier) void {
@@ -561,6 +563,45 @@ pub fn copyBufferToImage(self: CommandBuffer, source: Buffer, destination: Image
                 .z = 0,
             },
             .image_extent = .{ .width = destination.width, .height = destination.height, .depth = if (destination.type == .cube) 1 else destination.depth },
+        }},
+    });
+}
+
+pub fn copyBufferToImageOffset(
+    self: CommandBuffer,
+    source: Buffer,
+    source_offset: usize,
+    source_size: usize,
+    destination: Image,
+) void {
+    _ = source_size; // autofix
+    Context.self.vkd.cmdCopyBufferToImage2(self.handle, &.{
+        .src_buffer = source.handle,
+        .dst_image = destination.handle,
+        .dst_image_layout = .transfer_dst_optimal,
+        .region_count = 1,
+        .p_regions = &[_]vk.BufferImageCopy2{.{
+            .buffer_offset = source_offset,
+            .buffer_row_length = destination.width,
+            .buffer_image_height = destination.height,
+            .image_subresource = .{
+                .aspect_mask = .{
+                    .color_bit = true,
+                },
+                .mip_level = 0,
+                .base_array_layer = 0,
+                .layer_count = if (destination.type == .cube) 6 else 1,
+            },
+            .image_offset = .{
+                .x = 0,
+                .y = 0,
+                .z = 0,
+            },
+            .image_extent = .{
+                .width = destination.width,
+                .height = destination.height,
+                .depth = if (destination.type == .cube) 1 else destination.depth,
+            },
         }},
     });
 }

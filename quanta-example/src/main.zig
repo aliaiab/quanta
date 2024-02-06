@@ -16,7 +16,7 @@ const imgui = quanta_imgui.cimgui;
 const imguizmo = quanta_imgui.guizmo;
 const entity_editor = quanta_imgui.entity_editor;
 const asset = quanta.asset;
-const quanta_imgui = @import("quanta-imgui");
+const quanta_imgui = @import("quanta_imgui");
 
 const quanta_components = quanta.components;
 const velocity_system = quanta.systems.velocity_system;
@@ -129,7 +129,28 @@ pub fn init() !void {
     imgui.igSetCurrentContext(imgui_context);
 
     try quanta_imgui.driver.init();
-    try RendererGui.init(state.allocator, state.swapchain);
+
+    const io: *imgui.ImGuiIO = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
+
+    const preferred_font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf";
+
+    const preffered_font_file = std.fs.cwd().openFile(preferred_font_path, .{}) catch null;
+
+    if (preffered_font_file) |font_file| {
+        const font_config: imgui.ImFontConfig = std.mem.zeroes(imgui.ImFontConfig);
+        _ = font_config;
+        io.FontAllowUserScaling = true;
+        io.FontGlobalScale = @as(f32, 1) / @as(f32, 2);
+
+        _ = imgui.ImFontAtlas_AddFontFromFileTTF(
+            io.Fonts,
+            preferred_font_path,
+            32,
+            null,
+            null,
+        );
+        font_file.close();
+    }
 
     const asset_archive_file_path = "example_assets_archive";
 
@@ -382,7 +403,6 @@ pub fn deinit() void {
     defer Renderer3D.deinit();
     defer imgui.igDestroyContext(imgui.igGetCurrentContext());
     defer quanta_imgui.driver.deinit();
-    defer RendererGui.deinit();
     defer std.os.munmap(state.asset_archive_blob);
     defer state.allocator.free(state.test_scene_meshes);
     defer state.allocator.free(state.test_scene_textures);
@@ -538,6 +558,24 @@ pub fn update() !UpdateResult {
             defer quanta_imgui.driver.end();
 
             const widgets = quanta_imgui.widgets;
+
+            const io: *imgui.ImGuiIO = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
+
+            var pixel_pointer: [*c]u8 = undefined;
+            var width: c_int = 0;
+            var height: c_int = 0;
+            var out_bytes_per_pixel: c_int = 0;
+
+            //TODO: MASSIVE(?) hack: imgui asserts that we've called this function before imgui::NewFrame.
+            //We call this in the render graph build for renderer_gui, which hasn't ran yet.s
+            //We need to solve this as an high level api problem (when do we run grap build?)
+            imgui.ImFontAtlas_GetTexDataAsRGBA32(
+                io.Fonts,
+                &pixel_pointer,
+                &width,
+                &height,
+                &out_bytes_per_pixel,
+            );
 
             imgui.igNewFrame();
             imguizmo.ImGuizmo_SetOrthographic(false);
@@ -749,7 +787,6 @@ pub fn update() !UpdateResult {
                 image.render_finished,
             ) catch unreachable;
         } else {
-            std.debug.assert(state.render_graph.passes.len == 0);
             RendererGui.renderToGraph(
                 &state.render_graph,
                 imgui.igGetDrawData(),
@@ -776,7 +813,7 @@ pub fn update() !UpdateResult {
         }
 
         for (0..state.render_graph.passes.len) |pass_index| {
-            const pass_tag = state.render_graph.passes.items(.tag)[pass_index];
+            const pass_tag = state.render_graph.passes.items(.data)[pass_index];
             const pass_id = state.render_graph.passes.items(.handle)[pass_index];
 
             std.log.info("\n    defined pass({s})[{}]: id = 0x{x}", .{ @tagName(pass_tag), pass_index, pass_id });
@@ -791,6 +828,7 @@ pub fn update() !UpdateResult {
 
             const command_offset = state.render_graph.passes.items(.command_offset)[pass_index];
             const command_count = state.render_graph.passes.items(.command_count)[pass_index];
+            const command_data_offset = state.render_graph.passes.items(.command_data_offset)[pass_index];
 
             std.log.info("pass_inputs: count = {}", .{input_count});
 
@@ -803,10 +841,14 @@ pub fn update() !UpdateResult {
 
             std.log.info("pass_commands: count = {}", .{command_count});
 
-            for (0..command_count) |command_index| {
-                const command_tag = state.render_graph.commands.items(.tag)[command_offset + command_index];
+            var iterator = state.render_graph.commands.iterator(
+                command_offset,
+                command_count,
+                command_data_offset,
+            );
 
-                std.log.info("command: {s}", .{@tagName(command_tag)});
+            while (iterator.next()) |command| {
+                std.log.info("command: {s}", .{@tagName(command)});
             }
 
             std.log.info("pass_outputs: count = {}", .{output_count});
@@ -818,6 +860,8 @@ pub fn update() !UpdateResult {
                 });
             }
         }
+
+        std.os.exit(0);
     }
 
     const render_graph_compiled = try state.render_graph_compile_context.compile(
