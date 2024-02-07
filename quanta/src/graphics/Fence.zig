@@ -11,7 +11,11 @@ pub fn init() !Fence {
         .handle = .null_handle,
     };
 
-    self.handle = try Context.self.vkd.createFence(Context.self.device, &.{ .flags = .{ .signaled_bit = false } }, Context.self.allocation_callbacks);
+    self.handle = try Context.self.vkd.createFence(
+        Context.self.device,
+        &.{ .flags = .{ .signaled_bit = false } },
+        Context.self.allocation_callbacks,
+    );
 
     return self;
 }

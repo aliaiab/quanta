@@ -5,6 +5,25 @@ pub const IndexType = enum {
     u32,
 };
 
+pub const SampleReductionMode = enum {
+    min,
+    max,
+    weighted_average,
+};
+
+pub const SampleFilterMode = enum {
+    linear,
+    nearest,
+};
+
+pub const SampleAddressMode = enum {
+    repeat,
+    mirrored_repeat,
+    clamp_to_edge,
+    clamp_to_border,
+    mirror_clamp_to_edge,
+};
+
 pub const Command = union(enum) {
     update_buffer: struct {
         buffer: Buffer,
@@ -209,6 +228,12 @@ pub const Builder = struct {
     samplers: std.MultiArrayList(struct {
         handle: Sampler,
         reference_count: u32,
+        min_filter: SampleFilterMode,
+        mag_filter: SampleFilterMode,
+        address_mode_u: SampleAddressMode,
+        address_mode_v: SampleAddressMode,
+        address_mode_w: SampleAddressMode,
+        reduction_mode: ?SampleReductionMode,
     }) = .{},
     ///List of top level passes (not render passes)
     passes: std.MultiArrayList(struct {
@@ -453,6 +478,14 @@ pub const Builder = struct {
     pub fn createSampler(
         self: *@This(),
         comptime src: SourceLocation,
+        options: struct {
+            min_filter: SampleFilterMode,
+            mag_filter: SampleFilterMode,
+            address_mode_u: SampleAddressMode = .repeat,
+            address_mode_v: SampleAddressMode = .repeat,
+            address_mode_w: SampleAddressMode = .repeat,
+            reduction_mode: ?SampleReductionMode = null,
+        },
     ) Sampler {
         const handle_id = comptime idFromSourceLocation(src);
 
@@ -463,6 +496,12 @@ pub const Builder = struct {
         self.samplers.append(self.allocator, .{
             .handle = .{ .id = handle_id },
             .reference_count = 0,
+            .min_filter = options.min_filter,
+            .mag_filter = options.mag_filter,
+            .address_mode_u = options.address_mode_u,
+            .address_mode_v = options.address_mode_v,
+            .address_mode_w = options.address_mode_w,
+            .reduction_mode = options.reduction_mode,
         }) catch unreachable;
 
         return handle;
@@ -1134,6 +1173,117 @@ pub const CompileContext = struct {
             compile_buffer.graphics_command_buffer = try graphics.CommandBuffer.init(.graphics);
         }
 
+        if (builder.passes.len == 0) {
+            //generate empty command buffer
+            try compile_buffer.graphics_command_buffer.?.begin();
+
+            return .{
+                .graphics_command_buffer = &compile_buffer.graphics_command_buffer.?,
+            };
+        }
+
+        //ordered list of dependencies for the root pass
+        var dependencies: std.ArrayListUnmanaged(Dependency) = .{};
+        defer dependencies.deinit(self.scratch_allocator.allocator());
+
+        //Second pass: pass dependency analysis
+        {
+            //The first pass to evaluate. Evaluation goes bottom up (from last executed to first)
+            const root_pass_index: u32 = @intCast(builder.passes.len - 1);
+
+            try self.compilePassDependencies(
+                builder,
+                root_pass_index,
+                &dependencies,
+            );
+        }
+
+        var buffer_usages: std.AutoArrayHashMapUnmanaged(Buffer, struct {
+            usage: graphics.vulkan.BufferUsageFlags,
+        }) = .{};
+        defer buffer_usages.deinit(self.scratch_allocator.allocator());
+
+        var image_usages: std.AutoArrayHashMapUnmanaged(u64, struct {
+            usage: graphics.vulkan.ImageUsageFlags,
+        }) = .{};
+        defer image_usages.deinit(self.scratch_allocator.allocator());
+
+        for (dependencies.items) |*dependency| {
+            if (dependency.generated_commands) continue;
+
+            const pass_index = dependency.pass_index;
+
+            const command_offset = builder.passes.items(.command_offset)[pass_index];
+            const command_count = builder.passes.items(.command_count)[pass_index];
+
+            var command_iter = builder.commands.iterator(
+                command_offset,
+                command_count,
+                builder.passes.items(.command_data_offset)[pass_index],
+            );
+
+            while (command_iter.next()) |command| {
+                switch (command) {
+                    .update_buffer => |command_data| {
+                        const result = try buffer_usages.getOrPutValue(
+                            self.scratch_allocator.allocator(),
+                            command_data.buffer,
+                            .{
+                                .usage = .{},
+                            },
+                        );
+
+                        result.value_ptr.*.usage.transfer_dst_bit = true;
+                    },
+                    .update_image => |command_data| {
+                        const result = try image_usages.getOrPutValue(
+                            self.scratch_allocator.allocator(),
+                            command_data.image.id,
+                            .{
+                                .usage = .{},
+                            },
+                        );
+
+                        result.value_ptr.*.usage.transfer_dst_bit = true;
+                    },
+                    .set_index_buffer => |command_data| {
+                        const result = try buffer_usages.getOrPutValue(
+                            self.scratch_allocator.allocator(),
+                            command_data.index_buffer,
+                            .{
+                                .usage = .{},
+                            },
+                        );
+
+                        result.value_ptr.*.usage.index_buffer_bit = true;
+                    },
+                    .set_raster_pipeline_resource_buffer => |command_data| {
+                        const result = try buffer_usages.getOrPutValue(
+                            self.scratch_allocator.allocator(),
+                            command_data.buffer,
+                            .{
+                                .usage = .{},
+                            },
+                        );
+
+                        result.value_ptr.*.usage.storage_buffer_bit = true;
+                    },
+                    .set_raster_pipeline_image_sampler => |command_data| {
+                        const result = try image_usages.getOrPutValue(
+                            self.scratch_allocator.allocator(),
+                            command_data.image.id,
+                            .{
+                                .usage = .{},
+                            },
+                        );
+
+                        result.value_ptr.usage.sampled_bit = true;
+                    },
+                    else => {},
+                }
+            }
+        }
+
         //GPU Resource creation/fetching/allocation/deallocation/destruction pass
         {
             const raster_pipeline_reference_counts = builder.raster_pipelines.items(.reference_count);
@@ -1202,8 +1352,10 @@ pub const CompileContext = struct {
 
                 const buffer_size = builder.buffers.items(.size)[buffer_index];
 
-                //TODO: aggregate global usage of each buffer
-                get_or_put_res.value_ptr.* = try graphics.Buffer.init(buffer_size, .index);
+                get_or_put_res.value_ptr.* = try graphics.Buffer.initUsageFlags(
+                    buffer_size,
+                    buffer_usages.get(handle).?.usage,
+                );
                 errdefer get_or_put_res.value_ptr.deinit();
             }
 
@@ -1235,10 +1387,7 @@ pub const CompileContext = struct {
                     1,
                     @enumFromInt(@intFromEnum(image_format)),
                     .shader_read_only_optimal,
-                    .{
-                        .transfer_dst_bit = true,
-                        .sampled_bit = true,
-                    },
+                    image_usages.get(handle.id).?.usage,
                 );
                 errdefer get_or_put_res.value_ptr.image.deinit();
             }
@@ -1258,32 +1407,23 @@ pub const CompileContext = struct {
                     continue;
                 }
 
+                const min_filter = builder.samplers.items(.min_filter)[sampler_index];
+                const mag_filter = builder.samplers.items(.mag_filter)[sampler_index];
+                const address_mode_u = builder.samplers.items(.address_mode_u)[sampler_index];
+                const address_mode_v = builder.samplers.items(.address_mode_v)[sampler_index];
+                const address_mode_w = builder.samplers.items(.address_mode_w)[sampler_index];
+                const reduction_mode = builder.samplers.items(.reduction_mode)[sampler_index];
+
                 get_or_put_res.value_ptr.* = try graphics.Sampler.init(
-                    .nearest,
-                    .nearest,
-                    .repeat,
-                    .repeat,
-                    .repeat,
-                    null,
+                    @enumFromInt(@intFromEnum(min_filter)),
+                    @enumFromInt(@intFromEnum(mag_filter)),
+                    @enumFromInt(@intFromEnum(address_mode_u)),
+                    @enumFromInt(@intFromEnum(address_mode_v)),
+                    @enumFromInt(@intFromEnum(address_mode_w)),
+                    if (reduction_mode == null) null else @enumFromInt(@intFromEnum(reduction_mode.?)),
                 );
                 errdefer get_or_put_res.value_ptr.deinit();
             }
-        }
-
-        //ordered list of dependencies for the root pass
-        var dependencies: std.ArrayListUnmanaged(Dependency) = .{};
-        defer dependencies.deinit(self.scratch_allocator.allocator());
-
-        //Second pass: pass dependency analysis
-        {
-            //The first pass to evaluate. Evaluation goes bottom up (from last executed to first)
-            const root_pass_index: u32 = @intCast(builder.passes.len - 1);
-
-            try self.compilePassDependencies(
-                builder,
-                root_pass_index,
-                &dependencies,
-            );
         }
 
         //Staging memory preallocate pass
@@ -1308,6 +1448,7 @@ pub const CompileContext = struct {
                             self.preAllocateStagingMemory(1, update_buffer.contents.len);
                         },
                         .update_image => |update_image| {
+                            //TODO: align based on the format
                             self.preAllocateStagingMemory(4, update_image.contents.len);
                         },
                         else => {},
@@ -1405,13 +1546,17 @@ pub const CompileContext = struct {
                     }
                 }
 
-                for (barrier_map.buffer_map.keys(), barrier_map.buffer_map.values()) |buffer, barrier| {
-                    command_buffer.bufferBarrier(buffer.*, barrier);
-                }
+                command_buffer.bufferBarriers(
+                    barrier_map.buffer_barriers.items(.buffer),
+                    barrier_map.buffer_barriers.items(.barrier),
+                );
+                barrier_map.buffer_barriers.shrinkRetainingCapacity(0);
 
-                for (barrier_map.image_map.keys(), barrier_map.image_map.values()) |image, barrier| {
-                    command_buffer.imageBarrier(image.*, barrier);
-                }
+                command_buffer.imageBarriers(
+                    barrier_map.image_barriers.items(.image),
+                    barrier_map.image_barriers.items(.barrier),
+                );
+                barrier_map.image_barriers.shrinkRetainingCapacity(0);
 
                 if (pass_data == .raster) {
                     const x = pass_data.raster.render_offset_x;
@@ -1420,8 +1565,8 @@ pub const CompileContext = struct {
                     const height = pass_data.raster.render_height;
                     const attachments_input = pass_data.raster.attachments;
 
-                    const attachments = try self.allocator.alloc(graphics.CommandBuffer.Attachment, attachments_input.len);
-                    defer self.allocator.free(attachments);
+                    const attachments = try self.scratch_allocator.allocator().alloc(graphics.CommandBuffer.Attachment, attachments_input.len);
+                    defer self.scratch_allocator.allocator().free(attachments);
 
                     for (attachments_input, attachments) |input, *output| {
                         output.image = &self.images.getPtr(input.image.id).?.image;
@@ -1449,6 +1594,7 @@ pub const CompileContext = struct {
                     command_data_offset,
                 );
 
+                //encode final commands
                 while (command_iter.next()) |command| {
                     switch (command) {
                         .update_buffer => |update_buffer| {
@@ -1687,12 +1833,50 @@ pub const CompileContext = struct {
             *const graphics.Image,
             graphics.CommandBuffer.ImageBarrier,
         ) = .{},
+        buffer_barriers: std.MultiArrayList(struct {
+            buffer: *const graphics.Buffer,
+            barrier: graphics.CommandBuffer.BufferBarrier,
+        }) = .{},
+        image_barriers: std.MultiArrayList(struct {
+            image: *const graphics.Image,
+            barrier: graphics.CommandBuffer.ImageBarrier,
+        }) = .{},
 
         pub fn deinit(self: *@This()) void {
             self.buffer_map.deinit(self.context.scratch_allocator.allocator());
             self.image_map.deinit(self.context.scratch_allocator.allocator());
+            self.buffer_barriers.deinit(self.context.scratch_allocator.allocator());
+            self.image_barriers.deinit(self.context.scratch_allocator.allocator());
 
             self.* = undefined;
+        }
+
+        pub fn writeBuffer(
+            self: *@This(),
+            buffer: *const graphics.Buffer,
+            stage: graphics.CommandBuffer.PipelineStage,
+            access: graphics.CommandBuffer.ResourceAccess,
+        ) !void {
+            const barrier_result = try self.buffer_map.getOrPut(
+                self.context.scratch_allocator.allocator(),
+                buffer,
+            );
+
+            if (!barrier_result.found_existing) {
+                barrier_result.value_ptr.* = .{
+                    .source_stage = stage,
+                    .source_access = access,
+                    .destination_stage = .{},
+                    .destination_access = .{},
+                };
+            } else {
+                updateBarrierMask(
+                    &barrier_result.value_ptr.*.source_stage,
+                    &barrier_result.value_ptr.*.source_access,
+                    stage,
+                    access,
+                );
+            }
         }
 
         pub fn readBuffer(
@@ -1710,18 +1894,23 @@ pub const CompileContext = struct {
                     stage,
                     access,
                 );
+
+                self.buffer_barriers.append(self.context.scratch_allocator.allocator(), .{
+                    .buffer = buffer,
+                    .barrier = out_barrier.*,
+                }) catch unreachable;
             }
         }
 
-        pub fn writeBuffer(
+        pub fn writeImage(
             self: *@This(),
-            buffer: *const graphics.Buffer,
+            image: *const graphics.Image,
             stage: graphics.CommandBuffer.PipelineStage,
             access: graphics.CommandBuffer.ResourceAccess,
         ) !void {
-            const barrier_result = try self.buffer_map.getOrPut(
+            const barrier_result = try self.image_map.getOrPut(
                 self.context.scratch_allocator.allocator(),
-                buffer,
+                image,
             );
 
             if (!barrier_result.found_existing) {
@@ -1756,34 +1945,11 @@ pub const CompileContext = struct {
                     stage,
                     access,
                 );
-            }
-        }
 
-        pub fn writeImage(
-            self: *@This(),
-            image: *const graphics.Image,
-            stage: graphics.CommandBuffer.PipelineStage,
-            access: graphics.CommandBuffer.ResourceAccess,
-        ) !void {
-            const barrier_result = try self.image_map.getOrPut(
-                self.context.scratch_allocator.allocator(),
-                image,
-            );
-
-            if (!barrier_result.found_existing) {
-                barrier_result.value_ptr.* = .{
-                    .source_stage = stage,
-                    .source_access = access,
-                    .destination_stage = .{},
-                    .destination_access = .{},
-                };
-            } else {
-                updateBarrierMask(
-                    &barrier_result.value_ptr.*.source_stage,
-                    &barrier_result.value_ptr.*.source_access,
-                    stage,
-                    access,
-                );
+                self.image_barriers.append(self.context.scratch_allocator.allocator(), .{
+                    .image = image,
+                    .barrier = out_barrier.*,
+                }) catch unreachable;
             }
         }
 

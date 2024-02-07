@@ -16,8 +16,6 @@ pub fn renderToGraph(
     ///The output color attachment to render to
     target: quanta.rendering.graph.Image(.attachment),
 ) void {
-    const font_sampler = graph.createSampler(@src());
-
     const font_atlas = blk: {
         const FontInit = struct {
             var initialized: bool = false;
@@ -136,9 +134,11 @@ pub fn renderToGraph(
 
         const inputs = graph.beginRasterPass(
             @src(),
-            &.{.{
-                .image = target,
-            }},
+            &.{
+                .{
+                    .image = target,
+                },
+            },
             0,
             0,
             target_width,
@@ -156,6 +156,12 @@ pub fn renderToGraph(
             0,
             inputs.updated_buffers.vertex_buffer,
         );
+
+        const font_sampler = graph.createSampler(@src(), .{
+            .min_filter = .linear,
+            .mag_filter = .linear,
+        });
+
         //Do we really need bindless for this?
         graph.setRasterPipelineImageSampler(
             pipeline,

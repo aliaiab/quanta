@@ -186,6 +186,81 @@ pub fn init(size: usize, usage: Usage) !Buffer {
     return self;
 }
 
+pub fn initUsageFlags(size: usize, usage: vk.BufferUsageFlags) !Buffer {
+    var self = Buffer{
+        .handle = .null_handle,
+        .memory_page = undefined,
+        .size = size,
+        .alignment = 0,
+        .usage = .storage,
+        .device_address = undefined,
+        .descriptor = 0,
+    };
+
+    const create_info = vk.BufferCreateInfo{
+        .flags = .{},
+        .size = size,
+        .usage = usage,
+        .sharing_mode = .exclusive,
+        .queue_family_index_count = 0,
+        .p_queue_family_indices = undefined,
+    };
+
+    self.handle = try Context.self.vkd.createBuffer(
+        Context.self.device,
+        &create_info,
+        Context.self.allocation_callbacks,
+    );
+    errdefer Context.self.vkd.destroyBuffer(Context.self.device, self.handle, Context.self.allocation_callbacks);
+
+    var memory_requirements: vk.MemoryRequirements2 = .{
+        .memory_requirements = undefined,
+    };
+
+    Context.self.vkd.getBufferMemoryRequirements2(Context.self.device, &vk.BufferMemoryRequirementsInfo2{
+        .buffer = self.handle,
+    }, &memory_requirements);
+
+    self.alignment = memory_requirements.memory_requirements.alignment;
+
+    self.memory_page = try Context.devicePageAllocateBuffer(self.handle, .{
+        .device_local_bit = true,
+    });
+    errdefer Context.devicePageFree(self.memory_page);
+
+    if (false) {
+        self.device_address = Context.self.vkd.getBufferDeviceAddress(
+            Context.self.device,
+            &vk.BufferDeviceAddressInfo{
+                .buffer = self.handle,
+            },
+        );
+    }
+
+    if (false)
+        Context.self.vkd.getDescriptorEXT(
+            Context.self.device,
+            &vk.DescriptorGetInfoEXT{
+                .type = switch (self.usage) {
+                    .vertex, .index, .storage => .storage_buffer,
+                    .uniform => .uniform_buffer,
+                    else => .storage_buffer,
+                },
+                .data = .{
+                    .p_storage_buffer = &.{
+                        .address = self.device_address,
+                        .range = self.size,
+                        .format = .undefined,
+                    },
+                },
+            },
+            @sizeOf(@TypeOf(self.descriptor)),
+            &self.descriptor,
+        );
+
+    return self;
+}
+
 fn initDataHostMemory(usage: Usage, host_memory: []const u8) !Buffer {
     std.debug.assert(@intFromPtr(host_memory.ptr) % 0b1000 == 0);
 

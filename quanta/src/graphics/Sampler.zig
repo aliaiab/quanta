@@ -24,7 +24,14 @@ pub const AddressMode = enum {
 
 handle: vk.Sampler,
 
-pub fn init(min_filter: FilterMode, mag_filter: FilterMode, address_mode_u: AddressMode, address_mode_v: AddressMode, address_mode_w: AddressMode, reduction_mode: ?ReductionMode) !Sampler {
+pub fn init(
+    min_filter: FilterMode,
+    mag_filter: FilterMode,
+    address_mode_u: AddressMode,
+    address_mode_v: AddressMode,
+    address_mode_w: AddressMode,
+    reduction_mode: ?ReductionMode,
+) !Sampler {
     var self = Sampler{
         .handle = .null_handle,
     };

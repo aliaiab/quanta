@@ -152,10 +152,10 @@ fn debugUtilsMessengerCallback(
 
     if (message_severity.error_bit_ext) {
         log.err("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message });
-        std.os.exit(0);
+        std.os.abort();
     } else if (message_severity.warning_bit_ext) {
         log.warn("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message });
-        std.os.exit(0);
+        std.os.abort();
     } else {
         log.debug("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message });
     }
@@ -323,7 +323,13 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
     }
 
     instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extension_info.khr_surface.name};
-    instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extension_info.khr_xcb_surface.name};
+
+    switch (windowing.backend) {
+        .xcb => {
+            instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extension_info.khr_xcb_surface.name};
+        },
+        else => @compileError("Windowing backend not supported by vulkan"),
+    }
 
     log.info("Vulkan Version: {}", .{vulkan_version});
     log.info("Vulkan Instance Extentions: {s}", .{instance_extentions});
@@ -1262,6 +1268,7 @@ const Context = @This();
 const builtin = @import("builtin");
 const std = @import("std");
 const vk = @import("vk.zig");
-const Window = @import("../windowing.zig").Window;
+const windowing = @import("../windowing.zig");
+const Window = windowing.Window;
 const log = @import("../log.zig").log;
 const WindowSurface = @import("WindowSurface.zig");

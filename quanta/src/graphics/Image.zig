@@ -90,7 +90,10 @@ pub fn init(
     };
 
     self.handle = try Context.self.vkd.createImage(Context.self.device, &.{
-        .flags = vk.ImageCreateFlags{ .alias_bit = true, .cube_compatible_bit = @"type" == .cube },
+        .flags = vk.ImageCreateFlags{
+            .alias_bit = true,
+            .cube_compatible_bit = @"type" == .cube,
+        },
         .image_type = @as(vk.ImageType, switch (@"type") {
             .@"1d" => .@"1d",
             .@"2d" => .@"2d",
@@ -197,6 +200,101 @@ pub fn init(
             try command_buffer.submitAndWait();
         }
     }
+
+    return self;
+}
+
+pub fn initInitialLayout(
+    @"type": Type,
+    width: u32,
+    height: u32,
+    depth: u32,
+    levels: u32,
+    format: vk.Format,
+    usage: vk.ImageUsageFlags,
+) !Image {
+    var self = Image{
+        .handle = .null_handle,
+        .type = @"type",
+        .view = .null_handle,
+        .memory_page = undefined,
+        .format = format,
+        .layout = .undefined,
+        .width = width,
+        .height = height,
+        .depth = depth,
+        .levels = levels,
+        .aspect_mask = .{
+            .color_bit = format != vk.Format.d32_sfloat,
+            .depth_bit = format == vk.Format.d32_sfloat,
+        },
+        .size = 0,
+    };
+
+    self.handle = try Context.self.vkd.createImage(Context.self.device, &.{
+        .flags = vk.ImageCreateFlags{
+            .alias_bit = true,
+            .cube_compatible_bit = @"type" == .cube,
+        },
+        .image_type = @as(vk.ImageType, switch (@"type") {
+            .@"1d" => .@"1d",
+            .@"2d" => .@"2d",
+            .@"3d" => .@"3d",
+            .cube => .@"2d",
+            .@"1d_array" => .@"2d",
+            .@"2d_array" => .@"3d",
+            .cube_array => .@"3d",
+        }),
+        .format = format,
+        .extent = .{ .width = width, .height = height, .depth = if (@"type" == .cube) 1 else depth },
+        .mip_levels = levels,
+        .array_layers = if (@"type" == .cube) depth else 1,
+        .samples = .{
+            .@"1_bit" = true,
+        },
+        .tiling = .optimal,
+        .usage = usage,
+        .sharing_mode = .exclusive,
+        .queue_family_index_count = 0,
+        .p_queue_family_indices = undefined,
+        .initial_layout = .undefined,
+    }, Context.self.allocation_callbacks);
+    errdefer Context.self.vkd.destroyImage(Context.self.device, self.handle, Context.self.allocation_callbacks);
+
+    var memory_requirements: vk.MemoryRequirements2 = .{ .memory_requirements = undefined };
+
+    Context.self.vkd.getImageMemoryRequirements2(Context.self.device, &vk.ImageMemoryRequirementsInfo2{
+        .image = self.handle,
+    }, &memory_requirements);
+
+    self.size = memory_requirements.memory_requirements.size;
+
+    self.memory_page = try Context.devicePageAllocateImage(self.handle, .{ .device_local_bit = true });
+    errdefer Context.devicePageFree(self.memory_page);
+
+    self.view = try Context.self.vkd.createImageView(Context.self.device, &.{
+        .flags = .{},
+        .image = self.handle,
+        .view_type = @as(vk.ImageViewType, switch (@"type") {
+            .@"1d" => .@"1d",
+            .@"2d" => .@"2d",
+            .@"3d" => .@"3d",
+            .cube => .cube,
+            .@"1d_array" => .@"1d_array",
+            .@"2d_array" => .@"2d_array",
+            .cube_array => .cube_array,
+        }),
+        .format = self.format,
+        .components = .{ .r = .identity, .g = .identity, .b = .identity, .a = .identity },
+        .subresource_range = .{
+            .aspect_mask = self.aspect_mask,
+            .base_mip_level = 0,
+            .level_count = levels,
+            .base_array_layer = 0,
+            .layer_count = vk.REMAINING_ARRAY_LAYERS,
+        },
+    }, Context.self.allocation_callbacks);
+    errdefer Context.self.vkd.destroyImageView(Context.self.device, self.view, Context.self.allocation_callbacks);
 
     return self;
 }

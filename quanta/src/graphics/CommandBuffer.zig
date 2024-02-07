@@ -5,6 +5,7 @@ const vk = @import("vk.zig");
 const Context = @import("Context.zig");
 const ComputePipeline = @import("ComputePipeline.zig");
 const GraphicsPipeline = @import("GraphicsPipeline.zig");
+const Semaphore = @import("Semaphore.zig");
 const Buffer = @import("Buffer.zig");
 const Image = @import("Image.zig");
 const Fence = @import("Fence.zig");
@@ -252,6 +253,51 @@ pub fn imageBarrier(
     });
 }
 
+pub fn imageBarriers(
+    self: CommandBuffer,
+    images: []const *const Image,
+    barriers: []const ImageBarrier,
+) void {
+    std.debug.assert(images.len == barriers.len);
+
+    var image_barriers: [64]vk.ImageMemoryBarrier2 = undefined;
+
+    std.debug.assert(barriers.len <= image_barriers.len);
+
+    for (images, barriers, image_barriers[0..barriers.len]) |image, barrier, *image_barrier| {
+        image_barrier.* = .{
+            .src_stage_mask = getVkPipelineStage(barrier.source_stage),
+            .src_access_mask = getVkResourceAccess(barrier.source_access),
+            .dst_stage_mask = getVkPipelineStage(barrier.destination_stage),
+            .dst_access_mask = getVkResourceAccess(barrier.destination_access),
+            .old_layout = barrier.source_layout,
+            .new_layout = barrier.destination_layout,
+            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .image = image.handle,
+            .subresource_range = .{
+                .aspect_mask = image.aspect_mask,
+                .base_mip_level = barrier.layer,
+                .level_count = vk.REMAINING_MIP_LEVELS,
+                .base_array_layer = 0,
+                .layer_count = vk.REMAINING_ARRAY_LAYERS,
+            },
+        };
+    }
+
+    Context.self.vkd.cmdPipelineBarrier2(self.handle, &.{
+        .dependency_flags = .{
+            .by_region_bit = true,
+        },
+        .memory_barrier_count = 0,
+        .p_memory_barriers = undefined,
+        .buffer_memory_barrier_count = 0,
+        .p_buffer_memory_barriers = undefined,
+        .image_memory_barrier_count = @intCast(barriers.len),
+        .p_image_memory_barriers = &image_barriers,
+    });
+}
+
 pub const BufferBarrier = struct {
     source_stage: PipelineStage = .{},
     source_access: ResourceAccess = .{},
@@ -281,6 +327,46 @@ pub fn bufferBarrier(self: CommandBuffer, buffer: Buffer, barrier: BufferBarrier
                 .size = buffer.size,
             },
         },
+        .image_memory_barrier_count = 0,
+        .p_image_memory_barriers = undefined,
+    });
+}
+
+pub fn bufferBarriers(
+    self: CommandBuffer,
+    buffers: []const *const Buffer,
+    barriers: []const BufferBarrier,
+) void {
+    std.debug.assert(buffers.len == barriers.len);
+
+    //TODO: better allocation strategy for batched barrier calls
+    var memory_barriers: [64]vk.BufferMemoryBarrier2 = undefined;
+
+    std.debug.assert(barriers.len <= memory_barriers.len);
+
+    for (buffers, barriers, 0..) |buffer, barrier, i| {
+        memory_barriers[i] = .{
+            .src_stage_mask = getVkPipelineStage(barrier.source_stage),
+            .src_access_mask = getVkResourceAccess(barrier.source_access),
+            .dst_stage_mask = getVkPipelineStage(barrier.destination_stage),
+            .dst_access_mask = getVkResourceAccess(barrier.destination_access),
+            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+            .buffer = buffer.handle,
+            .offset = 0,
+            .size = buffer.size,
+        };
+    }
+
+    Context.self.vkd.cmdPipelineBarrier2(self.handle, &.{
+        .dependency_flags = .{
+            .by_region_bit = true,
+            .view_local_bit = self.is_render_pass_instance,
+        },
+        .memory_barrier_count = 0,
+        .p_memory_barriers = undefined,
+        .buffer_memory_barrier_count = @intCast(barriers.len),
+        .p_buffer_memory_barriers = &memory_barriers,
         .image_memory_barrier_count = 0,
         .p_image_memory_barriers = undefined,
     });
@@ -316,6 +402,34 @@ pub fn submit(self: CommandBuffer, fence: Fence) !void {
         .signal_semaphore_info_count = 0,
         .p_signal_semaphore_infos = undefined,
     }}, fence.handle);
+}
+
+pub fn submitSemaphore(self: CommandBuffer, signal_semaphore: Semaphore) !void {
+    const queue = switch (self.queue) {
+        .graphics => Context.self.graphics_queue,
+        .compute => Context.self.compute_queue,
+        .transfer => Context.self.transfer_queue,
+    };
+
+    try Context.self.vkd.queueSubmit2(queue, 1, &[_]vk.SubmitInfo2{.{
+        .flags = .{},
+        .wait_semaphore_info_count = 0,
+        .p_wait_semaphore_infos = undefined,
+        .command_buffer_info_count = 1,
+        .p_command_buffer_infos = &[_]vk.CommandBufferSubmitInfo{.{
+            .command_buffer = self.handle,
+            .device_mask = 0,
+        }},
+        .signal_semaphore_info_count = 1,
+        .p_signal_semaphore_infos = &[_]vk.SemaphoreSubmitInfo{.{
+            .semaphore = signal_semaphore.handle,
+            .value = 1,
+            .stage_mask = .{
+                .color_attachment_output_bit = true,
+            },
+            .device_index = 0,
+        }},
+    }}, .null_handle);
 }
 
 pub const Attachment = struct {

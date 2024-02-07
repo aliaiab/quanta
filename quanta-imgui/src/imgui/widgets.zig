@@ -6,6 +6,14 @@ pub fn begin(title: [:0]const u8) bool {
     return imgui.igBegin(title.ptr, null, 0);
 }
 
+pub fn beginWindow(comptime format: []const u8, args: anytype) bool {
+    var format_buf: [4096 * 16]u8 = undefined;
+
+    const title_buf = std.fmt.bufPrintZ(&format_buf, format, args) catch unreachable;
+
+    return imgui.igBegin(title_buf.ptr, null, 0);
+}
+
 pub fn end() void {
     imgui.igEnd();
 }
