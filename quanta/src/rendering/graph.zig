@@ -31,7 +31,7 @@ pub const Command = union(enum) {
         contents: []const u8,
     },
     update_image: struct {
-        image: ImageUntyped,
+        image: Image,
         image_offset: usize,
         contents: []const u8,
     },
@@ -48,7 +48,7 @@ pub const Command = union(enum) {
         pipeline: RasterPipeline,
         binding_index: u32,
         array_index: u32,
-        image: ImageUntyped,
+        image: Image,
         sampler: Sampler,
     },
     set_viewport: struct {
@@ -211,15 +211,11 @@ pub const Builder = struct {
     buffers: std.MultiArrayList(struct {
         handle: Buffer,
         reference_count: u32,
-
-        //The static, inital size for this buffer
-        //TODO: make this a dynamic size?
         size: usize,
     }),
     images: std.MultiArrayList(struct {
-        handle: ImageUntyped,
+        handle: Image,
         reference_count: u32,
-        layout: ImageLayout,
         format: ImageFormat,
         width: u32,
         height: u32,
@@ -249,46 +245,22 @@ pub const Builder = struct {
         output_count: u16,
     }),
     pass_inputs: std.MultiArrayList(struct {
-        //What pass is this from, if any
         pass_index: ?u32,
-        //The number of times this input was referenced (for culling)
         reference_count: u32,
         resource_type: ResourceType,
         resource_handle: ResourceHandle,
-        ///layout if any
-        layout: ImageLayout,
-        //Represents any transformations that were applied during the pass that this comes from
-        transform: InputOutputTransform,
     }) = .{},
     pass_outputs: std.MultiArrayList(struct {
-        //What pass is this from. All outputs come from passes
-        //TODO: make this a pass id rather than index
         pass_index: u32,
         reference_count: u32,
         resource_type: ResourceType,
         resource_handle: ResourceHandle,
-        layout: ImageLayout,
-        //Represents any transformations that were applied during the pass
-        transform: InputOutputTransform,
     }) = .{},
     commands: Commands,
 
     ///TODO: Handle nested passes?
     ///We could have some kind of context? (IE when we call beginPass*, we context 'switch')
     current_pass_index: u32,
-
-    ///Represents a transformation (potential mutation) applied to a resource
-    ///When all flags are set to zero, it represents a nop (no writes applied)
-    pub const InputOutputTransform = packed struct(u16) {
-        shader_write: bool,
-        transfer_write: bool,
-        padding: u14 = 0,
-
-        pub const no_op = InputOutputTransform{
-            .shader_write = false,
-            .transfer_write = false,
-        };
-    };
 
     pub const PassData = union(enum) {
         transfer: void,
@@ -414,21 +386,19 @@ pub const Builder = struct {
     pub fn createImage(
         self: *@This(),
         comptime src: SourceLocation,
-        comptime layout: ImageLayout,
         format: ImageFormat,
         width: u32,
         height: u32,
         depth: u32,
-    ) Image(layout) {
+    ) Image {
         const handle_id = comptime idFromSourceLocation(src);
 
-        const handle: Image(layout) = .{
+        const handle: Image = .{
             .id = handle_id,
         };
 
         self.images.append(self.allocator, .{
             .handle = .{ .id = handle_id },
-            .layout = layout,
             .format = format,
             .reference_count = 0,
             .width = width,
@@ -517,8 +487,8 @@ pub const Builder = struct {
                 Buffer => {
                     field_type = PassInput(Buffer);
                 },
-                Image(.general) => {
-                    field_type = PassInput(Image(.general));
+                Image => {
+                    field_type = PassInput(Image);
                 },
                 else => {
                     if (@hasDecl(tuple_field.type, "pass_input")) {
@@ -567,8 +537,6 @@ pub const Builder = struct {
                         .reference_count = 0,
                         .resource_type = .buffer,
                         .resource_handle = .{ .id = field.id },
-                        .layout = .general,
-                        .transform = InputOutputTransform.no_op,
                     }) catch unreachable;
 
                     @field(result, input.name) = PassInput(Buffer){
@@ -576,17 +544,15 @@ pub const Builder = struct {
                         .resource = field,
                     };
                 },
-                Image(.general) => {
+                Image => {
                     self.pass_inputs.append(self.allocator, .{
                         .pass_index = null,
                         .reference_count = 0,
                         .resource_type = .image,
                         .resource_handle = .{ .id = field.id },
-                        .layout = .general,
-                        .transform = InputOutputTransform.no_op,
                     }) catch unreachable;
 
-                    @field(result, input.name) = PassInput(Image(.general)){
+                    @field(result, input.name) = PassInput(Image){
                         .index = input_index,
                         .resource = field,
                     };
@@ -604,12 +570,10 @@ pub const Builder = struct {
                             .reference_count = 0,
                             .resource_type = switch (input.type) {
                                 PassOutput(Buffer) => .buffer,
-                                PassOutput(Image(.general)) => .image,
+                                PassOutput(Image) => .image,
                                 else => @compileError("Resource type not supported"),
                             },
                             .resource_handle = .{ .id = field.resource.id },
-                            .layout = .general,
-                            .transform = InputOutputTransform.no_op,
                         }) catch unreachable;
 
                         @field(result, input.name) = PassInput(input.type.ResourceType){
@@ -687,8 +651,6 @@ pub const Builder = struct {
                             .reference_count = 0,
                             .resource_type = if (output.type.ResourceType == Buffer) .buffer else .image,
                             .resource_handle = .{ .id = field.resource.id },
-                            .layout = .general,
-                            .transform = InputOutputTransform.no_op,
                         }) catch unreachable;
 
                         @field(result, output.name) = PassOutput(output.type.ResourceType){
@@ -767,7 +729,7 @@ pub const Builder = struct {
 
     pub fn updateImage(
         self: *@This(),
-        image: PassInput(Image(.general)),
+        image: PassInput(Image),
         offset: usize,
         comptime T: type,
         contents: []const T,
@@ -784,7 +746,7 @@ pub const Builder = struct {
     }
 
     pub const RasterAttachment = struct {
-        image: Image(.attachment),
+        image: Image,
         clear: ?Clear = null,
         ///TODO: determine this at graph compile?
         store: bool = true,
@@ -919,7 +881,7 @@ pub const Builder = struct {
         pipeline: RasterPipeline,
         binding_index: u32,
         array_index: u32,
-        image: PassInput(Image(.general)),
+        image: PassInput(Image),
         sampler: Sampler,
     ) void {
         self.referencePassInput(image);
@@ -1018,12 +980,24 @@ pub const Builder = struct {
         return self.referenceResource(pipeline);
     }
 
+    pub fn passCommandIterator(self: *const @This(), pass_index: u32) Commands.Iterator {
+        const command_offset = self.passes.items(.command_offset)[pass_index];
+        const command_count = self.passes.items(.command_count)[pass_index];
+        const command_data_offset = self.passes.items(.command_data_offset)[pass_index];
+
+        return self.commands.iterator(
+            command_offset,
+            command_count,
+            command_data_offset,
+        );
+    }
+
     ///Incrementes the refence count for buffer and resolves the resource index
     fn referenceResource(self: *@This(), resource: anytype) usize {
         const resources = switch (@TypeOf(resource)) {
             RasterPipeline => &self.raster_pipelines,
             Buffer => &self.buffers,
-            Image(.general), Image(.attachment) => &self.images,
+            Image => &self.images,
             Sampler => &self.samplers,
             else => @compileError("Resource Type not yet supported"),
         };
@@ -1051,8 +1025,6 @@ pub const Builder = struct {
 
         std.hash.autoHashStrat(&hasher, src, std.hash.Strategy.Deep);
 
-        // return hashSourceLocation({}, src);
-
         return hasher.finalInt();
     }
 
@@ -1063,16 +1035,14 @@ pub const Builder = struct {
 pub const CompileContext = struct {
     allocator: std.mem.Allocator,
     scratch_allocator: std.heap.ArenaAllocator,
-    ///TODO: better way to do this?
-    double_buffer: [2]struct {
+    cpu_buffer: [cpu_buffer_count]struct {
         graphics_command_buffer: ?graphics.CommandBuffer = null,
 
-        //global staging buffer pool
         staging_buffer: ?graphics.Buffer = null,
         staging_buffer_size: usize = 0,
         staging_buffer_offset: usize = 0,
         staging_buffer_mapping: [*]u8 = undefined,
-    } = .{ .{}, .{} },
+    },
     buffer_index: u32 = 0,
 
     //TODO: exploit SourceLocation to make a more efficient mapping
@@ -1085,11 +1055,22 @@ pub const CompileContext = struct {
     }) = .{},
     samplers: std.AutoArrayHashMapUnmanaged(u64, graphics.Sampler) = .{},
 
+    ///The number of bufferred command/staging buffers to keep around for gpu/cpu parralelism
+    ///This is completely unrelated and independent from swapchain buffering
+    const cpu_buffer_count = 2;
+
     pub fn init(allocator: std.mem.Allocator) CompileContext {
-        return .{
+        var self: CompileContext = .{
             .allocator = allocator,
             .scratch_allocator = std.heap.ArenaAllocator.init(allocator),
+            .cpu_buffer = undefined,
         };
+
+        for (0..cpu_buffer_count) |i| {
+            self.cpu_buffer[i] = .{};
+        }
+
+        return self;
     }
 
     pub fn deinit(self: *@This()) void {
@@ -1111,7 +1092,7 @@ pub const CompileContext = struct {
             sampler.deinit();
         }
 
-        for (&self.double_buffer) |*buffer| {
+        for (&self.cpu_buffer) |*buffer| {
             if (buffer.graphics_command_buffer != null) buffer.graphics_command_buffer.?.deinit();
 
             if (buffer.staging_buffer != null) {
@@ -1134,11 +1115,9 @@ pub const CompileContext = struct {
         builder: *Builder,
         comptime src: std.builtin.SourceLocation,
         image: graphics.Image,
-        comptime layout: ImageLayout,
-    ) Image(layout) {
+    ) Image {
         const handle = builder.createImage(
             src,
-            layout,
             @enumFromInt(@intFromEnum(image.format)),
             image.width,
             image.height,
@@ -1159,18 +1138,22 @@ pub const CompileContext = struct {
         builder: Builder,
     ) !CompileResult {
         defer {
-            self.buffer_index = if (self.buffer_index != 0) 1 else 0;
+            self.buffer_index += 1;
+            self.buffer_index %= cpu_buffer_count;
         }
 
         defer _ = self.scratch_allocator.reset(.retain_capacity);
 
-        const compile_buffer = &self.double_buffer[self.buffer_index];
+        const compile_buffer = &self.cpu_buffer[self.buffer_index];
 
         compile_buffer.staging_buffer_offset = 0;
         compile_buffer.staging_buffer_size = 0;
 
         if (compile_buffer.graphics_command_buffer == null) {
             compile_buffer.graphics_command_buffer = try graphics.CommandBuffer.init(.graphics);
+        } else {
+            compile_buffer.graphics_command_buffer.?.wait_fence.wait();
+            compile_buffer.graphics_command_buffer.?.wait_fence.reset();
         }
 
         if (builder.passes.len == 0) {
@@ -1211,16 +1194,7 @@ pub const CompileContext = struct {
         for (dependencies.items) |*dependency| {
             if (dependency.generated_commands) continue;
 
-            const pass_index = dependency.pass_index;
-
-            const command_offset = builder.passes.items(.command_offset)[pass_index];
-            const command_count = builder.passes.items(.command_count)[pass_index];
-
-            var command_iter = builder.commands.iterator(
-                command_offset,
-                command_count,
-                builder.passes.items(.command_data_offset)[pass_index],
-            );
+            var command_iter = builder.passCommandIterator(dependency.pass_index);
 
             while (command_iter.next()) |command| {
                 switch (command) {
@@ -1365,7 +1339,7 @@ pub const CompileContext = struct {
                     continue;
                 }
 
-                const handle: ImageUntyped = builder.images.items(.handle)[image_index];
+                const handle: Image = builder.images.items(.handle)[image_index];
 
                 const get_or_put_res = try self.images.getOrPut(self.allocator, handle.id);
 
@@ -1431,16 +1405,7 @@ pub const CompileContext = struct {
             for (dependencies.items) |*dependency| {
                 if (dependency.generated_commands) continue;
 
-                const pass_index = dependency.pass_index;
-
-                const command_offset = builder.passes.items(.command_offset)[pass_index];
-                const command_count = builder.passes.items(.command_count)[pass_index];
-
-                var command_iter = builder.commands.iterator(
-                    command_offset,
-                    command_count,
-                    builder.passes.items(.command_data_offset)[pass_index],
-                );
+                var command_iter = builder.passCommandIterator(dependency.pass_index);
 
                 while (command_iter.next()) |command| {
                     switch (command) {
@@ -1474,20 +1439,32 @@ pub const CompileContext = struct {
                 defer dependency.generated_commands = true;
 
                 const pass_index = dependency.pass_index;
-
-                const command_offset = builder.passes.items(.command_offset)[pass_index];
-                const command_count = builder.passes.items(.command_count)[pass_index];
-                const command_data_offset = builder.passes.items(.command_data_offset)[pass_index];
                 const pass_data: Builder.PassData = builder.passes.items(.data)[pass_index];
-
-                var command_iter = builder.commands.iterator(
-                    command_offset,
-                    command_count,
-                    command_data_offset,
-                );
 
                 var current_pipline: ?*graphics.GraphicsPipeline = null;
                 var current_index_buffer: ?*graphics.Buffer = null;
+
+                if (pass_data == .raster) {
+                    const attachments_input = pass_data.raster.attachments;
+
+                    // attachment barrier prepass
+                    for (attachments_input) |
+                        input,
+                    | {
+                        const image = &self.images.getPtr(input.image.id).?.image;
+
+                        if (input.store) {
+                            try barrier_map.readWriteImage(
+                                image,
+                                .{ .color_attachment_output = true },
+                                .{ .color_attachment_write = true },
+                                .color_attachment_optimal,
+                            );
+                        }
+                    }
+                }
+
+                var command_iter = builder.passCommandIterator(pass_index);
 
                 //barrier prepass
                 while (command_iter.next()) |command| {
@@ -1508,6 +1485,7 @@ pub const CompileContext = struct {
                                 image,
                                 .{ .copy = true },
                                 .{ .transfer_write = true },
+                                .transfer_dst_optimal,
                             );
                         },
                         .set_raster_pipeline_resource_buffer => |command_data| {
@@ -1515,7 +1493,7 @@ pub const CompileContext = struct {
 
                             barrier_map.readBuffer(
                                 buffer,
-                                .{ .vertex_shader = true },
+                                .{ .vertex_shader = true, .fragment_shader = true },
                                 .{ .shader_read = true },
                             );
                         },
@@ -1524,12 +1502,9 @@ pub const CompileContext = struct {
 
                             barrier_map.readImage(
                                 image,
-                                .{
-                                    .fragment_shader = true,
-                                },
-                                .{
-                                    .shader_read = true,
-                                },
+                                .{ .fragment_shader = true },
+                                .{ .shader_read = true },
+                                .shader_read_only_optimal,
                             );
                         },
                         .set_index_buffer => |command_data| {
@@ -1570,7 +1545,10 @@ pub const CompileContext = struct {
 
                     for (attachments_input, attachments) |input, *output| {
                         output.image = &self.images.getPtr(input.image.id).?.image;
-                        output.clear = null;
+                        output.clear = if (input.clear != null) switch (input.clear.?) {
+                            .color => |color| .{ .color = color },
+                            else => unreachable,
+                        } else null;
                         output.store = input.store;
                     }
 
@@ -1588,11 +1566,7 @@ pub const CompileContext = struct {
                 current_pipline = null;
                 current_index_buffer = null;
 
-                command_iter = builder.commands.iterator(
-                    command_offset,
-                    command_count,
-                    command_data_offset,
-                );
+                command_iter = builder.passCommandIterator(pass_index);
 
                 //encode final commands
                 while (command_iter.next()) |command| {
@@ -1768,7 +1742,7 @@ pub const CompileContext = struct {
         alignment: usize,
         size: usize,
     ) void {
-        const frame_data = &self.double_buffer[self.buffer_index];
+        const frame_data = &self.cpu_buffer[self.buffer_index];
 
         frame_data.staging_buffer_size = std.mem.alignForward(usize, frame_data.staging_buffer_size, alignment);
 
@@ -1788,7 +1762,7 @@ pub const CompileContext = struct {
         alignment: usize,
         size: usize,
     ) !StagingBuffer {
-        const frame_data = &self.double_buffer[self.buffer_index];
+        const frame_data = &self.cpu_buffer[self.buffer_index];
 
         frame_data.staging_buffer_offset = std.mem.alignForward(usize, frame_data.staging_buffer_offset, alignment);
 
@@ -1902,11 +1876,34 @@ pub const CompileContext = struct {
             }
         }
 
+        ///Specifies a dependency that will both read and write an image atomically
+        pub fn readWriteImage(
+            self: *@This(),
+            image: *const graphics.Image,
+            stage: graphics.CommandBuffer.PipelineStage,
+            access: graphics.CommandBuffer.ResourceAccess,
+            expected_layout: graphics.vulkan.ImageLayout,
+        ) !void {
+            try self.writeImage(
+                image,
+                stage,
+                access,
+                expected_layout,
+            );
+            self.readImage(
+                image,
+                stage,
+                access,
+                expected_layout,
+            );
+        }
+
         pub fn writeImage(
             self: *@This(),
             image: *const graphics.Image,
             stage: graphics.CommandBuffer.PipelineStage,
             access: graphics.CommandBuffer.ResourceAccess,
+            expected_layout: graphics.vulkan.ImageLayout,
         ) !void {
             const barrier_result = try self.image_map.getOrPut(
                 self.context.scratch_allocator.allocator(),
@@ -1919,6 +1916,7 @@ pub const CompileContext = struct {
                     .source_access = access,
                     .destination_stage = .{},
                     .destination_access = .{},
+                    .destination_layout = expected_layout,
                 };
             } else {
                 updateBarrierMask(
@@ -1927,6 +1925,8 @@ pub const CompileContext = struct {
                     stage,
                     access,
                 );
+
+                barrier_result.value_ptr.source_layout = expected_layout;
             }
         }
 
@@ -1935,6 +1935,7 @@ pub const CompileContext = struct {
             image: *const graphics.Image,
             stage: graphics.CommandBuffer.PipelineStage,
             access: graphics.CommandBuffer.ResourceAccess,
+            expected_layout: graphics.vulkan.ImageLayout,
         ) void {
             const maybe_barrier = self.image_map.getPtr(image);
 
@@ -1945,6 +1946,8 @@ pub const CompileContext = struct {
                     stage,
                     access,
                 );
+
+                out_barrier.destination_layout = expected_layout;
 
                 self.image_barriers.append(self.context.scratch_allocator.allocator(), .{
                     .image = image,
@@ -2026,36 +2029,23 @@ pub const ComputePipeline = struct {
     id: u64,
 };
 
+pub const Sampler = struct {
+    id: u64,
+};
+
 pub const Buffer = struct {
     id: u64,
 
     pub const resource_type = .buffer;
 };
 
-pub const ImageUntyped = struct {
+pub const Image = struct {
     id: u64,
 
     pub const resource_type = .image;
 };
 
-pub const ImageLayout = enum {
-    ///Use for attachment inputs and outputs
-    attachment,
-    ///Use for buffers and shader accessible things
-    general,
-};
-
-///Strongly typed representation of an image with layout. Contains read/write semantics and layout semantics
-pub fn Image(comptime layout: ImageLayout) type {
-    _ = layout; // autofix
-    return struct {
-        id: u64,
-
-        pub const resource_type = .image;
-    };
-}
-
-pub const ImageFormat = enum(i32) {
+pub const ImageFormat = enum(u32) {
     r4g4_unorm_pack8 = 1,
     r4g4b4a4_unorm_pack16 = 2,
     b4g4r4a4_unorm_pack16 = 3,
@@ -2106,14 +2096,203 @@ pub const ImageFormat = enum(i32) {
     b8g8r8a8_uint = 48,
     b8g8r8a8_sint = 49,
     b8g8r8a8_srgb = 50,
-};
-
-pub fn imageLayoutCast(comptime layout: ImageLayout, resource: anytype) Image(layout) {
-    _ = resource; // autofix
-}
-
-pub const Sampler = struct {
-    id: u64,
+    a8b8g8r8_unorm_pack32 = 51,
+    a8b8g8r8_snorm_pack32 = 52,
+    a8b8g8r8_uscaled_pack32 = 53,
+    a8b8g8r8_sscaled_pack32 = 54,
+    a8b8g8r8_uint_pack32 = 55,
+    a8b8g8r8_sint_pack32 = 56,
+    a8b8g8r8_srgb_pack32 = 57,
+    a2r10g10b10_unorm_pack32 = 58,
+    a2r10g10b10_snorm_pack32 = 59,
+    a2r10g10b10_uscaled_pack32 = 60,
+    a2r10g10b10_sscaled_pack32 = 61,
+    a2r10g10b10_uint_pack32 = 62,
+    a2r10g10b10_sint_pack32 = 63,
+    a2b10g10r10_unorm_pack32 = 64,
+    a2b10g10r10_snorm_pack32 = 65,
+    a2b10g10r10_uscaled_pack32 = 66,
+    a2b10g10r10_sscaled_pack32 = 67,
+    a2b10g10r10_uint_pack32 = 68,
+    a2b10g10r10_sint_pack32 = 69,
+    r16_unorm = 70,
+    r16_snorm = 71,
+    r16_uscaled = 72,
+    r16_sscaled = 73,
+    r16_uint = 74,
+    r16_sint = 75,
+    r16_sfloat = 76,
+    r16g16_unorm = 77,
+    r16g16_snorm = 78,
+    r16g16_uscaled = 79,
+    r16g16_sscaled = 80,
+    r16g16_uint = 81,
+    r16g16_sint = 82,
+    r16g16_sfloat = 83,
+    r16g16b16_unorm = 84,
+    r16g16b16_snorm = 85,
+    r16g16b16_uscaled = 86,
+    r16g16b16_sscaled = 87,
+    r16g16b16_uint = 88,
+    r16g16b16_sint = 89,
+    r16g16b16_sfloat = 90,
+    r16g16b16a16_unorm = 91,
+    r16g16b16a16_snorm = 92,
+    r16g16b16a16_uscaled = 93,
+    r16g16b16a16_sscaled = 94,
+    r16g16b16a16_uint = 95,
+    r16g16b16a16_sint = 96,
+    r16g16b16a16_sfloat = 97,
+    r32_uint = 98,
+    r32_sint = 99,
+    r32_sfloat = 100,
+    r32g32_uint = 101,
+    r32g32_sint = 102,
+    r32g32_sfloat = 103,
+    r32g32b32_uint = 104,
+    r32g32b32_sint = 105,
+    r32g32b32_sfloat = 106,
+    r32g32b32a32_uint = 107,
+    r32g32b32a32_sint = 108,
+    r32g32b32a32_sfloat = 109,
+    r64_uint = 110,
+    r64_sint = 111,
+    r64_sfloat = 112,
+    r64g64_uint = 113,
+    r64g64_sint = 114,
+    r64g64_sfloat = 115,
+    r64g64b64_uint = 116,
+    r64g64b64_sint = 117,
+    r64g64b64_sfloat = 118,
+    r64g64b64a64_uint = 119,
+    r64g64b64a64_sint = 120,
+    r64g64b64a64_sfloat = 121,
+    b10g11r11_ufloat_pack32 = 122,
+    e5b9g9r9_ufloat_pack32 = 123,
+    d16_unorm = 124,
+    x8_d24_unorm_pack32 = 125,
+    d32_sfloat = 126,
+    s8_uint = 127,
+    d16_unorm_s8_uint = 128,
+    d24_unorm_s8_uint = 129,
+    d32_sfloat_s8_uint = 130,
+    bc1_rgb_unorm_block = 131,
+    bc1_rgb_srgb_block = 132,
+    bc1_rgba_unorm_block = 133,
+    bc1_rgba_srgb_block = 134,
+    bc2_unorm_block = 135,
+    bc2_srgb_block = 136,
+    bc3_unorm_block = 137,
+    bc3_srgb_block = 138,
+    bc4_unorm_block = 139,
+    bc4_snorm_block = 140,
+    bc5_unorm_block = 141,
+    bc5_snorm_block = 142,
+    bc6h_ufloat_block = 143,
+    bc6h_sfloat_block = 144,
+    bc7_unorm_block = 145,
+    bc7_srgb_block = 146,
+    etc2_r8g8b8_unorm_block = 147,
+    etc2_r8g8b8_srgb_block = 148,
+    etc2_r8g8b8a1_unorm_block = 149,
+    etc2_r8g8b8a1_srgb_block = 150,
+    etc2_r8g8b8a8_unorm_block = 151,
+    etc2_r8g8b8a8_srgb_block = 152,
+    eac_r11_unorm_block = 153,
+    eac_r11_snorm_block = 154,
+    eac_r11g11_unorm_block = 155,
+    eac_r11g11_snorm_block = 156,
+    astc_4x_4_unorm_block = 157,
+    astc_4x_4_srgb_block = 158,
+    astc_5x_4_unorm_block = 159,
+    astc_5x_4_srgb_block = 160,
+    astc_5x_5_unorm_block = 161,
+    astc_5x_5_srgb_block = 162,
+    astc_6x_5_unorm_block = 163,
+    astc_6x_5_srgb_block = 164,
+    astc_6x_6_unorm_block = 165,
+    astc_6x_6_srgb_block = 166,
+    astc_8x_5_unorm_block = 167,
+    astc_8x_5_srgb_block = 168,
+    astc_8x_6_unorm_block = 169,
+    astc_8x_6_srgb_block = 170,
+    astc_8x_8_unorm_block = 171,
+    astc_8x_8_srgb_block = 172,
+    astc_1_0x_5_unorm_block = 173,
+    astc_1_0x_5_srgb_block = 174,
+    astc_1_0x_6_unorm_block = 175,
+    astc_1_0x_6_srgb_block = 176,
+    astc_1_0x_8_unorm_block = 177,
+    astc_1_0x_8_srgb_block = 178,
+    astc_1_0x_10_unorm_block = 179,
+    astc_1_0x_10_srgb_block = 180,
+    astc_1_2x_10_unorm_block = 181,
+    astc_1_2x_10_srgb_block = 182,
+    astc_1_2x_12_unorm_block = 183,
+    astc_1_2x_12_srgb_block = 184,
+    g8b8g8r8_422_unorm = 1000156000,
+    b8g8r8g8_422_unorm = 1000156001,
+    g8_b8_r8_3plane_420_unorm = 1000156002,
+    g8_b8r8_2plane_420_unorm = 1000156003,
+    g8_b8_r8_3plane_422_unorm = 1000156004,
+    g8_b8r8_2plane_422_unorm = 1000156005,
+    g8_b8_r8_3plane_444_unorm = 1000156006,
+    r10x6_unorm_pack16 = 1000156007,
+    r10x6g10x6_unorm_2pack16 = 1000156008,
+    r10x6g10x6b10x6a10x6_unorm_4pack16 = 1000156009,
+    g10x6b10x6g10x6r10x6_422_unorm_4pack16 = 1000156010,
+    b10x6g10x6r10x6g10x6_422_unorm_4pack16 = 1000156011,
+    g10x6_b10x6_r10x6_3plane_420_unorm_3pack16 = 1000156012,
+    g10x6_b10x6r10x6_2plane_420_unorm_3pack16 = 1000156013,
+    g10x6_b10x6_r10x6_3plane_422_unorm_3pack16 = 1000156014,
+    g10x6_b10x6r10x6_2plane_422_unorm_3pack16 = 1000156015,
+    g10x6_b10x6_r10x6_3plane_444_unorm_3pack16 = 1000156016,
+    r12x4_unorm_pack16 = 1000156017,
+    r12x4g12x4_unorm_2pack16 = 1000156018,
+    r12x4g12x4b12x4a12x4_unorm_4pack16 = 1000156019,
+    g12x4b12x4g12x4r12x4_422_unorm_4pack16 = 1000156020,
+    b12x4g12x4r12x4g12x4_422_unorm_4pack16 = 1000156021,
+    g12x4_b12x4_r12x4_3plane_420_unorm_3pack16 = 1000156022,
+    g12x4_b12x4r12x4_2plane_420_unorm_3pack16 = 1000156023,
+    g12x4_b12x4_r12x4_3plane_422_unorm_3pack16 = 1000156024,
+    g12x4_b12x4r12x4_2plane_422_unorm_3pack16 = 1000156025,
+    g12x4_b12x4_r12x4_3plane_444_unorm_3pack16 = 1000156026,
+    g16b16g16r16_422_unorm = 1000156027,
+    b16g16r16g16_422_unorm = 1000156028,
+    g16_b16_r16_3plane_420_unorm = 1000156029,
+    g16_b16r16_2plane_420_unorm = 1000156030,
+    g16_b16_r16_3plane_422_unorm = 1000156031,
+    g16_b16r16_2plane_422_unorm = 1000156032,
+    g16_b16_r16_3plane_444_unorm = 1000156033,
+    g8_b8r8_2plane_444_unorm = 1000330000,
+    g10x6_b10x6r10x6_2plane_444_unorm_3pack16 = 1000330001,
+    g12x4_b12x4r12x4_2plane_444_unorm_3pack16 = 1000330002,
+    g16_b16r16_2plane_444_unorm = 1000330003,
+    a4r4g4b4_unorm_pack16 = 1000340000,
+    a4b4g4r4_unorm_pack16 = 1000340001,
+    astc_4x_4_sfloat_block = 1000066000,
+    astc_5x_4_sfloat_block = 1000066001,
+    astc_5x_5_sfloat_block = 1000066002,
+    astc_6x_5_sfloat_block = 1000066003,
+    astc_6x_6_sfloat_block = 1000066004,
+    astc_8x_5_sfloat_block = 1000066005,
+    astc_8x_6_sfloat_block = 1000066006,
+    astc_8x_8_sfloat_block = 1000066007,
+    astc_1_0x_5_sfloat_block = 1000066008,
+    astc_1_0x_6_sfloat_block = 1000066009,
+    astc_1_0x_8_sfloat_block = 1000066010,
+    astc_1_0x_10_sfloat_block = 1000066011,
+    astc_1_2x_10_sfloat_block = 1000066012,
+    astc_1_2x_12_sfloat_block = 1000066013,
+    pvrtc1_2bpp_unorm_block_img = 1000054000,
+    pvrtc1_4bpp_unorm_block_img = 1000054001,
+    pvrtc2_2bpp_unorm_block_img = 1000054002,
+    pvrtc2_4bpp_unorm_block_img = 1000054003,
+    pvrtc1_2bpp_srgb_block_img = 1000054004,
+    pvrtc1_4bpp_srgb_block_img = 1000054005,
+    pvrtc2_2bpp_srgb_block_img = 1000054006,
+    pvrtc2_4bpp_srgb_block_img = 1000054007,
+    r16g16_s10_5_nv = 1000464000,
 };
 
 test {

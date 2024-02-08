@@ -24,6 +24,7 @@ const acceleration_system = quanta.systems.acceleration_system;
 
 const graphics = quanta.graphics;
 const Renderer3D = quanta.renderer_3d.Renderer3D;
+const renderer_3d_graph = quanta.renderer_3d.renderer_3d_graph;
 const RendererGui = quanta_imgui.RendererGui;
 
 const log = std.log.scoped(.example);
@@ -765,8 +766,13 @@ pub fn update() !UpdateResult {
         &state.render_graph,
         @src(),
         color_image,
-        .attachment,
     );
+
+    const use_traditional_3d_renderer = false;
+
+    if (!use_traditional_3d_renderer) {
+        renderer_3d_graph.buildGraph(&state.render_graph, .{});
+    }
 
     if (imgui.igGetDrawData() != null) {
         RendererGui.renderToGraph(
@@ -776,7 +782,7 @@ pub fn update() !UpdateResult {
         );
     }
 
-    {
+    if (use_traditional_3d_renderer) {
         try Renderer3D.beginSceneRender(
             state.renderer_scene,
             &.{Renderer3D.View{ .camera = state.camera }},
@@ -810,7 +816,10 @@ pub fn update() !UpdateResult {
 
     render_graph_compiled.graphics_command_buffer.end();
 
-    try render_graph_compiled.graphics_command_buffer.submitAndWait();
+    try render_graph_compiled.graphics_command_buffer.submitSemaphore(
+        render_graph_compiled.graphics_command_buffer.wait_fence,
+        image.render_finished,
+    );
 
     try state.swapchain.present();
     try state.swapchain.swap();

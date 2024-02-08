@@ -143,17 +143,35 @@ fn getImageMipLevels(width: u32, height: u32) u32 {
 }
 
 fn initFrameImages(render_width: u32, render_height: u32) !void {
-    self.radiance_color_image = try Image.init(.@"2d", render_width, render_height, 1, 1, vk.Format.r16g16b16a16_sfloat, vk.ImageLayout.attachment_optimal, .{
-        .color_attachment_bit = true,
-        .storage_bit = true,
-        .sampled_bit = true,
-    });
+    self.radiance_color_image = try Image.init(
+        .@"2d",
+        render_width,
+        render_height,
+        1,
+        1,
+        .r16g16b16a16_sfloat,
+        vk.ImageLayout.attachment_optimal,
+        .{
+            .color_attachment_bit = true,
+            .storage_bit = true,
+            .sampled_bit = true,
+        },
+    );
     errdefer self.radiance_color_image.deinit();
 
-    self.depth_image = try Image.init(.@"2d", render_width, render_height, 1, 1, vk.Format.d32_sfloat, vk.ImageLayout.attachment_optimal, .{
-        .depth_stencil_attachment_bit = true,
-        .sampled_bit = true,
-    });
+    self.depth_image = try Image.init(
+        .@"2d",
+        render_width,
+        render_height,
+        1,
+        1,
+        .d32_sfloat,
+        vk.ImageLayout.attachment_optimal,
+        .{
+            .depth_stencil_attachment_bit = true,
+            .sampled_bit = true,
+        },
+    );
     errdefer self.depth_image.deinit();
 
     const depth_pyramid_width = previousPow2(render_width);
@@ -161,11 +179,20 @@ fn initFrameImages(render_width: u32, render_height: u32) !void {
 
     self.depth_pyramid_level_count = getImageMipLevels(depth_pyramid_width, depth_pyramid_height);
 
-    self.depth_pyramid = try Image.init(.@"2d", depth_pyramid_width, depth_pyramid_height, 1, self.depth_pyramid_level_count, vk.Format.r32_sfloat, .general, .{
-        .transfer_src_bit = true,
-        .storage_bit = true,
-        .sampled_bit = true,
-    });
+    self.depth_pyramid = try Image.init(
+        .@"2d",
+        depth_pyramid_width,
+        depth_pyramid_height,
+        1,
+        self.depth_pyramid_level_count,
+        .r32_sfloat,
+        .general,
+        .{
+            .transfer_src_bit = true,
+            .storage_bit = true,
+            .sampled_bit = true,
+        },
+    );
     errdefer self.depth_pyramid.deinit();
 
     self.depth_pyramid_levels = try self.allocator.alloc(graphics.Image.View, self.depth_pyramid.levels);
@@ -187,10 +214,19 @@ fn initFrameImages(render_width: u32, render_height: u32) !void {
         self.depth_pyramid.destroyView(pyramid_level.*);
     };
 
-    self.shadow_image = try Image.init(.@"2d", 4096, 4096, 1, 1, vk.Format.d32_sfloat, vk.ImageLayout.attachment_optimal, .{
-        .depth_stencil_attachment_bit = true,
-        .sampled_bit = true,
-    });
+    self.shadow_image = try Image.init(
+        .@"2d",
+        4096,
+        4096,
+        1,
+        1,
+        .d32_sfloat,
+        vk.ImageLayout.attachment_optimal,
+        .{
+            .depth_stencil_attachment_bit = true,
+            .sampled_bit = true,
+        },
+    );
     errdefer self.shadow_image.deinit();
 }
 
@@ -218,10 +254,23 @@ pub fn init(allocator: std.mem.Allocator) !void {
     self.index_staging_buffers = .{};
     self.first_frame = true;
 
-    self.depth_reduce_pipeline = try graphics.ComputePipeline.init(self.allocator, depth_reduce_comp_spv, .@"2d", null, DepthReducePushData);
+    self.depth_reduce_pipeline = try graphics.ComputePipeline.init(
+        self.allocator,
+        depth_reduce_comp_spv,
+        .@"2d",
+        null,
+        DepthReducePushData,
+    );
     errdefer self.depth_reduce_pipeline.deinit(self.allocator);
 
-    self.depth_reduce_sampler = try graphics.Sampler.init(.nearest, .nearest, .repeat, .repeat, .repeat, .min);
+    self.depth_reduce_sampler = try graphics.Sampler.init(
+        .nearest,
+        .nearest,
+        .repeat,
+        .repeat,
+        .repeat,
+        .min,
+    );
     errdefer self.depth_reduce_sampler.deinit();
 
     try initFrameImages(1920, 1080);
@@ -269,10 +318,22 @@ pub fn init(allocator: std.mem.Allocator) !void {
     self.index_buffer = try graphics.Buffer.init(vertex_buffer_size, .index);
     errdefer self.index_buffer.deinit();
 
-    self.cull_pipeline = try graphics.ComputePipeline.init(self.allocator, @alignCast(@embedFile("pre_depth_cull.comp.spv")), .@"1d", null, DrawCullPushConstants);
+    self.cull_pipeline = try graphics.ComputePipeline.init(
+        self.allocator,
+        @alignCast(@embedFile("pre_depth_cull.comp.spv")),
+        .@"1d",
+        null,
+        DrawCullPushConstants,
+    );
     errdefer self.cull_pipeline.deinit(self.allocator);
 
-    self.post_depth_cull_pipeline = try graphics.ComputePipeline.init(self.allocator, @alignCast(@embedFile("post_depth_cull.comp.spv")), .@"1d", null, PostDepthCullPushConstants);
+    self.post_depth_cull_pipeline = try graphics.ComputePipeline.init(
+        self.allocator,
+        @alignCast(@embedFile("post_depth_cull.comp.spv")),
+        .@"1d",
+        null,
+        PostDepthCullPushConstants,
+    );
     errdefer self.post_depth_cull_pipeline.deinit(self.allocator);
 
     self.post_depth_cull_pipeline.setDescriptorBuffer(1, 0, self.mesh_buffer);
@@ -371,13 +432,26 @@ pub fn init(allocator: std.mem.Allocator) !void {
     );
     errdefer self.shadow_pipeline.deinit(allocator);
 
-    self.color_resolve_pipeline = try graphics.ComputePipeline.init(allocator, @alignCast(@embedFile("color_resolve.comp.spv")), .@"2d", null, ColorResolvePushData);
+    self.color_resolve_pipeline = try graphics.ComputePipeline.init(
+        allocator,
+        @alignCast(@embedFile("color_resolve.comp.spv")),
+        .@"2d",
+        null,
+        ColorResolvePushData,
+    );
     errdefer self.color_resolve_pipeline.deinit(self.allocator);
 
     self.materials_buffer = try graphics.Buffer.init(1024 * @sizeOf(Material), .storage);
     errdefer self.materials_buffer.deinit();
 
-    self.shadow_sampler = try graphics.Sampler.init(.linear, .linear, .clamp_to_border, .clamp_to_border, .clamp_to_border, null);
+    self.shadow_sampler = try graphics.Sampler.init(
+        .linear,
+        .linear,
+        .clamp_to_border,
+        .clamp_to_border,
+        .clamp_to_border,
+        null,
+    );
     errdefer self.shadow_sampler.deinit();
 
     self.color_pipeline.setDescriptorBuffer(0, 0, self.vertex_position_buffer);
@@ -975,7 +1049,14 @@ pub fn endSceneRender(
                 .view_projection = shadow_view_projection.data,
             });
 
-            command_buffer.drawIndexedIndirectCount(scene_data.draw_indirect_buffer, 0, @sizeOf(DrawCommand), scene_data.draw_indirect_count_buffer, 0, scene_data.static_draw_count + scene_data.dynamic_draw_count);
+            command_buffer.drawIndexedIndirectCount(
+                scene_data.draw_indirect_buffer,
+                0,
+                @sizeOf(DrawCommand),
+                scene_data.draw_indirect_count_buffer,
+                0,
+                scene_data.static_draw_count + scene_data.dynamic_draw_count,
+            );
         }
 
         //Depth pass #1
@@ -1020,7 +1101,14 @@ pub fn endSceneRender(
                 .top_of_pipe_bit = true,
             }, self.timeline_query_pool, 0);
 
-            command_buffer.drawIndexedIndirectCount(scene_data.draw_indirect_buffer, 0, @sizeOf(DrawCommand), scene_data.draw_indirect_count_buffer, 0, scene_data.static_draw_count + scene_data.dynamic_draw_count);
+            command_buffer.drawIndexedIndirectCount(
+                scene_data.draw_indirect_buffer,
+                0,
+                @sizeOf(DrawCommand),
+                scene_data.draw_indirect_count_buffer,
+                0,
+                scene_data.static_draw_count + scene_data.dynamic_draw_count,
+            );
 
             GraphicsContext.self.vkd.cmdWriteTimestamp2(command_buffer.handle, vk.PipelineStageFlags2{
                 .bottom_of_pipe_bit = true,
@@ -1032,18 +1120,18 @@ pub fn endSceneRender(
             command_buffer.imageBarrier(self.depth_image, .{
                 .source_stage = .{ .late_fragment_tests = true },
                 .source_access = .{ .depth_attachment_write = true },
-                .source_layout = .attachment_optimal,
                 .destination_stage = .{ .compute_shader = true },
                 .destination_access = .{ .shader_read = true },
+                .source_layout = .attachment_optimal,
                 .destination_layout = .shader_read_only_optimal,
             });
 
             command_buffer.imageBarrier(self.depth_pyramid, .{
                 .source_stage = .{ .compute_shader = true },
                 .source_access = .{ .shader_read = true },
-                .source_layout = .general,
                 .destination_stage = .{ .compute_shader = true },
                 .destination_access = .{ .shader_write = true },
+                .source_layout = .general,
                 .destination_layout = .general,
             });
 
@@ -1054,7 +1142,10 @@ pub fn endSceneRender(
                 const pyramid_level_height: u32 = @max(1, self.depth_pyramid.height >> @as(u5, @intCast(i)));
 
                 command_buffer.setPushData(DepthReducePushData, .{
-                    .image_size = .{ @as(f32, @floatFromInt(pyramid_level_width)), @as(f32, @floatFromInt(pyramid_level_height)) },
+                    .image_size = .{
+                        @as(f32, @floatFromInt(pyramid_level_width)),
+                        @as(f32, @floatFromInt(pyramid_level_height)),
+                    },
                     .image_index = @as(u32, @intCast(i)),
                 });
                 command_buffer.computeDispatch(pyramid_level_width, pyramid_level_height, 1);
@@ -1063,9 +1154,9 @@ pub fn endSceneRender(
                     .layer = 0,
                     .source_stage = .{ .compute_shader = true },
                     .source_access = .{ .shader_write = true },
-                    .source_layout = .general,
                     .destination_stage = .{ .compute_shader = true },
                     .destination_access = .{ .shader_read = true },
+                    .source_layout = .general,
                     .destination_layout = .general,
                 });
             }
@@ -1193,7 +1284,10 @@ pub fn endSceneRender(
 
             if (scene_data.environment_enabled) {
                 command_buffer.setGraphicsPipeline(self.sky_pipeline);
-                command_buffer.setPushData(SkyPipelinePushConstants, .{ .view_projection = projection.mul(.{ .data = .{ .{ view.data[0][0], view.data[0][1], view.data[0][2], 0 }, .{ view.data[1][0], view.data[1][1], view.data[1][2], 0 }, .{ view.data[2][0], view.data[2][1], view.data[2][2], 0 }, .{ 0, 0, 0, 1 } } }).data });
+                command_buffer.setPushData(
+                    SkyPipelinePushConstants,
+                    .{ .view_projection = projection.mul(.{ .data = .{ .{ view.data[0][0], view.data[0][1], view.data[0][2], 0 }, .{ view.data[1][0], view.data[1][1], view.data[1][2], 0 }, .{ view.data[2][0], view.data[2][1], view.data[2][2], 0 }, .{ 0, 0, 0, 1 } } }).data },
+                );
                 command_buffer.draw(36, 1, 0, 0);
             }
 
@@ -1221,12 +1315,10 @@ pub fn endSceneRender(
             command_buffer.imageBarrier(target, .{
                 .source_stage = .{},
                 .source_access = .{},
-                .source_layout = .undefined,
-                .destination_stage = .{
-                    .compute_shader = true,
-                },
+                .destination_stage = .{ .compute_shader = true },
                 .destination_access = .{ .shader_write = true },
-                .destination_layout = vk.ImageLayout.general,
+                .source_layout = .undefined,
+                .destination_layout = .general,
             });
 
             self.color_resolve_pipeline.setDescriptorImageWithLayout(0, 0, self.radiance_color_image, .general);
@@ -1238,29 +1330,15 @@ pub fn endSceneRender(
 
             //output
             command_buffer.imageBarrier(target, .{
-                .source_stage = .{
-                    .compute_shader = true,
-                },
+                .source_stage = .{ .compute_shader = true },
                 .source_access = .{ .shader_write = true },
-                .source_layout = vk.ImageLayout.general,
                 .destination_stage = .{},
                 .destination_access = .{},
+                .source_layout = .general,
                 .destination_layout = .attachment_optimal,
             });
         }
     }
-
-    const timeline_submit_info: vk.TimelineSemaphoreSubmitInfo = .{
-        .wait_semaphore_value_count = 1,
-        .p_wait_semaphore_values = &[_]u64{
-            0,
-        },
-        .signal_semaphore_value_count = 0,
-        .p_signal_semaphore_values = &[_]u64{
-            1,
-        },
-    };
-    _ = timeline_submit_info;
 
     try GraphicsContext.self.vkd.queueSubmit2(GraphicsContext.self.graphics_queue, 1, &[_]vk.SubmitInfo2{.{
         .flags = .{},

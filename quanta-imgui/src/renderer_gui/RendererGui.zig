@@ -1,10 +1,3 @@
-const RendererGui = @This();
-
-const std = @import("std");
-const quanta = @import("quanta");
-const zalgebra = quanta.math.zalgebra;
-const imgui = @import("../imgui/cimgui.zig");
-
 const MeshPipelinePushData = extern struct {
     projection: [4][4]f32,
     texture_index: u32,
@@ -14,7 +7,7 @@ pub fn renderToGraph(
     graph: *quanta.rendering.graph.Builder,
     draw_data: *const imgui.ImDrawData,
     ///The output color attachment to render to
-    target: quanta.rendering.graph.Image(.attachment),
+    target: quanta.rendering.graph.Image,
 ) void {
     const font_atlas = blk: {
         const FontInit = struct {
@@ -40,7 +33,6 @@ pub fn renderToGraph(
 
         const font_image = graph.createImage(
             @src(),
-            .general,
             .r8g8b8a8_srgb,
             @intCast(width),
             @intCast(height),
@@ -54,7 +46,7 @@ pub fn renderToGraph(
         });
 
         //TODO: how do we handle resources who's data does not change
-        //We *could* hash the inputs if we really want to but that's just silly(?)
+        //We *could* memcmp the inputs if we really want to but that's just silly(?)
         if (!FontInit.initialized) {
             graph.updateImage(
                 inputs.font_image,
@@ -137,6 +129,7 @@ pub fn renderToGraph(
             &.{
                 .{
                     .image = target,
+                    .clear = .{ .color = .{ 0, 1, 0, 1 } },
                 },
             },
             0,
@@ -241,3 +234,9 @@ pub fn renderToGraph(
         _ = graph.endRasterPass(.{});
     }
 }
+
+const RendererGui = @This();
+const std = @import("std");
+const quanta = @import("quanta");
+const zalgebra = quanta.math.zalgebra;
+const imgui = @import("../imgui/cimgui.zig");

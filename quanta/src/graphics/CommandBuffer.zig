@@ -383,6 +383,12 @@ pub fn submitAndWait(self: CommandBuffer) !void {
     self.wait_fence.reset();
 }
 
+pub fn submitAndWaitSemaphore(self: CommandBuffer, semaphore: Semaphore) !void {
+    try self.submitSemaphore(self.wait_fence, semaphore);
+    self.wait_fence.wait();
+    self.wait_fence.reset();
+}
+
 pub fn submit(self: CommandBuffer, fence: Fence) !void {
     const queue = switch (self.queue) {
         .graphics => Context.self.graphics_queue,
@@ -404,7 +410,7 @@ pub fn submit(self: CommandBuffer, fence: Fence) !void {
     }}, fence.handle);
 }
 
-pub fn submitSemaphore(self: CommandBuffer, signal_semaphore: Semaphore) !void {
+pub fn submitSemaphore(self: CommandBuffer, fence: Fence, signal_semaphore: Semaphore) !void {
     const queue = switch (self.queue) {
         .graphics => Context.self.graphics_queue,
         .compute => Context.self.compute_queue,
@@ -429,7 +435,7 @@ pub fn submitSemaphore(self: CommandBuffer, signal_semaphore: Semaphore) !void {
             },
             .device_index = 0,
         }},
-    }}, .null_handle);
+    }}, fence.handle);
 }
 
 pub const Attachment = struct {
