@@ -514,6 +514,7 @@ pub fn update() !UpdateResult {
         .view = image.view,
         .memory_page = undefined,
         .size = undefined,
+        .alignment = undefined,
         .format = state.swapchain.surface_format.format,
         .layout = .color_attachment_optimal,
         .aspect_mask = .{ .color_bit = true },
@@ -770,15 +771,17 @@ pub fn update() !UpdateResult {
 
     const use_traditional_3d_renderer = false;
 
-    if (!use_traditional_3d_renderer) {
-        renderer_3d_graph.buildGraph(&state.render_graph, .{});
-    }
+    const renderer_3d_output = renderer_3d_graph.buildGraph(
+        &state.render_graph,
+        .{},
+        graph_swap_image,
+    );
 
     if (imgui.igGetDrawData() != null) {
         RendererGui.renderToGraph(
             &state.render_graph,
             imgui.igGetDrawData(),
-            graph_swap_image,
+            renderer_3d_output.color_target,
         );
     }
 

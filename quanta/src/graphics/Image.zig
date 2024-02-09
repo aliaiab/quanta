@@ -2,6 +2,7 @@ handle: vk.Image,
 type: Type,
 view: vk.ImageView,
 memory_page: Context.DevicePageHandle,
+alignment: usize,
 size: usize,
 format: vk.Format,
 layout: vk.ImageLayout,
@@ -86,7 +87,8 @@ pub fn init(
             .color_bit = format != vk.Format.d32_sfloat,
             .depth_bit = format == vk.Format.d32_sfloat,
         },
-        .size = 0,
+        .size = undefined,
+        .alignment = undefined,
     };
 
     self.handle = try Context.self.vkd.createImage(Context.self.device, &.{
@@ -126,6 +128,7 @@ pub fn init(
     }, &memory_requirements);
 
     self.size = memory_requirements.memory_requirements.size;
+    self.alignment = memory_requirements.memory_requirements.alignment;
 
     self.memory_page = try Context.devicePageAllocateImage(self.handle, .{ .device_local_bit = true });
     errdefer Context.devicePageFree(self.memory_page);
@@ -228,7 +231,8 @@ pub fn initInitialLayout(
             .color_bit = format != vk.Format.d32_sfloat,
             .depth_bit = format == vk.Format.d32_sfloat,
         },
-        .size = 0,
+        .size = undefined,
+        .alignment = undefined,
     };
 
     self.handle = try Context.self.vkd.createImage(Context.self.device, &.{
@@ -268,6 +272,7 @@ pub fn initInitialLayout(
     }, &memory_requirements);
 
     self.size = memory_requirements.memory_requirements.size;
+    self.alignment = memory_requirements.memory_requirements.alignment;
 
     self.memory_page = try Context.devicePageAllocateImage(self.handle, .{ .device_local_bit = true });
     errdefer Context.devicePageFree(self.memory_page);

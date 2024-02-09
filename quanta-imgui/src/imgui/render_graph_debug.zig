@@ -23,19 +23,16 @@ pub fn renderGraphDebug(graph: quanta.rendering.graph.Builder) void {
         const input_offset = graph.passes.items(.input_offset)[pass_index];
         const input_count = graph.passes.items(.input_count)[pass_index];
 
-        const output_offset = graph.passes.items(.output_offset)[pass_index];
-        const output_count = graph.passes.items(.output_count)[pass_index];
-
         const command_offset = graph.passes.items(.command_offset)[pass_index];
         const command_count = graph.passes.items(.command_count)[pass_index];
         const command_data_offset = graph.passes.items(.command_data_offset)[pass_index];
 
-        widgets.textFormat("pass_inputs: count = {}", .{input_count});
-
         for (0..input_count) |input_index| {
-            widgets.textFormat("=> input[{}]: reference_count: {}", .{
+            const input_pass = graph.pass_inputs.items(.pass_index)[input_offset + input_index];
+
+            widgets.textFormat("=> input[{}]: from pass #{}", .{
                 input_index,
-                graph.pass_inputs.items(.reference_count)[input_offset + input_index],
+                input_pass,
             });
         }
 
@@ -64,15 +61,6 @@ pub fn renderGraphDebug(graph: quanta.rendering.graph.Builder) void {
                     widgets.textFormat("[{}]: {s}", .{ command_index, @tagName(command) });
                 },
             }
-        }
-
-        widgets.textFormat("pass_outputs: count = {}", .{output_count});
-
-        for (0..output_count) |output_index| {
-            widgets.textFormat("<= output[{}]: reference_count: {}", .{
-                output_index,
-                graph.pass_inputs.items(.reference_count)[output_offset + output_index],
-            });
         }
     }
 }

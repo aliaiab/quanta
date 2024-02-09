@@ -3,11 +3,14 @@ const MeshPipelinePushData = extern struct {
     texture_index: u32,
 };
 
+const Image = quanta.rendering.graph.Image;
+const Input = quanta.rendering.graph.PassOutput;
+
 pub fn renderToGraph(
     graph: *quanta.rendering.graph.Builder,
     draw_data: *const imgui.ImDrawData,
     ///The output color attachment to render to
-    target: quanta.rendering.graph.Image,
+    target: Image,
 ) void {
     const font_atlas = blk: {
         const FontInit = struct {
@@ -39,17 +42,15 @@ pub fn renderToGraph(
             1,
         );
 
-        io.Fonts.*.TexID = @as(*anyopaque, @ptrFromInt(font_image.id));
+        // io.Fonts.*.TexID = @as(*anyopaque, @ptrFromInt(font_image.getHandle()));
 
-        const inputs = graph.beginTransferPass(@src(), .{
-            .font_image = font_image,
-        });
+        graph.beginTransferPass(@src());
 
         //TODO: how do we handle resources who's data does not change
         //We *could* memcmp the inputs if we really want to but that's just silly(?)
         if (!FontInit.initialized) {
             graph.updateImage(
-                inputs.font_image,
+                font_image,
                 0,
                 u8,
                 pixel_pointer[0..image_contents_size],
@@ -58,7 +59,9 @@ pub fn renderToGraph(
             FontInit.initialized = true;
         }
 
-        break :blk graph.endTransferPass(inputs);
+        break :blk graph.endTransferPass(.{
+            .font_image = font_image,
+        });
     };
 
     //upload
@@ -71,10 +74,7 @@ pub fn renderToGraph(
         const vertex_buffer = graph.createBuffer(@src(), max_vertices * @sizeOf(imgui.ImDrawVert));
         const index_buffer = graph.createBuffer(@src(), max_indices * @sizeOf(u16));
 
-        const inputs = graph.beginTransferPass(@src(), .{
-            .vertex_buffer = vertex_buffer,
-            .index_buffer = index_buffer,
-        });
+        graph.beginTransferPass(@src());
 
         var vertex_offset: usize = 0;
         var index_offset: usize = 0;
@@ -86,14 +86,14 @@ pub fn renderToGraph(
             const indices: []const u16 = command_list.IdxBuffer.Data[0..@as(usize, @intCast(command_list.IdxBuffer.Size))];
 
             graph.updateBuffer(
-                inputs.vertex_buffer,
+                vertex_buffer,
                 vertex_offset * @sizeOf(imgui.ImDrawVert),
                 imgui.ImDrawVert,
                 vertices,
             );
 
             graph.updateBuffer(
-                inputs.index_buffer,
+                index_buffer,
                 index_offset * @sizeOf(u16),
                 u16,
                 indices,
@@ -104,7 +104,10 @@ pub fn renderToGraph(
         }
 
         //output my inputs
-        break :blk graph.endTransferPass(inputs);
+        break :blk graph.endTransferPass(.{
+            .vertex_buffer = vertex_buffer,
+            .index_buffer = index_buffer,
+        });
     };
 
     //Drawing
@@ -124,22 +127,18 @@ pub fn renderToGraph(
         const target_width = graph.imageGetWidth(target);
         const target_height = graph.imageGetHeight(target);
 
-        const inputs = graph.beginRasterPass(
+        graph.beginRasterPass(
             @src(),
             &.{
                 .{
                     .image = target,
-                    .clear = .{ .color = .{ 0, 1, 0, 1 } },
+                    // .clear = .{ .color = .{ 0, 1, 0, 1 } },
                 },
             },
             0,
             0,
             target_width,
             target_height,
-            .{
-                .updated_buffers = updated_buffers,
-                .font_atlas = font_atlas,
-            },
         );
 
         graph.setRasterPipeline(pipeline);
@@ -147,7 +146,7 @@ pub fn renderToGraph(
             pipeline,
             0,
             0,
-            inputs.updated_buffers.vertex_buffer,
+            updated_buffers.vertex_buffer,
         );
 
         const font_sampler = graph.createSampler(@src(), .{
@@ -160,7 +159,7 @@ pub fn renderToGraph(
             pipeline,
             1,
             0,
-            inputs.font_atlas.font_image,
+            font_atlas.font_image,
             font_sampler,
         );
 
@@ -180,7 +179,7 @@ pub fn renderToGraph(
             target_height,
         );
 
-        graph.setIndexBuffer(inputs.updated_buffers.index_buffer, .u16);
+        graph.setIndexBuffer(updated_buffers.index_buffer, .u16);
 
         var ortho = [4][4]f32{
             .{ 2.0, 0.0, 0.0, 0.0 },

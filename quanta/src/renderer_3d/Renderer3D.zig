@@ -1260,6 +1260,7 @@ pub fn endSceneRender(
                 0,
                 1,
             );
+
             command_buffer.setScissor(
                 0,
                 0,
@@ -1286,7 +1287,9 @@ pub fn endSceneRender(
                 command_buffer.setGraphicsPipeline(self.sky_pipeline);
                 command_buffer.setPushData(
                     SkyPipelinePushConstants,
-                    .{ .view_projection = projection.mul(.{ .data = .{ .{ view.data[0][0], view.data[0][1], view.data[0][2], 0 }, .{ view.data[1][0], view.data[1][1], view.data[1][2], 0 }, .{ view.data[2][0], view.data[2][1], view.data[2][2], 0 }, .{ 0, 0, 0, 1 } } }).data },
+                    .{
+                        .view_projection = projection.mul(.{ .data = .{ .{ view.data[0][0], view.data[0][1], view.data[0][2], 0 }, .{ view.data[1][0], view.data[1][1], view.data[1][2], 0 }, .{ view.data[2][0], view.data[2][1], view.data[2][2], 0 }, .{ 0, 0, 0, 1 } } }).data,
+                    },
                 );
                 command_buffer.draw(36, 1, 0, 0);
             }

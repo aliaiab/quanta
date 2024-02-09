@@ -26,12 +26,12 @@ pub const SampleAddressMode = enum {
 
 pub const Command = union(enum) {
     update_buffer: struct {
-        buffer: Buffer,
+        buffer: BufferHandle,
         buffer_offset: usize,
         contents: []const u8,
     },
     update_image: struct {
-        image: Image,
+        image: ImageHandle,
         image_offset: usize,
         contents: []const u8,
     },
@@ -42,13 +42,13 @@ pub const Command = union(enum) {
         pipeline: RasterPipeline,
         binding_index: u32,
         array_index: u32,
-        buffer: Buffer,
+        buffer: BufferHandle,
     },
     set_raster_pipeline_image_sampler: struct {
         pipeline: RasterPipeline,
         binding_index: u32,
         array_index: u32,
-        image: Image,
+        image: ImageHandle,
         sampler: Sampler,
     },
     set_viewport: struct {
@@ -66,7 +66,7 @@ pub const Command = union(enum) {
         height: u32,
     },
     set_index_buffer: struct {
-        index_buffer: Buffer,
+        index_buffer: BufferHandle,
         type: IndexType,
     },
     set_push_data: struct {
@@ -209,12 +209,12 @@ pub const Builder = struct {
         attachment_formats: []const ImageFormat,
     }),
     buffers: std.MultiArrayList(struct {
-        handle: Buffer,
+        handle: BufferHandle,
         reference_count: u32,
         size: usize,
     }),
     images: std.MultiArrayList(struct {
-        handle: Image,
+        handle: ImageHandle,
         reference_count: u32,
         format: ImageFormat,
         width: u32,
@@ -241,18 +241,9 @@ pub const Builder = struct {
         command_data_offset: u32,
         input_offset: u32,
         input_count: u16,
-        output_offset: u32,
-        output_count: u16,
     }),
     pass_inputs: std.MultiArrayList(struct {
-        pass_index: ?u32,
-        reference_count: u32,
-        resource_type: ResourceType,
-        resource_handle: ResourceHandle,
-    }) = .{},
-    pass_outputs: std.MultiArrayList(struct {
         pass_index: u32,
-        reference_count: u32,
         resource_type: ResourceType,
         resource_handle: ResourceHandle,
     }) = .{},
@@ -298,7 +289,6 @@ pub const Builder = struct {
 
         self.passes.deinit(self.allocator);
         self.pass_inputs.deinit(self.allocator);
-        self.pass_outputs.deinit(self.allocator);
 
         self.commands.deinit(self.allocator);
         self.scratch_allocator.deinit();
@@ -315,7 +305,6 @@ pub const Builder = struct {
 
         self.passes.len = 0;
         self.pass_inputs.len = 0;
-        self.pass_outputs.len = 0;
         self.current_pass_index = 0;
 
         self.commands.reset();
@@ -370,9 +359,7 @@ pub const Builder = struct {
     ) Buffer {
         const handle_id = comptime idFromSourceLocation(src);
 
-        const handle: Buffer = .{
-            .id = handle_id,
-        };
+        const handle: BufferHandle = @enumFromInt(handle_id);
 
         self.buffers.append(self.allocator, .{
             .handle = handle,
@@ -380,7 +367,9 @@ pub const Builder = struct {
             .reference_count = 0,
         }) catch unreachable;
 
-        return handle;
+        return .{
+            .handle = handle,
+        };
     }
 
     pub fn createImage(
@@ -393,12 +382,10 @@ pub const Builder = struct {
     ) Image {
         const handle_id = comptime idFromSourceLocation(src);
 
-        const handle: Image = .{
-            .id = handle_id,
-        };
+        const handle: ImageHandle = @enumFromInt(handle_id);
 
         self.images.append(self.allocator, .{
-            .handle = .{ .id = handle_id },
+            .handle = handle,
             .format = format,
             .reference_count = 0,
             .width = width,
@@ -406,23 +393,25 @@ pub const Builder = struct {
             .depth = depth,
         }) catch unreachable;
 
-        return handle;
+        return .{
+            .handle = handle,
+        };
     }
 
     pub fn imageGetWidth(
         self: *@This(),
-        image: anytype,
+        image: Image,
     ) u32 {
-        const index = self.referenceResource(image);
+        const index = self.imageIndex(image);
 
         return self.images.items(.width)[index];
     }
 
     pub fn imageGetHeight(
         self: *@This(),
-        image: anytype,
+        image: Image,
     ) u32 {
-        const index = self.referenceResource(image);
+        const index = self.imageIndex(image);
 
         return self.images.items(.height)[index];
     }
@@ -431,7 +420,7 @@ pub const Builder = struct {
         self: *@This(),
         image: anytype,
     ) u32 {
-        const index = self.referenceResource(image);
+        const index = self.imageIndex(image);
 
         return self.images.items(.depth)[index];
     }
@@ -440,7 +429,7 @@ pub const Builder = struct {
         self: *@This(),
         image: anytype,
     ) ImageFormat {
-        const index = self.referenceResource(image);
+        const index = self.imageIndex(image);
 
         return self.images.items(.format)[index];
     }
@@ -477,206 +466,34 @@ pub const Builder = struct {
         return handle;
     }
 
-    pub fn InputType(comptime InputTuple: type) type {
-        var fields: [std.meta.fields(InputTuple).len]std.builtin.Type.StructField = undefined;
-
-        inline for (std.meta.fields(InputTuple), 0..) |tuple_field, index| {
-            var field_type: type = undefined;
-
-            switch (tuple_field.type) {
-                Buffer => {
-                    field_type = PassInput(Buffer);
-                },
-                Image => {
-                    field_type = PassInput(Image);
-                },
-                else => {
-                    if (@hasDecl(tuple_field.type, "pass_input")) {
-                        field_type = tuple_field.type;
-                    } else if (@hasDecl(tuple_field.type, "pass_output")) {
-                        field_type = PassInput(tuple_field.type.ResourceType);
-                    } else {
-                        field_type = InputType(tuple_field.type);
-                    }
-                },
-            }
-
-            fields[index] = .{
-                .name = tuple_field.name,
-                .type = field_type,
-                .default_value = null,
-                .is_comptime = false,
-                .alignment = @alignOf(field_type),
-            };
-        }
-
-        return @Type(.{
-            .Struct = std.builtin.Type.Struct{
-                .layout = .Auto,
-                .fields = &fields,
-                .decls = &.{},
-                .is_tuple = false,
-            },
-        });
-    }
-
-    fn parseInputs(self: *@This(), inputs: anytype) InputType(@TypeOf(inputs)) {
-        var result: InputType(@TypeOf(inputs)) = undefined;
-
-        inline for (std.meta.fields(@TypeOf(inputs))) |input| {
-            const T = input.type;
-
-            const field = @field(inputs, input.name);
-
-            const input_index: u32 = @intCast(self.pass_inputs.len);
-
-            switch (T) {
-                Buffer => {
-                    self.pass_inputs.append(self.allocator, .{
-                        .pass_index = null,
-                        .reference_count = 0,
-                        .resource_type = .buffer,
-                        .resource_handle = .{ .id = field.id },
-                    }) catch unreachable;
-
-                    @field(result, input.name) = PassInput(Buffer){
-                        .index = input_index,
-                        .resource = field,
-                    };
-                },
-                Image => {
-                    self.pass_inputs.append(self.allocator, .{
-                        .pass_index = null,
-                        .reference_count = 0,
-                        .resource_type = .image,
-                        .resource_handle = .{ .id = field.id },
-                    }) catch unreachable;
-
-                    @field(result, input.name) = PassInput(Image){
-                        .index = input_index,
-                        .resource = field,
-                    };
-                },
-                else => {
-                    if (@hasDecl(input.type, "pass_input")) {
-                        @field(result, input.name) = @field(inputs, input.name);
-                    } else if (@hasDecl(input.type, "pass_output")) {
-                        self.referencePassOutput(field);
-
-                        // @compileLog(input.type);
-
-                        self.pass_inputs.append(self.allocator, .{
-                            .pass_index = self.pass_outputs.items(.pass_index)[field.index],
-                            .reference_count = 0,
-                            .resource_type = switch (input.type) {
-                                PassOutput(Buffer) => .buffer,
-                                PassOutput(Image) => .image,
-                                else => @compileError("Resource type not supported"),
-                            },
-                            .resource_handle = .{ .id = field.resource.id },
-                        }) catch unreachable;
-
-                        @field(result, input.name) = PassInput(input.type.ResourceType){
-                            .index = input_index,
-                            .resource = field.resource,
-                        };
-                    } else {
-                        // @compileError("Input Type not supported");
-                        // field_type = InputType(tuple_field.type);
-
-                        @field(result, input.name) = self.parseInputs(field);
-                    }
-                },
-            }
-        }
-
-        return result;
-    }
-
-    pub fn OutputType(comptime OutputTuple: type) type {
-        var fields: [std.meta.fields(OutputTuple).len]std.builtin.Type.StructField = undefined;
-
-        inline for (std.meta.fields(OutputTuple), 0..) |tuple_field, index| {
-            var field_type: type = undefined;
-
-            switch (tuple_field.type) {
-                else => {
-                    if (@hasDecl(tuple_field.type, "pass_output")) {
-                        field_type = tuple_field.type;
-                    } else if (@hasDecl(tuple_field.type, "pass_input")) {
-                        field_type = PassOutput(tuple_field.type.ResourceType);
-                    } else {
-                        @compileError("Input Type not supported");
-                    }
-                },
-            }
-
-            fields[index] = .{
-                .name = tuple_field.name,
-                .type = field_type,
-                .default_value = null,
-                .is_comptime = false,
-                .alignment = @alignOf(field_type),
-            };
-        }
-
-        return @Type(.{
-            .Struct = std.builtin.Type.Struct{
-                .layout = .Auto,
-                .fields = &fields,
-                .decls = &.{},
-                .is_tuple = false,
-            },
-        });
-    }
-
-    fn parseOutputs(self: *@This(), outputs: anytype) OutputType(@TypeOf(outputs)) {
-        var result: OutputType(@TypeOf(outputs)) = undefined;
+    fn parseOutputs(self: @This(), outputs: anytype) @TypeOf(outputs) {
+        var result: @TypeOf(outputs) = undefined;
 
         inline for (std.meta.fields(@TypeOf(outputs))) |output| {
             const T = output.type;
 
-            const field = @field(outputs, output.name);
-
-            const output_index: u32 = @intCast(self.pass_outputs.len);
-
             switch (T) {
-                else => {
-                    if (@hasDecl(output.type, "pass_output")) {
-                        //Output passthrough
-                        @field(result, output.name) = @field(outputs, output.name);
-                    } else if (@hasDecl(output.type, "pass_input")) {
-                        self.pass_outputs.append(self.allocator, .{
+                Buffer => {
+                    @field(result, output.name) = .{
+                        .from_pass = .{
+                            .handle = @field(outputs, output.name).getHandle(),
                             .pass_index = self.current_pass_index,
-                            .reference_count = 0,
-                            .resource_type = if (output.type.ResourceType == Buffer) .buffer else .image,
-                            .resource_handle = .{ .id = field.resource.id },
-                        }) catch unreachable;
-
-                        @field(result, output.name) = PassOutput(output.type.ResourceType){
-                            .index = output_index,
-                            .resource = field.resource,
-                        };
-                    } else {
-                        @compileError("Input Type not supported");
-                    }
+                        },
+                    };
                 },
+                Image => {
+                    @field(result, output.name) = .{
+                        .from_pass = .{
+                            .handle = @field(outputs, output.name).getHandle(),
+                            .pass_index = self.current_pass_index,
+                        },
+                    };
+                },
+                else => @compileError("Invalid output type"),
             }
         }
 
         return result;
-    }
-
-    fn referencePassInput(self: *@This(), pass_input: anytype) void {
-        self.pass_inputs.items(.reference_count)[pass_input.index] += 1;
-
-        _ = self.referenceResource(pass_input.resource);
-    }
-
-    fn referencePassOutput(self: *@This(), pass_output: anytype) void {
-        self.pass_outputs.items(.reference_count)[pass_output.index] += 1;
-
-        _ = self.referenceResource(pass_output.resource);
     }
 
     ///Begins a pass for transferring, copying and updating resources
@@ -684,25 +501,19 @@ pub const Builder = struct {
         self: *@This(),
         ///Uniquely identifies the pass
         comptime src: SourceLocation,
-        ///The input dependencies for the pass
-        inputs: anytype,
-    ) InputType(@TypeOf(inputs)) {
+    ) void {
         const pass_id = comptime idFromSourceLocation(src);
 
-        self.beginPassGeneric(pass_id, .transfer, std.meta.fields(@TypeOf(inputs)).len);
-
-        return self.parseInputs(inputs);
+        self.beginPassGeneric(pass_id, .transfer);
     }
 
     pub fn endTransferPass(
         self: *@This(),
         outputs: anytype,
-    ) OutputType(@TypeOf(outputs)) {
-        const output_result = self.parseOutputs(outputs);
-
+    ) @TypeOf(outputs) {
         self.endPassGeneric();
 
-        return output_result;
+        return self.parseOutputs(outputs);
     }
 
     ///Update the buffer with contents.
@@ -710,17 +521,17 @@ pub const Builder = struct {
     ///Returns the modified buffer.
     pub fn updateBuffer(
         self: *@This(),
-        buffer: PassInput(Buffer),
+        buffer: Buffer,
         ///The offset into buffer from which contents are written
         buffer_offset: usize,
         comptime T: type,
         contents: []const T,
     ) void {
-        self.referencePassInput(buffer);
+        _ = self.referenceBufferAsInput(buffer);
 
         self.commands.add(self.allocator, .{
             .update_buffer = .{
-                .buffer = buffer.resource,
+                .buffer = buffer.getHandle(),
                 .buffer_offset = buffer_offset,
                 .contents = std.mem.sliceAsBytes(contents),
             },
@@ -729,16 +540,16 @@ pub const Builder = struct {
 
     pub fn updateImage(
         self: *@This(),
-        image: PassInput(Image),
+        image: Image,
         offset: usize,
         comptime T: type,
         contents: []const T,
     ) void {
-        self.referencePassInput(image);
+        self.referenceImageAsInput(image);
 
         self.commands.add(self.allocator, .{
             .update_image = .{
-                .image = .{ .id = image.resource.id },
+                .image = image.getHandle(),
                 .image_offset = offset,
                 .contents = std.mem.sliceAsBytes(contents),
             },
@@ -766,9 +577,7 @@ pub const Builder = struct {
         offset_y: i32,
         width: u32,
         height: u32,
-        ///The input dependencies for the pass
-        inputs: anytype,
-    ) InputType(@TypeOf(inputs)) {
+    ) void {
         const pass_id = comptime idFromSourceLocation(src);
 
         const attachments_allocated = self.scratch_allocator.allocator().dupe(RasterAttachment, attachments) catch unreachable;
@@ -779,12 +588,13 @@ pub const Builder = struct {
                 .render_offset_y = offset_y,
                 .render_width = width,
                 .render_height = height,
-                //TODO: IMPORTANT! add attachments as implicit inputs to the pass
                 .attachments = attachments_allocated,
             },
-        }, std.meta.fields(@TypeOf(inputs)).len);
+        });
 
-        return self.parseInputs(inputs);
+        for (attachments) |attachment| {
+            self.referenceImageAsInput(attachment.image);
+        }
     }
 
     pub fn endRasterPass(
@@ -793,14 +603,13 @@ pub const Builder = struct {
     ) @TypeOf(outputs) {
         self.endPassGeneric();
 
-        return outputs;
+        return self.parseOutputs(outputs);
     }
 
     fn beginPassGeneric(
         self: *@This(),
         id: u64,
         data: PassData,
-        input_count: usize,
     ) void {
         self.current_pass_index = @intCast(self.passes.len);
 
@@ -812,9 +621,7 @@ pub const Builder = struct {
             .command_data_offset = @intCast(self.commands.data.items.len),
             .data = data,
             .input_offset = @intCast(self.pass_inputs.len),
-            .input_count = @intCast(input_count),
-            .output_offset = @intCast(self.pass_outputs.len),
-            .output_count = 0,
+            .input_count = 0,
         }) catch unreachable;
     }
 
@@ -823,10 +630,8 @@ pub const Builder = struct {
     ) void {
         const command_count = self.commands.tags.items.len - self.passes.items(.command_offset)[self.current_pass_index];
         const input_count = self.pass_inputs.len - self.passes.items(.input_offset)[self.current_pass_index];
-        const output_count = self.pass_outputs.len - self.passes.items(.output_offset)[self.current_pass_index];
 
         self.passes.items(.command_count)[self.current_pass_index] = @intCast(command_count);
-        self.passes.items(.output_count)[self.current_pass_index] = @intCast(output_count);
         self.passes.items(.input_count)[self.current_pass_index] = @intCast(input_count);
     }
 
@@ -862,16 +667,16 @@ pub const Builder = struct {
         pipeline: RasterPipeline,
         binding_index: u32,
         array_index: u32,
-        buffer: PassInput(Buffer),
+        buffer: Buffer,
     ) void {
-        self.referencePassInput(buffer);
+        self.referenceBufferAsInput(buffer);
 
         self.commands.add(self.allocator, .{
             .set_raster_pipeline_resource_buffer = .{
                 .pipeline = pipeline,
                 .binding_index = binding_index,
                 .array_index = array_index,
-                .buffer = buffer.resource,
+                .buffer = buffer.getHandle(),
             },
         });
     }
@@ -881,10 +686,10 @@ pub const Builder = struct {
         pipeline: RasterPipeline,
         binding_index: u32,
         array_index: u32,
-        image: PassInput(Image),
+        image: Image,
         sampler: Sampler,
     ) void {
-        self.referencePassInput(image);
+        self.referenceImageAsInput(image);
         _ = self.referenceResource(sampler);
 
         self.commands.add(self.allocator, .{
@@ -892,7 +697,7 @@ pub const Builder = struct {
                 .pipeline = pipeline,
                 .binding_index = binding_index,
                 .array_index = array_index,
-                .image = .{ .id = image.resource.id },
+                .image = image.getHandle(),
                 .sampler = sampler,
             },
         });
@@ -938,14 +743,14 @@ pub const Builder = struct {
 
     pub fn setIndexBuffer(
         self: *@This(),
-        buffer: PassInput(Buffer),
+        buffer: Buffer,
         index_type: IndexType,
     ) void {
-        self.referencePassInput(buffer);
+        self.referenceBufferAsInput(buffer);
 
         self.commands.add(self.allocator, .{
             .set_index_buffer = .{
-                .index_buffer = buffer.resource,
+                .index_buffer = buffer.getHandle(),
                 .type = index_type,
             },
         });
@@ -970,9 +775,73 @@ pub const Builder = struct {
         });
     }
 
+    ///References a buffer as an input to a pass
+    fn referenceBufferAsInput(self: *@This(), buffer: Buffer) void {
+        _ = self.referenceBuffer(buffer);
+
+        if (buffer == .handle) return;
+
+        for (self.pass_inputs.items(.resource_handle)) |handle| {
+            if (handle.id == @intFromEnum(buffer.getHandle())) return;
+        }
+
+        self.pass_inputs.append(self.allocator, .{
+            .pass_index = buffer.from_pass.pass_index,
+            .resource_type = .buffer,
+            .resource_handle = .{ .id = @intFromEnum(buffer.getHandle()) },
+        }) catch unreachable;
+    }
+
     ///Incrementes the refence count for buffer and resolves the buffer index
     pub fn referenceBuffer(self: *@This(), buffer: Buffer) usize {
-        return self.referenceResource(buffer);
+        const handles = self.buffers.items(.handle);
+
+        //TODO: implement more scalable way to search for buffers (bin into buckets?)
+        for (handles, 0..) |handle, buffer_index| {
+            if (handle == buffer.getHandle()) {
+                self.buffers.items(.reference_count)[buffer_index] += 1;
+
+                return buffer_index;
+            }
+        }
+
+        @panic("Invalid resource handle");
+    }
+
+    ///References a buffer as an input to a pass
+    fn referenceImageAsInput(self: *@This(), image: Image) void {
+        _ = self.referenceImage(image);
+
+        if (image == .handle) return;
+
+        for (self.pass_inputs.items(.resource_handle)[self.passes.items(.input_offset)[self.current_pass_index]..]) |handle| {
+            if (handle.id == @intFromEnum(image.getHandle())) return;
+        }
+
+        self.pass_inputs.append(self.allocator, .{
+            .pass_index = image.from_pass.pass_index,
+            .resource_type = .image,
+            .resource_handle = .{ .id = @intFromEnum(image.getHandle()) },
+        }) catch unreachable;
+    }
+
+    ///Incrementes the refence count for buffer and resolves the buffer index
+    pub fn referenceImage(self: *@This(), image: Image) usize {
+        const image_index = self.imageIndex(image);
+
+        self.images.items(.reference_count)[image_index] += 1;
+
+        return image_index;
+    }
+
+    pub fn imageIndex(self: @This(), image: Image) usize {
+        for (self.images.items(.handle), 0..) |handle, image_index| {
+            if (handle == image.getHandle()) {
+                return image_index;
+            }
+        }
+
+        @panic("Invalid image index");
     }
 
     ///Incrementes the refence count for buffer and resolves the buffer index
@@ -1047,8 +916,8 @@ pub const CompileContext = struct {
 
     //TODO: exploit SourceLocation to make a more efficient mapping
     raster_pipelines: std.AutoArrayHashMapUnmanaged(u64, graphics.GraphicsPipeline) = .{},
-    buffers: std.AutoArrayHashMapUnmanaged(u64, graphics.Buffer) = .{},
-    images: std.AutoArrayHashMapUnmanaged(u64, struct {
+    buffers: std.AutoArrayHashMapUnmanaged(BufferHandle, graphics.Buffer) = .{},
+    images: std.AutoArrayHashMapUnmanaged(ImageHandle, struct {
         imported: bool = false,
         //TODO: use pointer for external image maybe?
         image: graphics.Image,
@@ -1124,7 +993,7 @@ pub const CompileContext = struct {
             1,
         );
 
-        const get_or_put_result = self.images.getOrPut(self.allocator, handle.id) catch unreachable;
+        const get_or_put_result = self.images.getOrPut(self.allocator, handle.getHandle()) catch unreachable;
 
         get_or_put_result.value_ptr.image = image;
         get_or_put_result.value_ptr.imported = true;
@@ -1181,12 +1050,12 @@ pub const CompileContext = struct {
             );
         }
 
-        var buffer_usages: std.AutoArrayHashMapUnmanaged(Buffer, struct {
+        var buffer_usages: std.AutoArrayHashMapUnmanaged(BufferHandle, struct {
             usage: graphics.vulkan.BufferUsageFlags,
         }) = .{};
         defer buffer_usages.deinit(self.scratch_allocator.allocator());
 
-        var image_usages: std.AutoArrayHashMapUnmanaged(u64, struct {
+        var image_usages: std.AutoArrayHashMapUnmanaged(ImageHandle, struct {
             usage: graphics.vulkan.ImageUsageFlags,
         }) = .{};
         defer image_usages.deinit(self.scratch_allocator.allocator());
@@ -1212,7 +1081,7 @@ pub const CompileContext = struct {
                     .update_image => |command_data| {
                         const result = try image_usages.getOrPutValue(
                             self.scratch_allocator.allocator(),
-                            command_data.image.id,
+                            command_data.image,
                             .{
                                 .usage = .{},
                             },
@@ -1245,7 +1114,7 @@ pub const CompileContext = struct {
                     .set_raster_pipeline_image_sampler => |command_data| {
                         const result = try image_usages.getOrPutValue(
                             self.scratch_allocator.allocator(),
-                            command_data.image.id,
+                            command_data.image,
                             .{
                                 .usage = .{},
                             },
@@ -1315,9 +1184,9 @@ pub const CompileContext = struct {
                     continue;
                 }
 
-                const handle: Buffer = builder.buffers.items(.handle)[buffer_index];
+                const handle = builder.buffers.items(.handle)[buffer_index];
 
-                const get_or_put_res = try self.buffers.getOrPut(self.allocator, handle.id);
+                const get_or_put_res = try self.buffers.getOrPut(self.allocator, handle);
 
                 //cache hit
                 if (get_or_put_res.found_existing) {
@@ -1339,9 +1208,9 @@ pub const CompileContext = struct {
                     continue;
                 }
 
-                const handle: Image = builder.images.items(.handle)[image_index];
+                const handle = builder.images.items(.handle)[image_index];
 
-                const get_or_put_res = try self.images.getOrPut(self.allocator, handle.id);
+                const get_or_put_res = try self.images.getOrPut(self.allocator, handle);
 
                 //cache hit
                 if (get_or_put_res.found_existing) {
@@ -1361,7 +1230,7 @@ pub const CompileContext = struct {
                     1,
                     @enumFromInt(@intFromEnum(image_format)),
                     .shader_read_only_optimal,
-                    image_usages.get(handle.id).?.usage,
+                    image_usages.get(handle).?.usage,
                 );
                 errdefer get_or_put_res.value_ptr.image.deinit();
             }
@@ -1413,8 +1282,9 @@ pub const CompileContext = struct {
                             self.preAllocateStagingMemory(1, update_buffer.contents.len);
                         },
                         .update_image => |update_image| {
-                            //TODO: align based on the format
-                            self.preAllocateStagingMemory(4, update_image.contents.len);
+                            const image = self.images.get(update_image.image).?.image;
+
+                            self.preAllocateStagingMemory(image.alignment, image.size);
                         },
                         else => {},
                     }
@@ -1451,7 +1321,7 @@ pub const CompileContext = struct {
                     for (attachments_input) |
                         input,
                     | {
-                        const image = &self.images.getPtr(input.image.id).?.image;
+                        const image = &self.images.getPtr(input.image.getHandle()).?.image;
 
                         if (input.store) {
                             try barrier_map.readWriteImage(
@@ -1470,7 +1340,7 @@ pub const CompileContext = struct {
                 while (command_iter.next()) |command| {
                     switch (command) {
                         .update_buffer => |update_buffer| {
-                            const buffer = self.buffers.getPtr(update_buffer.buffer.id).?;
+                            const buffer = self.buffers.getPtr(update_buffer.buffer).?;
 
                             try barrier_map.writeBuffer(
                                 buffer,
@@ -1479,7 +1349,7 @@ pub const CompileContext = struct {
                             );
                         },
                         .update_image => |update_image| {
-                            const image = &self.images.getPtr(update_image.image.id).?.image;
+                            const image = &self.images.getPtr(update_image.image).?.image;
 
                             try barrier_map.writeImage(
                                 image,
@@ -1489,7 +1359,7 @@ pub const CompileContext = struct {
                             );
                         },
                         .set_raster_pipeline_resource_buffer => |command_data| {
-                            const buffer = self.buffers.getPtr(command_data.buffer.id).?;
+                            const buffer = self.buffers.getPtr(command_data.buffer).?;
 
                             barrier_map.readBuffer(
                                 buffer,
@@ -1498,7 +1368,7 @@ pub const CompileContext = struct {
                             );
                         },
                         .set_raster_pipeline_image_sampler => |command_data| {
-                            const image = &self.images.getPtr(command_data.image.id).?.image;
+                            const image = &self.images.getPtr(command_data.image).?.image;
 
                             barrier_map.readImage(
                                 image,
@@ -1508,7 +1378,7 @@ pub const CompileContext = struct {
                             );
                         },
                         .set_index_buffer => |command_data| {
-                            current_index_buffer = self.buffers.getPtr(command_data.index_buffer.id).?;
+                            current_index_buffer = self.buffers.getPtr(command_data.index_buffer).?;
                         },
                         .draw_indexed => {
                             barrier_map.readBuffer(
@@ -1544,7 +1414,7 @@ pub const CompileContext = struct {
                     defer self.scratch_allocator.allocator().free(attachments);
 
                     for (attachments_input, attachments) |input, *output| {
-                        output.image = &self.images.getPtr(input.image.id).?.image;
+                        output.image = &self.images.getPtr(input.image.getHandle()).?.image;
                         output.clear = if (input.clear != null) switch (input.clear.?) {
                             .color => |color| .{ .color = color },
                             else => unreachable,
@@ -1572,7 +1442,7 @@ pub const CompileContext = struct {
                 while (command_iter.next()) |command| {
                     switch (command) {
                         .update_buffer => |update_buffer| {
-                            const buffer = self.buffers.getPtr(update_buffer.buffer.id).?;
+                            const buffer = self.buffers.getPtr(update_buffer.buffer).?;
 
                             const staging_contents = try self.allocateStagingBuffer(1, update_buffer.contents.len);
 
@@ -1588,7 +1458,7 @@ pub const CompileContext = struct {
                             );
                         },
                         .update_image => |update_image| {
-                            const image = self.images.getPtr(update_image.image.id).?.image;
+                            const image = self.images.getPtr(update_image.image).?.image;
 
                             const staging_contents = try self.allocateStagingBuffer(4, update_image.contents.len);
 
@@ -1609,7 +1479,7 @@ pub const CompileContext = struct {
                             current_pipline = pipeline;
                         },
                         .set_raster_pipeline_resource_buffer => |command_data| {
-                            const buffer = self.buffers.getPtr(command_data.buffer.id).?;
+                            const buffer = self.buffers.getPtr(command_data.buffer).?;
 
                             current_pipline.?.setDescriptorBuffer(
                                 command_data.binding_index,
@@ -1618,7 +1488,7 @@ pub const CompileContext = struct {
                             );
                         },
                         .set_raster_pipeline_image_sampler => |command_data| {
-                            const image = &self.images.getPtr(command_data.image.id).?.image;
+                            const image = &self.images.getPtr(command_data.image).?.image;
                             const sampler = self.samplers.getPtr(command_data.sampler.id).?;
 
                             current_pipline.?.setDescriptorImageSampler(
@@ -1647,7 +1517,7 @@ pub const CompileContext = struct {
                             );
                         },
                         .set_index_buffer => |command_data| {
-                            current_index_buffer = self.buffers.getPtr(command_data.index_buffer.id).?;
+                            current_index_buffer = self.buffers.getPtr(command_data.index_buffer).?;
 
                             command_buffer.setIndexBuffer(current_index_buffer.?.*, switch (command_data.type) {
                                 .u16 => .u16,
@@ -1700,27 +1570,22 @@ pub const CompileContext = struct {
         var dependency_count: u32 = 0;
 
         for (0..input_count) |input_index| {
-            const pass_if_any = builder.pass_inputs.items(.pass_index)[input_offset + input_index];
-            const input_reference_count = builder.pass_inputs.items(.reference_count)[input_offset + input_index];
+            const pass_dependency_index = builder.pass_inputs.items(.pass_index)[input_offset + input_index];
 
-            if (pass_if_any) |pass_dependency_index| {
-                if (input_reference_count != 0) {
-                    const existing_index = block: for (pass_dependencies, 0..) |pass_dep, dependency_index| {
-                        if (pass_dep.pass_index == pass_dependency_index) break :block dependency_index;
-                    } else dependency_count;
+            const existing_index = block: for (pass_dependencies, 0..) |pass_dep, dependency_index| {
+                if (pass_dep.pass_index == pass_dependency_index) break :block dependency_index;
+            } else dependency_count;
 
-                    const found_existing = existing_index != dependency_count;
+            const found_existing = existing_index != dependency_count;
 
-                    if (found_existing) continue;
+            if (found_existing) continue;
 
-                    pass_dependencies[dependency_count] = .{
-                        .reference_count = 1,
-                        .pass_index = pass_dependency_index,
-                    };
+            pass_dependencies[dependency_count] = .{
+                .reference_count = 1,
+                .pass_index = pass_dependency_index,
+            };
 
-                    dependency_count += 1;
-                }
-            }
+            dependency_count += 1;
         }
 
         for (pass_dependencies[0..dependency_count]) |dep| {
@@ -1983,28 +1848,6 @@ pub const CompileContext = struct {
     const graphics = @import("../graphics.zig");
 };
 
-pub fn PassInput(comptime Resource: type) type {
-    return struct {
-        ///Input index
-        index: u32,
-        resource: Resource,
-
-        pub const pass_input = Resource;
-        pub const ResourceType = Resource;
-    };
-}
-
-pub fn PassOutput(comptime Resource: type) type {
-    return struct {
-        ///Input index
-        index: u32,
-        resource: Resource,
-
-        pub const pass_output = Resource;
-        pub const ResourceType = Resource;
-    };
-}
-
 pub const ResourceType = enum {
     buffer,
     image,
@@ -2033,17 +1876,45 @@ pub const Sampler = struct {
     id: u64,
 };
 
-pub const Buffer = struct {
-    id: u64,
+pub const Buffer = union(enum) {
+    ///Raw handle, used for when a resource handle is newly created
+    handle: BufferHandle,
+    ///Indicates this buffer 'comes' from a pass
+    from_pass: struct {
+        handle: BufferHandle,
+        pass_index: u32,
+    },
 
-    pub const resource_type = .buffer;
+    pub fn getHandle(self: Buffer) BufferHandle {
+        return switch (self) {
+            .handle => |handle| handle,
+            .from_pass => |from_pass| from_pass.handle,
+        };
+    }
 };
 
-pub const Image = struct {
-    id: u64,
+pub const BufferHandle = enum(u64) { _ };
+
+pub const Image = union(enum) {
+    ///Raw handle, used for when a resource handle is newly created
+    handle: ImageHandle,
+    ///Indicates this buffer 'comes' from a pass
+    from_pass: struct {
+        handle: ImageHandle,
+        pass_index: u32,
+    },
+
+    pub fn getHandle(self: Image) ImageHandle {
+        return switch (self) {
+            .handle => |handle| handle,
+            .from_pass => |from_pass| from_pass.handle,
+        };
+    }
 
     pub const resource_type = .image;
 };
+
+pub const ImageHandle = enum(u64) { _ };
 
 pub const ImageFormat = enum(u32) {
     r4g4_unorm_pack8 = 1,
