@@ -120,10 +120,7 @@ pub fn renderToGraph(
                     .image = target,
                 },
             },
-            0,
-            0,
-            target_width,
-            target_height,
+            .entirety,
         );
         defer graph.endRasterPass();
 

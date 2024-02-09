@@ -2,13 +2,13 @@ const std = @import("std");
 const vk = @import("vk.zig");
 const spirv = @import("spirv.zig");
 
-fn getDescriptorType(spirv_op: spirv.SpvOp) vk.DescriptorType {
+fn getDescriptorType(spirv_op: spirv.SpvOp) ?vk.DescriptorType {
     return switch (spirv_op) {
         spirv.SpvOpTypeStruct => .storage_buffer,
         spirv.SpvOpTypeImage => .storage_image,
         spirv.SpvOpTypeSampler => .sampler,
         spirv.SpvOpTypeSampledImage => .combined_image_sampler,
-        else => unreachable,
+        else => null,
     };
 }
 
@@ -160,16 +160,18 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
             const array_length = ids[ids[id.type_id].type_id].array_length;
             const resource_type = getDescriptorType(type_kind);
 
+            if (resource_type == null) continue;
+
             {
                 for (result.resources) |resource| {
-                    if (resource.binding == id.binding and resource.descriptor_type == resource_type) {
+                    if (resource.binding == id.binding and resource.descriptor_type == resource_type.?) {
                         continue :id_loop;
                     }
                 }
             }
 
             result.resources[result.resource_count] = .{
-                .descriptor_type = resource_type,
+                .descriptor_type = resource_type.?,
                 .descriptor_count = array_length,
                 .binding = id.binding,
             };

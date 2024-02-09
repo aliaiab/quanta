@@ -8,13 +8,14 @@ pub fn buildGraph(
     const render_width = 1920;
     const render_height = 1080;
 
-    // const radiance_target = graph.createImage(
-    //     @src(),
-    //     .r16g16b16a16_sfloat,
-    //     render_width,
-    //     render_height,
-    //     1,
-    // );
+    const radiance_target = graph.createImage(
+        @src(),
+        .r16g16b16a16_sfloat,
+        render_width,
+        render_height,
+        1,
+    );
+    _ = radiance_target;
 
     const depth_target = graph.createImage(
         @src(),
@@ -168,18 +169,15 @@ pub fn buildGraph(
                 .image = output_target,
                 .clear = .{ .color = .{ 0.2, 0.2, 0.2, 1 } },
             }},
-            0,
-            0,
-            graph.imageGetWidth(output_target.*),
-            graph.imageGetHeight(output_target.*),
+            .entirety,
         );
         defer graph.endRasterPass();
 
         graph.setViewport(
             0,
-            @as(f32, @floatFromInt(render_height)),
-            @as(f32, @floatFromInt(render_width)),
-            -@as(f32, @floatFromInt(render_height)),
+            @as(f32, @floatFromInt(graph.imageGetHeight(output_target.*))),
+            @as(f32, @floatFromInt(graph.imageGetWidth(output_target.*))),
+            -@as(f32, @floatFromInt(graph.imageGetHeight(output_target.*))),
             0,
             1,
         );
@@ -187,8 +185,8 @@ pub fn buildGraph(
         graph.setScissor(
             0,
             0,
-            render_width,
-            render_height,
+            graph.imageGetWidth(output_target.*),
+            graph.imageGetHeight(output_target.*),
         );
 
         const color_pipeline = graph.createRasterPipeline(

@@ -536,13 +536,9 @@ pub const Builder = struct {
         self.endPassGeneric();
     }
 
-    ///Update the buffer with contents.
-    ///Must be in a pass.
-    ///Returns the modified buffer.
     pub fn updateBuffer(
         self: *@This(),
         buffer: *Buffer,
-        ///The offset into buffer from which contents are written
         buffer_offset: usize,
         comptime T: type,
         contents: []const T,
@@ -633,15 +629,22 @@ pub const Builder = struct {
         depth: f32,
     };
 
+    pub const RasterRenderArea = union(enum) {
+        rectangle: struct {
+            offset_x: i32 = 0,
+            offset_y: i32 = 0,
+            width: u32,
+            height: u32,
+        },
+        ///Renders to the largest possible area for all attachments in a pass
+        entirety: void,
+    };
+
     pub fn beginRasterPass(
         self: *@This(),
-        ///Uniquely identifies the pass
         comptime src: SourceLocation,
         attachments: []const RasterAttachmentConfig,
-        offset_x: i32,
-        offset_y: i32,
-        width: u32,
-        height: u32,
+        render_area: RasterRenderArea,
     ) void {
         const pass_id = comptime idFromSourceLocation(src);
 
@@ -653,6 +656,26 @@ pub const Builder = struct {
                 .clear = attachment.clear,
                 .store = attachment.store,
             };
+        }
+
+        var offset_x: i32 = undefined;
+        var offset_y: i32 = undefined;
+        var width: u32 = undefined;
+        var height: u32 = undefined;
+
+        switch (render_area) {
+            .entirety => {
+                offset_x = 0;
+                offset_y = 0;
+                width = self.imageGetWidth(attachments[0].image.*);
+                height = self.imageGetHeight(attachments[0].image.*);
+            },
+            .rectangle => |rectangle| {
+                offset_x = rectangle.offset_x;
+                offset_y = rectangle.offset_y;
+                width = rectangle.width;
+                height = rectangle.height;
+            },
         }
 
         self.beginPassGeneric(pass_id, .{
@@ -1127,7 +1150,7 @@ pub const CompileContext = struct {
             compile_buffer.graphics_command_buffer.?.wait_fence.reset();
         }
 
-        if (builder.passes.len == 0 or builder.export_resource == null) {
+        if (builder.export_resource == null) {
             //generate empty command buffer
             try compile_buffer.graphics_command_buffer.?.begin();
 

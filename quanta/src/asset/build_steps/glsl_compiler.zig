@@ -231,7 +231,7 @@ pub fn run() !void {
 
     var spirv_options: glslang_c.glslang_spv_options_t = .{
         .generate_debug_info = shader_optimize == .Debug and false,
-        .strip_debug_info = shader_optimize != .Debug,
+        .strip_debug_info = shader_optimize != .Debug and false,
         .disable_optimizer = shader_optimize == .Debug,
         .optimize_size = shader_optimize == .ReleaseSmall,
         .disassemble = false,

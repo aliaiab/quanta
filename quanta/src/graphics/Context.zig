@@ -1,5 +1,4 @@
-///TODO: FIXME: Disabling validation layers is currently causing a very strange *bug* where the gpu seems to stall
-pub const enable_khronos_validation = builtin.mode == .Debug or true;
+pub const enable_khronos_validation = builtin.mode == .Debug;
 pub const enable_debug_messenger = enable_khronos_validation;
 pub const vulkan_version = std.SemanticVersion{
     .major = 1,
@@ -152,10 +151,10 @@ fn debugUtilsMessengerCallback(
 
     if (message_severity.error_bit_ext) {
         log.err("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message });
-        std.os.abort();
+        @panic("");
     } else if (message_severity.warning_bit_ext) {
         log.warn("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message });
-        std.os.abort();
+        @panic("");
     } else {
         log.debug("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message });
     }
