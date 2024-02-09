@@ -112,18 +112,6 @@ pub fn renderToGraph(
 
     //Drawing
     {
-        const pipeline = graph.createRasterPipeline(
-            @src(),
-            .{ .code = @alignCast(@embedFile("mesh.vert.spv")) },
-            .{ .code = @alignCast(@embedFile("mesh.frag.spv")) },
-            .{
-                .attachment_formats = &.{
-                    graph.imageGetFormat(target),
-                },
-            },
-            @sizeOf(MeshPipelinePushData),
-        );
-
         const target_width = graph.imageGetWidth(target);
         const target_height = graph.imageGetHeight(target);
 
@@ -139,6 +127,29 @@ pub fn renderToGraph(
             0,
             target_width,
             target_height,
+        );
+
+        const pipeline = graph.createRasterPipeline(
+            @src(),
+            .{ .code = @alignCast(@embedFile("mesh.vert.spv")) },
+            .{ .code = @alignCast(@embedFile("mesh.frag.spv")) },
+            .{
+                .attachment_formats = &.{
+                    graph.imageGetFormat(target),
+                },
+                .depth_state = .{
+                    .write_enabled = false,
+                    .test_enabled = false,
+                    .compare_op = .greater,
+                },
+                .rasterisation_state = .{
+                    .polygon_mode = .fill,
+                },
+                .blend_state = .{
+                    .blend_enabled = true,
+                },
+            },
+            @sizeOf(MeshPipelinePushData),
         );
 
         graph.setRasterPipeline(pipeline);

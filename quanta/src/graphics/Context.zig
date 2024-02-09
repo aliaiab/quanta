@@ -388,6 +388,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
     const validation_features = [_]vk.ValidationFeatureEnableEXT{
         // .best_practices_ext,
         .synchronization_validation_ext,
+        .gpu_assisted_ext,
     };
 
     self.instance = try self.vkb.createInstance(&.{

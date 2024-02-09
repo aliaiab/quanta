@@ -207,6 +207,9 @@ pub const Builder = struct {
         fragment_module: RasterModule,
         push_constant_size: u32,
         attachment_formats: []const ImageFormat,
+        depth_state: @import("../graphics.zig").GraphicsPipeline.Options.DepthState,
+        rasterisation_state: @import("../graphics.zig").GraphicsPipeline.Options.RasterisationState,
+        blend_state: @import("../graphics.zig").GraphicsPipeline.Options.BlendState,
     }),
     buffers: std.MultiArrayList(struct {
         handle: BufferHandle,
@@ -314,6 +317,9 @@ pub const Builder = struct {
 
     const CreateRasterPipelineOptions = struct {
         attachment_formats: []const ImageFormat,
+        depth_state: @import("../graphics.zig").GraphicsPipeline.Options.DepthState = .{},
+        rasterisation_state: @import("../graphics.zig").GraphicsPipeline.Options.RasterisationState = .{},
+        blend_state: @import("../graphics.zig").GraphicsPipeline.Options.BlendState = .{},
     };
 
     pub fn createRasterPipeline(
@@ -337,6 +343,9 @@ pub const Builder = struct {
             .reference_count = 0,
             .push_constant_size = @intCast(push_constant_size),
             .attachment_formats = self.scratch_allocator.allocator().dupe(ImageFormat, options.attachment_formats) catch unreachable,
+            .depth_state = options.depth_state,
+            .rasterisation_state = options.rasterisation_state,
+            .blend_state = options.blend_state,
         }) catch unreachable;
 
         return handle;
@@ -1146,6 +1155,8 @@ pub const CompileContext = struct {
                     continue;
                 }
 
+                const pipeline = builder.raster_pipelines.get(pipeline_index);
+
                 const vertex_module: RasterModule = builder.raster_pipelines.items(.vertex_module)[pipeline_index];
                 const fragment_module: RasterModule = builder.raster_pipelines.items(.fragment_module)[pipeline_index];
                 const push_constant_size = builder.raster_pipelines.items(.push_constant_size)[pipeline_index];
@@ -1158,17 +1169,9 @@ pub const CompileContext = struct {
                         .color_attachment_formats = @as([*]const graphics.vulkan.Format, @alignCast(@ptrCast(attachment_formats.ptr)))[0..attachment_formats.len],
                         .vertex_shader_binary = @alignCast(vertex_module.code),
                         .fragment_shader_binary = @alignCast(fragment_module.code),
-                        .depth_state = .{
-                            .write_enabled = false,
-                            .test_enabled = false,
-                            .compare_op = .greater,
-                        },
-                        .rasterisation_state = .{
-                            .polygon_mode = .fill,
-                        },
-                        .blend_state = .{
-                            .blend_enabled = true,
-                        },
+                        .depth_state = pipeline.depth_state,
+                        .rasterisation_state = pipeline.rasterisation_state,
+                        .blend_state = pipeline.blend_state,
                     },
                     //TODO: handle vertex layouts (if anyone's using that in 2024)
                     null,

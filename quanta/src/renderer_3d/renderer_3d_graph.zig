@@ -16,13 +16,13 @@ pub fn buildGraph(
     const render_width = 1920;
     const render_height = 1080;
 
-    const radiance_target = graph.createImage(
-        @src(),
-        .r16g16b16a16_sfloat,
-        render_width,
-        render_height,
-        1,
-    );
+    // const radiance_target = graph.createImage(
+    //     @src(),
+    //     .r16g16b16a16_sfloat,
+    //     render_width,
+    //     render_height,
+    //     1,
+    // );
 
     const depth_target = graph.createImage(
         @src(),
@@ -40,7 +40,7 @@ pub fn buildGraph(
             @src(),
             &.{.{
                 .image = output_target,
-                .clear = .{ .color = .{ 1, 0, 0, 1 } },
+                .clear = .{ .color = .{ 0.2, 0.2, 0.2, 1 } },
             }},
             0,
             0,
@@ -89,7 +89,6 @@ pub fn buildGraph(
 
     _ = index_buffer;
     _ = vertex_buffer;
-    _ = radiance_target;
     _ = depth_target;
 
     return .{ .color_target = color_pass.color_target };
