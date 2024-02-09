@@ -3,14 +3,11 @@ const MeshPipelinePushData = extern struct {
     texture_index: u32,
 };
 
-const Image = quanta.rendering.graph.Image;
-const Input = quanta.rendering.graph.PassOutput;
-
 pub fn renderToGraph(
     graph: *quanta.rendering.graph.Builder,
     draw_data: *const imgui.ImDrawData,
     ///The output color attachment to render to
-    target: Image,
+    target: *Image,
 ) void {
     const font_atlas = blk: {
         const FontInit = struct {
@@ -34,7 +31,7 @@ pub fn renderToGraph(
 
         const image_contents_size: usize = @as(usize, @intCast(width)) * @as(usize, @intCast(height)) * @sizeOf(u32);
 
-        const font_image = graph.createImage(
+        var font_image = graph.createImage(
             @src(),
             .r8g8b8a8_srgb,
             @intCast(width),
@@ -45,12 +42,13 @@ pub fn renderToGraph(
         // io.Fonts.*.TexID = @as(*anyopaque, @ptrFromInt(font_image.getHandle()));
 
         graph.beginTransferPass(@src());
+        defer graph.endTransferPass();
 
         //TODO: how do we handle resources who's data does not change
         //We *could* memcmp the inputs if we really want to but that's just silly(?)
         if (!FontInit.initialized) {
             graph.updateImage(
-                font_image,
+                &font_image,
                 0,
                 u8,
                 pixel_pointer[0..image_contents_size],
@@ -59,9 +57,9 @@ pub fn renderToGraph(
             FontInit.initialized = true;
         }
 
-        break :blk graph.endTransferPass(.{
+        break :blk .{
             .font_image = font_image,
-        });
+        };
     };
 
     //upload
@@ -71,10 +69,11 @@ pub fn renderToGraph(
         const max_indices = 50_000;
 
         //Notice how these resources are local to this scope. We pass these resources as inputs to passes, so these variable names needn't be referenced
-        const vertex_buffer = graph.createBuffer(@src(), max_vertices * @sizeOf(imgui.ImDrawVert));
-        const index_buffer = graph.createBuffer(@src(), max_indices * @sizeOf(u16));
+        var vertex_buffer = graph.createBuffer(@src(), max_vertices * @sizeOf(imgui.ImDrawVert));
+        var index_buffer = graph.createBuffer(@src(), max_indices * @sizeOf(u16));
 
         graph.beginTransferPass(@src());
+        defer graph.endTransferPass();
 
         var vertex_offset: usize = 0;
         var index_offset: usize = 0;
@@ -86,14 +85,14 @@ pub fn renderToGraph(
             const indices: []const u16 = command_list.IdxBuffer.Data[0..@as(usize, @intCast(command_list.IdxBuffer.Size))];
 
             graph.updateBuffer(
-                vertex_buffer,
+                &vertex_buffer,
                 vertex_offset * @sizeOf(imgui.ImDrawVert),
                 imgui.ImDrawVert,
                 vertices,
             );
 
             graph.updateBuffer(
-                index_buffer,
+                &index_buffer,
                 index_offset * @sizeOf(u16),
                 u16,
                 indices,
@@ -103,24 +102,22 @@ pub fn renderToGraph(
             index_offset += indices.len;
         }
 
-        //output my inputs
-        break :blk graph.endTransferPass(.{
+        break :blk .{
             .vertex_buffer = vertex_buffer,
             .index_buffer = index_buffer,
-        });
+        };
     };
 
     //Drawing
     {
-        const target_width = graph.imageGetWidth(target);
-        const target_height = graph.imageGetHeight(target);
+        const target_width = graph.imageGetWidth(target.*);
+        const target_height = graph.imageGetHeight(target.*);
 
         graph.beginRasterPass(
             @src(),
             &.{
                 .{
                     .image = target,
-                    // .clear = .{ .color = .{ 0, 1, 0, 1 } },
                 },
             },
             0,
@@ -128,6 +125,7 @@ pub fn renderToGraph(
             target_width,
             target_height,
         );
+        defer graph.endRasterPass();
 
         const pipeline = graph.createRasterPipeline(
             @src(),
@@ -135,7 +133,7 @@ pub fn renderToGraph(
             .{ .code = @alignCast(@embedFile("mesh.frag.spv")) },
             .{
                 .attachment_formats = &.{
-                    graph.imageGetFormat(target),
+                    graph.imageGetFormat(target.*),
                 },
                 .depth_state = .{
                     .write_enabled = false,
@@ -240,8 +238,6 @@ pub fn renderToGraph(
             vertex_offset += vertices.len;
             index_offset += indices.len;
         }
-
-        _ = graph.endRasterPass(.{});
     }
 }
 
@@ -250,3 +246,4 @@ const std = @import("std");
 const quanta = @import("quanta");
 const zalgebra = quanta.math.zalgebra;
 const imgui = @import("../imgui/cimgui.zig");
+const Image = quanta.rendering.graph.Image;

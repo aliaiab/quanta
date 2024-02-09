@@ -51,6 +51,14 @@ pub const Command = union(enum) {
         image: ImageHandle,
         sampler: Sampler,
     },
+    set_compute_pipeline: struct {
+        pipeline: ComputePipeline,
+    },
+    compute_dispatch: struct {
+        thread_count_x: u32,
+        thread_count_y: u32,
+        thread_count_z: u32,
+    },
     set_viewport: struct {
         x: f32,
         y: f32,
@@ -202,20 +210,26 @@ pub const Builder = struct {
         handle: RasterPipeline,
         ///Number of times the pipeline was referenced in the graph
         reference_count: u32,
-
         vertex_module: RasterModule,
         fragment_module: RasterModule,
+
         push_constant_size: u32,
         attachment_formats: []const ImageFormat,
         depth_state: @import("../graphics.zig").GraphicsPipeline.Options.DepthState,
         rasterisation_state: @import("../graphics.zig").GraphicsPipeline.Options.RasterisationState,
         blend_state: @import("../graphics.zig").GraphicsPipeline.Options.BlendState,
-    }),
+    }) = .{},
+    compute_pipelines: std.MultiArrayList(struct {
+        handle: ComputePipeline,
+        reference_count: u32,
+        module: ComputeModule,
+        push_constant_size: usize,
+    }) = .{},
     buffers: std.MultiArrayList(struct {
         handle: BufferHandle,
         reference_count: u32,
         size: usize,
-    }),
+    }) = .{},
     images: std.MultiArrayList(struct {
         handle: ImageHandle,
         reference_count: u32,
@@ -244,13 +258,20 @@ pub const Builder = struct {
         command_data_offset: u32,
         input_offset: u32,
         input_count: u16,
-    }),
+    }) = .{},
     pass_inputs: std.MultiArrayList(struct {
         pass_index: u32,
         resource_type: ResourceType,
         resource_handle: ResourceHandle,
     }) = .{},
-    commands: Commands,
+    commands: Commands = .{},
+    ///The exported resource whose data can be observed from outside the graph
+    ///Acts as the root edge of the graph
+    ///TODO: allow multiple graph exports
+    export_resource: ?union(enum) {
+        image: Image,
+        buffer: Buffer,
+    } = null,
 
     ///TODO: Handle nested passes?
     ///We could have some kind of context? (IE when we call beginPass*, we context 'switch')
@@ -276,16 +297,13 @@ pub const Builder = struct {
         return .{
             .allocator = allocator,
             .scratch_allocator = std.heap.ArenaAllocator.init(allocator),
-            .raster_pipelines = .{},
-            .buffers = .{},
-            .passes = .{},
-            .commands = .{},
             .current_pass_index = 0,
         };
     }
 
     pub fn deinit(self: *@This()) void {
         self.raster_pipelines.deinit(self.allocator);
+        self.compute_pipelines.deinit(self.allocator);
         self.buffers.deinit(self.allocator);
         self.images.deinit(self.allocator);
         self.samplers.deinit(self.allocator);
@@ -302,6 +320,7 @@ pub const Builder = struct {
     ///Clear the graph to its default state. Allows for graph reuse for dynamically building graphs.
     pub fn clear(self: *@This()) void {
         self.raster_pipelines.len = 0;
+        self.compute_pipelines.len = 0;
         self.buffers.len = 0;
         self.images.len = 0;
         self.samplers.len = 0;
@@ -310,9 +329,19 @@ pub const Builder = struct {
         self.pass_inputs.len = 0;
         self.current_pass_index = 0;
 
+        self.export_resource = null;
+
         self.commands.reset();
 
         _ = self.scratch_allocator.reset(std.heap.ArenaAllocator.ResetMode{ .retain_capacity = {} });
+    }
+
+    pub fn scratchAlloc(self: *@This(), comptime T: type, count: usize) []T {
+        return self.scratch_allocator.allocator().alloc(T, count) catch unreachable;
+    }
+
+    pub fn scratchDupe(self: *@This(), comptime T: type, values: []const T) []T {
+        return self.scratch_allocator.allocator().dupe(T, values) catch unreachable;
     }
 
     const CreateRasterPipelineOptions = struct {
@@ -354,11 +383,23 @@ pub const Builder = struct {
     pub fn createComputePipeline(
         self: *@This(),
         comptime src: SourceLocation,
+        module: ComputeModule,
+        push_constant_size: usize,
     ) ComputePipeline {
-        _ = self; // autofix
-        _ = src; // autofix
+        const handle_id = comptime idFromSourceLocation(src);
 
-        @compileError("Not yet implemented");
+        const handle: ComputePipeline = .{
+            .id = handle_id,
+        };
+
+        self.compute_pipelines.append(self.allocator, .{
+            .handle = handle,
+            .module = module,
+            .reference_count = 0,
+            .push_constant_size = @intCast(push_constant_size),
+        }) catch unreachable;
+
+        return handle;
     }
 
     pub fn createBuffer(
@@ -430,7 +471,7 @@ pub const Builder = struct {
 
     pub fn imageGetDepth(
         self: *@This(),
-        image: anytype,
+        image: Image,
     ) u32 {
         const index = self.imageIndex(image);
 
@@ -439,7 +480,7 @@ pub const Builder = struct {
 
     pub fn imageGetFormat(
         self: *@This(),
-        image: anytype,
+        image: Image,
     ) ImageFormat {
         const index = self.imageIndex(image);
 
@@ -478,36 +519,6 @@ pub const Builder = struct {
         return handle;
     }
 
-    fn parseOutputs(self: @This(), outputs: anytype) @TypeOf(outputs) {
-        var result: @TypeOf(outputs) = undefined;
-
-        inline for (std.meta.fields(@TypeOf(outputs))) |output| {
-            const T = output.type;
-
-            switch (T) {
-                Buffer => {
-                    @field(result, output.name) = .{
-                        .from_pass = .{
-                            .handle = @field(outputs, output.name).getHandle(),
-                            .pass_index = self.current_pass_index,
-                        },
-                    };
-                },
-                Image => {
-                    @field(result, output.name) = .{
-                        .from_pass = .{
-                            .handle = @field(outputs, output.name).getHandle(),
-                            .pass_index = self.current_pass_index,
-                        },
-                    };
-                },
-                else => @compileError("Invalid output type"),
-            }
-        }
-
-        return result;
-    }
-
     ///Begins a pass for transferring, copying and updating resources
     pub fn beginTransferPass(
         self: *@This(),
@@ -521,11 +532,8 @@ pub const Builder = struct {
 
     pub fn endTransferPass(
         self: *@This(),
-        outputs: anytype,
-    ) @TypeOf(outputs) {
+    ) void {
         self.endPassGeneric();
-
-        return self.parseOutputs(outputs);
     }
 
     ///Update the buffer with contents.
@@ -533,13 +541,13 @@ pub const Builder = struct {
     ///Returns the modified buffer.
     pub fn updateBuffer(
         self: *@This(),
-        buffer: Buffer,
+        buffer: *Buffer,
         ///The offset into buffer from which contents are written
         buffer_offset: usize,
         comptime T: type,
         contents: []const T,
     ) void {
-        _ = self.referenceBufferAsInput(buffer);
+        _ = self.referenceBufferAsInput(buffer.*);
 
         self.commands.add(self.allocator, .{
             .update_buffer = .{
@@ -548,16 +556,42 @@ pub const Builder = struct {
                 .contents = std.mem.sliceAsBytes(contents),
             },
         });
+
+        buffer.* = .{
+            .from_pass = .{
+                .handle = buffer.getHandle(),
+                .pass_index = self.current_pass_index,
+            },
+        };
+    }
+
+    pub fn updateBufferValue(
+        self: *@This(),
+        buffer: *Buffer,
+        buffer_offset: usize,
+        comptime T: type,
+        value: T,
+    ) void {
+        const contents = self.scratch_allocator.allocator().alloc(T, 1) catch unreachable;
+
+        contents[0] = value;
+
+        self.updateBuffer(
+            buffer,
+            buffer_offset,
+            T,
+            contents,
+        );
     }
 
     pub fn updateImage(
         self: *@This(),
-        image: Image,
+        image: *Image,
         offset: usize,
         comptime T: type,
         contents: []const T,
     ) void {
-        self.referenceImageAsInput(image);
+        self.referenceImageAsInput(image.*);
 
         self.commands.add(self.allocator, .{
             .update_image = .{
@@ -566,11 +600,18 @@ pub const Builder = struct {
                 .contents = std.mem.sliceAsBytes(contents),
             },
         });
+
+        image.* = .{
+            .from_pass = .{
+                .handle = image.getHandle(),
+                .pass_index = self.current_pass_index,
+            },
+        };
     }
 
     pub const RasterAttachment = struct {
-        image: Image,
-        clear: ?Clear = null,
+        image: ImageHandle,
+        clear: ?AttachmentClear = null,
         ///TODO: determine this at graph compile?
         store: bool = true,
 
@@ -580,11 +621,23 @@ pub const Builder = struct {
         };
     };
 
+    pub const RasterAttachmentConfig = struct {
+        image: *Image,
+        clear: ?AttachmentClear = null,
+        ///TODO: determine this at graph compile?
+        store: bool = true,
+    };
+
+    pub const AttachmentClear = union(enum) {
+        color: [4]f32,
+        depth: f32,
+    };
+
     pub fn beginRasterPass(
         self: *@This(),
         ///Uniquely identifies the pass
         comptime src: SourceLocation,
-        attachments: []const RasterAttachment,
+        attachments: []const RasterAttachmentConfig,
         offset_x: i32,
         offset_y: i32,
         width: u32,
@@ -592,7 +645,15 @@ pub const Builder = struct {
     ) void {
         const pass_id = comptime idFromSourceLocation(src);
 
-        const attachments_allocated = self.scratch_allocator.allocator().dupe(RasterAttachment, attachments) catch unreachable;
+        const attachments_allocated = self.scratch_allocator.allocator().alloc(RasterAttachment, attachments.len) catch unreachable;
+
+        for (attachments_allocated, attachments) |*attachment_allocated, attachment| {
+            attachment_allocated.* = .{
+                .image = attachment.image.getHandle(),
+                .clear = attachment.clear,
+                .store = attachment.store,
+            };
+        }
 
         self.beginPassGeneric(pass_id, .{
             .raster = .{
@@ -605,17 +666,21 @@ pub const Builder = struct {
         });
 
         for (attachments) |attachment| {
-            self.referenceImageAsInput(attachment.image);
+            self.referenceImageAsInput(attachment.image.*);
+
+            attachment.image.* = .{
+                .from_pass = .{
+                    .handle = attachment.image.getHandle(),
+                    .pass_index = self.current_pass_index,
+                },
+            };
         }
     }
 
     pub fn endRasterPass(
         self: *@This(),
-        outputs: anytype,
-    ) @TypeOf(outputs) {
+    ) void {
         self.endPassGeneric();
-
-        return self.parseOutputs(outputs);
     }
 
     fn beginPassGeneric(
@@ -787,11 +852,26 @@ pub const Builder = struct {
         });
     }
 
+    pub fn setComputePipeline(
+        self: *@This(),
+        pipeline: ComputePipeline,
+    ) void {
+        self.commands.add(self.allocator, .{
+            .set_compute_pipeline = .{
+                .pipeline = pipeline,
+            },
+        });
+    }
+
     ///References a buffer as an input to a pass
     fn referenceBufferAsInput(self: *@This(), buffer: Buffer) void {
         _ = self.referenceBuffer(buffer);
 
         if (buffer == .handle) return;
+
+        //Avoid cyclic depdedency on current pass
+        //TODO: handle intrapass depedencies
+        if (buffer.from_pass.pass_index == self.current_pass_index) return;
 
         for (self.pass_inputs.items(.resource_handle)) |handle| {
             if (handle.id == @intFromEnum(buffer.getHandle())) return;
@@ -825,6 +905,10 @@ pub const Builder = struct {
         _ = self.referenceImage(image);
 
         if (image == .handle) return;
+
+        //Avoid cyclic depdedency on current pass
+        //TODO: handle intrapass depedencies
+        if (image.from_pass.pass_index == self.current_pass_index) return;
 
         for (self.pass_inputs.items(.resource_handle)[self.passes.items(.input_offset)[self.current_pass_index]..]) |handle| {
             if (handle.id == @intFromEnum(image.getHandle())) return;
@@ -928,6 +1012,7 @@ pub const CompileContext = struct {
 
     //TODO: exploit SourceLocation to make a more efficient mapping
     raster_pipelines: std.AutoArrayHashMapUnmanaged(u64, graphics.GraphicsPipeline) = .{},
+    compute_pipelines: std.AutoArrayHashMapUnmanaged(ComputePipeline, graphics.ComputePipeline) = .{},
     buffers: std.AutoArrayHashMapUnmanaged(BufferHandle, graphics.Buffer) = .{},
     images: std.AutoArrayHashMapUnmanaged(ImageHandle, struct {
         imported: bool = false,
@@ -959,6 +1044,10 @@ pub const CompileContext = struct {
             raster_pipeline.deinit(self.allocator);
         }
 
+        for (self.compute_pipelines.values()) |*compute_pipeline| {
+            compute_pipeline.deinit(self.allocator);
+        }
+
         for (self.buffers.values()) |*buffer| {
             buffer.deinit();
         }
@@ -982,6 +1071,7 @@ pub const CompileContext = struct {
         }
 
         self.raster_pipelines.deinit(self.allocator);
+        self.compute_pipelines.deinit(self.allocator);
         self.buffers.deinit(self.allocator);
         self.images.deinit(self.allocator);
         self.samplers.deinit(self.allocator);
@@ -1037,7 +1127,7 @@ pub const CompileContext = struct {
             compile_buffer.graphics_command_buffer.?.wait_fence.reset();
         }
 
-        if (builder.passes.len == 0) {
+        if (builder.passes.len == 0 or builder.export_resource == null) {
             //generate empty command buffer
             try compile_buffer.graphics_command_buffer.?.begin();
 
@@ -1053,7 +1143,10 @@ pub const CompileContext = struct {
         //Second pass: pass dependency analysis
         {
             //The first pass to evaluate. Evaluation goes bottom up (from last executed to first)
-            const root_pass_index: u32 = @intCast(builder.passes.len - 1);
+            const root_pass_index: u32 = switch (builder.export_resource.?) {
+                .image => |image| image.from_pass.pass_index,
+                .buffer => |buffer| buffer.from_pass.pass_index,
+            };
 
             try self.compilePassDependencies(
                 builder,
@@ -1072,8 +1165,30 @@ pub const CompileContext = struct {
         }) = .{};
         defer image_usages.deinit(self.scratch_allocator.allocator());
 
+        //Usage mapping
         for (dependencies.items) |*dependency| {
             if (dependency.generated_commands) continue;
+
+            const pass_index = dependency.pass_index;
+            const pass_data: Builder.PassData = builder.passes.items(.data)[pass_index];
+
+            if (pass_data == .raster) {
+                const attachments_input = pass_data.raster.attachments;
+
+                for (attachments_input) |
+                    input,
+                | {
+                    const result = try image_usages.getOrPutValue(
+                        self.scratch_allocator.allocator(),
+                        input.image,
+                        .{
+                            .usage = .{},
+                        },
+                    );
+
+                    result.value_ptr.*.usage.color_attachment_bit = true;
+                }
+            }
 
             var command_iter = builder.passCommandIterator(dependency.pass_index);
 
@@ -1228,6 +1343,8 @@ pub const CompileContext = struct {
                 const image_depth = builder.images.items(.depth)[image_index];
                 const image_format = builder.images.items(.format)[image_index];
 
+                if (image_usages.get(handle) == null) continue;
+
                 get_or_put_res.value_ptr.*.image = try graphics.Image.init(
                     .@"2d",
                     image_width,
@@ -1327,7 +1444,7 @@ pub const CompileContext = struct {
                     for (attachments_input) |
                         input,
                     | {
-                        const image = &self.images.getPtr(input.image.getHandle()).?.image;
+                        const image = &self.images.getPtr(input.image).?.image;
 
                         if (input.store) {
                             try barrier_map.readWriteImage(
@@ -1420,7 +1537,7 @@ pub const CompileContext = struct {
                     defer self.scratch_allocator.allocator().free(attachments);
 
                     for (attachments_input, attachments) |input, *output| {
-                        output.image = &self.images.getPtr(input.image.getHandle()).?.image;
+                        output.image = &self.images.getPtr(input.image).?.image;
                         output.clear = if (input.clear != null) switch (input.clear.?) {
                             .color => |color| .{ .color = color },
                             else => unreachable,
@@ -1485,19 +1602,22 @@ pub const CompileContext = struct {
                             current_pipline = pipeline;
                         },
                         .set_raster_pipeline_resource_buffer => |command_data| {
+                            const pipeline = self.raster_pipelines.getPtr(command_data.pipeline.id).?;
                             const buffer = self.buffers.getPtr(command_data.buffer).?;
 
-                            current_pipline.?.setDescriptorBuffer(
+                            pipeline.setDescriptorBuffer(
                                 command_data.binding_index,
                                 command_data.array_index,
                                 buffer.*,
                             );
                         },
                         .set_raster_pipeline_image_sampler => |command_data| {
+                            const pipeline = self.raster_pipelines.getPtr(command_data.pipeline.id).?;
+
                             const image = &self.images.getPtr(command_data.image).?.image;
                             const sampler = self.samplers.getPtr(command_data.sampler.id).?;
 
-                            current_pipline.?.setDescriptorImageSampler(
+                            pipeline.setDescriptorImageSampler(
                                 command_data.binding_index,
                                 command_data.array_index,
                                 image.*,
@@ -1540,6 +1660,18 @@ pub const CompileContext = struct {
                                 command_data.first_index,
                                 command_data.vertex_offset,
                                 command_data.first_instance,
+                            );
+                        },
+                        .set_compute_pipeline => |command_data| {
+                            const pipeline = self.compute_pipelines.getPtr(command_data.pipeline).?;
+
+                            command_buffer.setComputePipeline(pipeline.*);
+                        },
+                        .compute_dispatch => |command_data| {
+                            command_buffer.computeDispatch(
+                                command_data.thread_count_x,
+                                command_data.thread_count_y,
+                                command_data.thread_count_z,
                             );
                         },
                     }
@@ -1866,6 +1998,11 @@ pub const ResourceHandle = packed struct(u64) {
 
 ///TODO: provide specialisation constants
 pub const RasterModule = struct {
+    ///Graphics API specific code
+    code: []align(4) const u8,
+};
+
+pub const ComputeModule = struct {
     ///Graphics API specific code
     code: []align(4) const u8,
 };

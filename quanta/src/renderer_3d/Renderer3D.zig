@@ -1278,9 +1278,23 @@ pub fn endSceneRender(
             const use_occlusion_culling = false;
 
             if (use_occlusion_culling) {
-                command_buffer.drawIndexedIndirectCount(scene_data.draw_indirect_buffer, scene_data.post_depth_draw_command_offset * @sizeOf(DrawCommand), @sizeOf(DrawCommand), scene_data.draw_indirect_count_buffer, @sizeOf(u32), scene_data.static_draw_count + scene_data.dynamic_draw_count);
+                command_buffer.drawIndexedIndirectCount(
+                    scene_data.draw_indirect_buffer,
+                    scene_data.post_depth_draw_command_offset * @sizeOf(DrawCommand),
+                    @sizeOf(DrawCommand),
+                    scene_data.draw_indirect_count_buffer,
+                    @sizeOf(u32),
+                    scene_data.static_draw_count + scene_data.dynamic_draw_count,
+                );
             } else {
-                command_buffer.drawIndexedIndirectCount(scene_data.draw_indirect_buffer, 0, @sizeOf(DrawCommand), scene_data.draw_indirect_count_buffer, 0, scene_data.static_draw_count + scene_data.dynamic_draw_count);
+                command_buffer.drawIndexedIndirectCount(
+                    scene_data.draw_indirect_buffer,
+                    0,
+                    @sizeOf(DrawCommand),
+                    scene_data.draw_indirect_count_buffer,
+                    0,
+                    scene_data.static_draw_count + scene_data.dynamic_draw_count,
+                );
             }
 
             if (scene_data.environment_enabled) {

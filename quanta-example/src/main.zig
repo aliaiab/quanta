@@ -763,7 +763,7 @@ pub fn update() !UpdateResult {
 
     state.render_graph.clear();
 
-    const graph_swap_image = state.render_graph_compile_context.importExternalImage(
+    var graph_swap_image = state.render_graph_compile_context.importExternalImage(
         &state.render_graph,
         @src(),
         color_image,
@@ -771,19 +771,24 @@ pub fn update() !UpdateResult {
 
     const use_traditional_3d_renderer = false;
 
-    const renderer_3d_output = renderer_3d_graph.buildGraph(
-        &state.render_graph,
-        .{},
-        graph_swap_image,
-    );
+    if (true)
+        renderer_3d_graph.buildGraph(
+            &state.render_graph,
+            .{
+                .camera = state.camera,
+            },
+            &graph_swap_image,
+        );
 
     if (imgui.igGetDrawData() != null) {
         RendererGui.renderToGraph(
             &state.render_graph,
             imgui.igGetDrawData(),
-            renderer_3d_output.color_target,
+            &graph_swap_image,
         );
     }
+
+    state.render_graph.export_resource = .{ .image = graph_swap_image };
 
     if (use_traditional_3d_renderer) {
         try Renderer3D.beginSceneRender(

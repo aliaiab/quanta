@@ -23,9 +23,15 @@ out Out
     vec2 uv;
 } out_data;
 
+#define USING_CPU_DRIVEN_COMMANDS true
+
 void main() 
 {
-    u32 instance_index = draw_commands[gl_DrawIDARB].instance_index;
+    #if USING_CPU_DRIVEN_COMMAND 
+        u32 instance_index = 0;
+    #else 
+        u32 instance_index = draw_commands[gl_DrawIDARB].instance_index;
+    #endif
     
     Vertex vertex = vertices[gl_VertexIndex]; 
 
