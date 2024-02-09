@@ -410,7 +410,7 @@ pub fn submit(self: CommandBuffer, fence: Fence) !void {
     }}, fence.handle);
 }
 
-pub fn submitSemaphore(self: CommandBuffer, fence: Fence, signal_semaphore: Semaphore) !void {
+pub fn submitSemaphore(self: CommandBuffer, fence: Fence, wait_semaphore: Semaphore, signal_semaphore: Semaphore) !void {
     const queue = switch (self.queue) {
         .graphics => Context.self.graphics_queue,
         .compute => Context.self.compute_queue,
@@ -419,8 +419,15 @@ pub fn submitSemaphore(self: CommandBuffer, fence: Fence, signal_semaphore: Sema
 
     try Context.self.vkd.queueSubmit2(queue, 1, &[_]vk.SubmitInfo2{.{
         .flags = .{},
-        .wait_semaphore_info_count = 0,
-        .p_wait_semaphore_infos = undefined,
+        .wait_semaphore_info_count = 1,
+        .p_wait_semaphore_infos = &[_]vk.SemaphoreSubmitInfo{.{
+            .semaphore = wait_semaphore.handle,
+            .value = 1,
+            .stage_mask = .{
+                .color_attachment_output_bit = true,
+            },
+            .device_index = 0,
+        }},
         .command_buffer_info_count = 1,
         .p_command_buffer_infos = &[_]vk.CommandBufferSubmitInfo{.{
             .command_buffer = self.handle,

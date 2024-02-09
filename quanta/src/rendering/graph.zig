@@ -389,6 +389,9 @@ pub const Builder = struct {
         height: u32,
         depth: u32,
     ) Image {
+        //TODO: allow calling createImage/Buffer/Sampler ect.. in a loop
+        //eg allow user defined handles in addition to src locs
+        //*must* be stable
         const handle_id = comptime idFromSourceLocation(src);
 
         const handle: ImageHandle = @enumFromInt(handle_id);

@@ -821,6 +821,7 @@ pub fn update() !UpdateResult {
 
     try render_graph_compiled.graphics_command_buffer.submitSemaphore(
         render_graph_compiled.graphics_command_buffer.wait_fence,
+        image.image_acquired,
         image.render_finished,
     );
 
