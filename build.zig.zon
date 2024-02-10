@@ -1,7 +1,28 @@
 .{
     .name = "quanta",
-    .version = "0.1.0",
-    .dependencies = .{},
+    .version = "0.0.0",
+    .dependencies = .{
+        .zigimg = .{
+            .url = "https://github.com/zigimg/zigimg/archive/2224f91ea4cf70f2254848657e308761b8cc8c5d.tar.gz",
+            .hash = "12207067e4892c48369415268648380859baa89c324748ae5bfda414a12868c9fc8b",
+        },
+        .spvine = .{
+            .url = "https://github.com/zkburke/spvine/archive/f78ada57480dfab9aa5491f38f883ffe2ceba7b3.tar.gz",
+            .hash = "1220001e54acda3b0e3b28e57458cf3dd88129678c88e3509f53dbd7887e4c3c13c5",
+        },
+        .zgltf = .{
+            .url = "https://github.com/kooparse/zgltf/archive/79de7be54e57235496fc3277708991fc857ef7e7.tar.gz",
+            .hash = "12205d4f90da23c4d6dc48b94b8327be3e898a23fe528babf0b223674e8977d8f473",
+        },
+        .glslang = .{
+            .url = "https://github.com/KhronosGroup/glslang/archive/30661abd9c3e97144f79cb30f2fb5a0da2c7b93c.tar.gz",
+            .hash = "12200da24e9f16994df0c70d8d15108c5cc8f3d0fc8619f579e1b128333dec568e09",
+        },
+        .zalgebra = .{
+            .url = "https://github.com/kooparse/zalgebra/archive/27013efdea89e6f9b838b088e916fe7e55a828fa.tar.gz",
+            .hash = "1220f4d39ae8a024b01bc4a141ccff9a410140a6f3630475b28f8ade34058eb1edb3",
+        },
+    },
     .paths = .{
         "",
     },

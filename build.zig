@@ -2,67 +2,70 @@ pub fn build(builder: *std.Build) !void {
     const target = builder.standardTargetOptions(.{});
     const optimize = builder.standardOptimizeOption(.{});
 
+    const glslang_dep = builder.dependency("glslang", .{});
+
     const glslang_module = builder.createModule(.{
         .link_libcpp = true,
     });
 
-    glslang_module.addIncludePath(.{ .path = builder.pathFromRoot("quanta/lib/glslang/") });
+    glslang_module.addIncludePath(glslang_dep.path(""));
     glslang_module.addCSourceFiles(.{
+        .dependency = glslang_dep,
         .files = &[_][]const u8{
             //cinterface
-            builder.pathFromRoot("quanta/lib/glslang/glslang/CInterface/glslang_c_interface.cpp"),
+            "glslang/CInterface/glslang_c_interface.cpp",
 
             //Codegen
-            builder.pathFromRoot("quanta/lib/glslang/glslang/GenericCodeGen/Link.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/GenericCodeGen/CodeGen.cpp"),
+            "glslang/GenericCodeGen/Link.cpp",
+            "glslang/GenericCodeGen/CodeGen.cpp",
 
             //Preprocessor
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/preprocessor/Pp.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/preprocessor/PpAtom.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/preprocessor/PpContext.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/preprocessor/PpScanner.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp"),
+            "glslang/MachineIndependent/preprocessor/Pp.cpp",
+            "glslang/MachineIndependent/preprocessor/PpAtom.cpp",
+            "glslang/MachineIndependent/preprocessor/PpContext.cpp",
+            "glslang/MachineIndependent/preprocessor/PpScanner.cpp",
+            "glslang/MachineIndependent/preprocessor/PpTokens.cpp",
 
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/limits.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/linkValidate.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/parseConst.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/ParseContextBase.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/ParseHelper.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/PoolAlloc.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/reflection.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/RemoveTree.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/Scan.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/ShaderLang.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/SpirvIntrinsics.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/SymbolTable.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/Versions.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/Intermediate.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/Constant.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/attribute.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/glslang_tab.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/InfoSink.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/Initialize.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/intermOut.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/IntermTraverse.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/propagateNoContraction.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/MachineIndependent/iomapper.cpp"),
+            "glslang/MachineIndependent/limits.cpp",
+            "glslang/MachineIndependent/linkValidate.cpp",
+            "glslang/MachineIndependent/parseConst.cpp",
+            "glslang/MachineIndependent/ParseContextBase.cpp",
+            "glslang/MachineIndependent/ParseHelper.cpp",
+            "glslang/MachineIndependent/PoolAlloc.cpp",
+            "glslang/MachineIndependent/reflection.cpp",
+            "glslang/MachineIndependent/RemoveTree.cpp",
+            "glslang/MachineIndependent/Scan.cpp",
+            "glslang/MachineIndependent/ShaderLang.cpp",
+            "glslang/MachineIndependent/SpirvIntrinsics.cpp",
+            "glslang/MachineIndependent/SymbolTable.cpp",
+            "glslang/MachineIndependent/Versions.cpp",
+            "glslang/MachineIndependent/Intermediate.cpp",
+            "glslang/MachineIndependent/Constant.cpp",
+            "glslang/MachineIndependent/attribute.cpp",
+            "glslang/MachineIndependent/glslang_tab.cpp",
+            "glslang/MachineIndependent/InfoSink.cpp",
+            "glslang/MachineIndependent/Initialize.cpp",
+            "glslang/MachineIndependent/intermOut.cpp",
+            "glslang/MachineIndependent/IntermTraverse.cpp",
+            "glslang/MachineIndependent/propagateNoContraction.cpp",
+            "glslang/MachineIndependent/iomapper.cpp",
 
             //OsDependent
-            builder.pathFromRoot("quanta/lib/glslang/glslang/OSDependent/Unix/ossource.cpp"),
+            "glslang/OSDependent/Unix/ossource.cpp",
 
-            builder.pathFromRoot("quanta/lib/glslang/glslang/ResourceLimits/resource_limits_c.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/glslang/ResourceLimits/ResourceLimits.cpp"),
+            "glslang/ResourceLimits/resource_limits_c.cpp",
+            "glslang/ResourceLimits/ResourceLimits.cpp",
 
             //SPIRV backend
-            builder.pathFromRoot("quanta/lib/glslang/SPIRV/CInterface/spirv_c_interface.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/SPIRV/GlslangToSpv.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/SPIRV/SpvPostProcess.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/SPIRV/SPVRemapper.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/SPIRV/SpvTools.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/SPIRV/SpvBuilder.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/SPIRV/Logger.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/SPIRV/InReadableOrder.cpp"),
-            builder.pathFromRoot("quanta/lib/glslang/SPIRV/doc.cpp"),
+            "SPIRV/CInterface/spirv_c_interface.cpp",
+            "SPIRV/GlslangToSpv.cpp",
+            "SPIRV/SpvPostProcess.cpp",
+            "SPIRV/SPVRemapper.cpp",
+            "SPIRV/SpvTools.cpp",
+            "SPIRV/SpvBuilder.cpp",
+            "SPIRV/Logger.cpp",
+            "SPIRV/InReadableOrder.cpp",
+            "SPIRV/doc.cpp",
         },
         .flags = &[_][]const u8{},
     });
@@ -76,7 +79,7 @@ pub fn build(builder: *std.Build) !void {
         .sanitize_thread = true,
     });
 
-    glsl_compiler.addIncludePath(.{ .path = builder.pathFromRoot("quanta/lib/glslang/") });
+    glsl_compiler.addIncludePath(.{ .path = builder.pathFromRoot("") });
     glsl_compiler.root_module.addImport("glslang", glslang_module);
 
     const install_glsl_compiler = builder.addInstallArtifact(glsl_compiler, .{});
@@ -104,10 +107,10 @@ pub fn build(builder: *std.Build) !void {
         .root_source_file = .{ .path = builder.pathFromRoot("quanta/src/root.zig") },
         .imports = &.{
             .{ .name = "options", .module = options.createModule() },
-            .{ .name = "zgltf", .module = builder.createModule(.{ .root_source_file = .{ .path = builder.pathFromRoot("quanta/lib/zgltf/src/main.zig") } }) },
-            .{ .name = "zigimg", .module = builder.createModule(.{ .root_source_file = .{ .path = builder.pathFromRoot("quanta/lib/zigimg/zigimg.zig") } }) },
-            .{ .name = "zalgebra", .module = builder.createModule(.{ .root_source_file = .{ .path = builder.pathFromRoot("quanta/lib/zalgebra/src/main.zig") } }) },
-            .{ .name = "spvine", .module = builder.createModule(.{ .root_source_file = .{ .path = builder.pathFromRoot("quanta/lib/spvine/src/main.zig") } }) },
+            .{ .name = "zgltf", .module = builder.dependency("zgltf", .{}).module("zgltf") },
+            .{ .name = "zalgebra", .module = builder.createModule(.{ .root_source_file = builder.dependency("zalgebra", .{}).path("src/main.zig") }) },
+            .{ .name = "spvine", .module = builder.dependency("spvine", .{}).module("spvine") },
+            .{ .name = "zigimg", .module = builder.dependency("zigimg", .{}).module("zigimg") },
         },
         .link_libc = true,
         .target = target,

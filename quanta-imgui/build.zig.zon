@@ -5,6 +5,10 @@
         .quanta = .{
             .path = "../",
         },
+        .imguizmo = .{
+            .url = "https://github.com/CedricGuillemet/ImGuizmo/archive/ba662b119d64f9ab700bb2cd7b2781f9044f5565.tar.gz",
+            .hash = "12203fc70cae3025e1c6f48f9d52b6a4a8d3bea336963a9d88db543dd09eaccf6036",
+        },
     },
     .paths = .{
         "",

@@ -24,8 +24,10 @@ pub fn build(builder: *Build) !void {
 
     glsl_compile_step.addImportToModule(quanta_imgui_module);
 
+    const imguizmo = builder.dependency("imguizmo", .{});
+
     quanta_imgui_module.addIncludePath(.{ .path = builder.pathFromRoot("lib/cimgui/imgui/") });
-    quanta_imgui_module.addIncludePath(.{ .path = builder.pathFromRoot("lib/ImGuizmo/") });
+    quanta_imgui_module.addIncludePath(imguizmo.path(""));
     quanta_imgui_module.addCSourceFiles(.{
         .files = &[_][]const u8{
             builder.pathFromRoot("lib/cimgui/imgui/imgui.cpp"),
@@ -34,8 +36,14 @@ pub fn build(builder: *Build) !void {
             builder.pathFromRoot("lib/cimgui/imgui/imgui_widgets.cpp"),
             builder.pathFromRoot("lib/cimgui/imgui/imgui_demo.cpp"),
             builder.pathFromRoot("lib/cimgui/cimgui.cpp"),
-            builder.pathFromRoot("lib/ImGuizmo/ImGuizmo.cpp"),
             builder.pathFromRoot("src/imgui/guizmo.cpp"),
+        },
+        .flags = &[_][]const u8{},
+    });
+    quanta_imgui_module.addCSourceFiles(.{
+        .dependency = imguizmo,
+        .files = &[_][]const u8{
+            "ImGuizmo.cpp",
         },
         .flags = &[_][]const u8{},
     });
@@ -44,4 +52,3 @@ pub fn build(builder: *Build) !void {
 const std = @import("std");
 const Build = std.Build;
 const quanta = @import("quanta");
-const GlslCompileStep = quanta.GlslCompileStep;

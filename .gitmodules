@@ -1,27 +1,3 @@
-[submodule "quanta/lib/zalgebra"]
-	path = quanta/lib/zalgebra
-	url = https://github.com/kooparse/zalgebra.git
 [submodule "quanta/lib/cimgui"]
 	path = quanta-imgui/lib/cimgui
 	url = https://github.com/cimgui/cimgui.git
-[submodule "quanta/lib/zigimg"]
-	path = quanta/lib/zigimg
-	url = https://github.com/zigimg/zigimg.git
-[submodule "quanta/lib/vulkan-zig"]
-	path = quanta/lib/vulkan-zig
-	url = https://github.com/Snektron/vulkan-zig.git
-[submodule "quanta/lib/ImGuizmo"]
-	path = quanta-imgui/lib/ImGuizmo
-	url = https://github.com/CedricGuillemet/ImGuizmo.git
-[submodule "quanta/lib/glslang"]
-	path = quanta/lib/glslang
-	url = https://github.com/KhronosGroup/glslang.git
-[submodule "quanta/lib/spvine"]
-	path = quanta/lib/spvine
-	url = https://github.com/zkburke/spvine.git
-[submodule "quanta/lib/tracy"]
-	path = quanta/lib/tracy
-	url = https://github.com/wolfpld/tracy.git
-[submodule "quanta/lib/zgltf"]
-	path = quanta/lib/zgltf
-	url = https://github.com/zkburke/zgltf.git
