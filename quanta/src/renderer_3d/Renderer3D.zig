@@ -1559,13 +1559,30 @@ pub fn createScene(
     scene.mesh_draw_volume_max = .{ std.math.floatMin(f32), std.math.floatMin(f32), std.math.floatMin(f32) };
 
     scene.environment_enabled = environment_data != null and environment_width != null and environment_width != null;
-    scene.environment_image = if (scene.environment_enabled) try graphics.Image.initData(.cube, environment_data.?, environment_width.?, environment_height.?, 6, 1, .r8g8b8a8_srgb, .shader_read_only_optimal, .{
-        .transfer_dst_bit = true,
-        .sampled_bit = true,
-    }) else undefined;
+    scene.environment_image = if (scene.environment_enabled) try graphics.Image.initData(
+        .cube,
+        environment_data.?,
+        environment_width.?,
+        environment_height.?,
+        6,
+        1,
+        .r8g8b8a8_srgb,
+        .shader_read_only_optimal,
+        .{
+            .transfer_dst_bit = true,
+            .sampled_bit = true,
+        },
+    ) else undefined;
     errdefer if (scene.environment_enabled) scene.environment_image.deinit();
 
-    scene.environment_sampler = if (scene.environment_enabled) try graphics.Sampler.init(.linear, .linear, .repeat, .repeat, .repeat, null) else undefined;
+    scene.environment_sampler = if (scene.environment_enabled) try graphics.Sampler.init(
+        .linear,
+        .linear,
+        .repeat,
+        .repeat,
+        .repeat,
+        null,
+    ) else undefined;
     errdefer if (scene.environment_enabled) scene.environment_sampler.deinit();
 
     if (scene.environment_enabled) {

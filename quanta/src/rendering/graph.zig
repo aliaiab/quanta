@@ -1,4 +1,5 @@
 //!Render Graph implementation built on top of quanta.graphics
+//!TODO: implement unit testing and runtime validation
 
 pub const IndexType = enum {
     u16,
@@ -200,7 +201,7 @@ pub const Commands = struct {
     const CommandsType = @This();
 };
 
-///Graph builder for compiling a graph
+///Graph builder for building a graph
 ///Works like an immediate-mode-gui-type api
 pub const Builder = struct {
     allocator: std.mem.Allocator,
@@ -284,7 +285,7 @@ pub const Builder = struct {
             render_offset_y: i32,
             render_width: u32,
             render_height: u32,
-            attachments: []const RasterAttachment,
+            attachments: []const ColorAttachment,
         },
         compute: void,
     };
@@ -543,6 +544,8 @@ pub const Builder = struct {
         comptime T: type,
         contents: []const T,
     ) void {
+        if (contents.len == 0) return;
+
         _ = self.referenceBufferAsInput(buffer.*);
 
         self.commands.add(self.allocator, .{
@@ -605,10 +608,9 @@ pub const Builder = struct {
         };
     }
 
-    pub const RasterAttachment = struct {
+    pub const ColorAttachment = struct {
         image: ImageHandle,
-        clear: ?AttachmentClear = null,
-        ///TODO: determine this at graph compile?
+        clear: ?[4]f32 = null,
         store: bool = true,
 
         pub const Clear = union(enum) {
@@ -617,16 +619,11 @@ pub const Builder = struct {
         };
     };
 
-    pub const RasterAttachmentConfig = struct {
+    pub const ColorAttachmentConfig = struct {
         image: *Image,
-        clear: ?AttachmentClear = null,
+        clear: ?[4]f32 = null,
         ///TODO: determine this at graph compile?
         store: bool = true,
-    };
-
-    pub const AttachmentClear = union(enum) {
-        color: [4]f32,
-        depth: f32,
     };
 
     pub const RasterRenderArea = union(enum) {
@@ -643,14 +640,14 @@ pub const Builder = struct {
     pub fn beginRasterPass(
         self: *@This(),
         comptime src: SourceLocation,
-        attachments: []const RasterAttachmentConfig,
+        color_attachments: []const ColorAttachmentConfig,
         render_area: RasterRenderArea,
     ) void {
         const pass_id = comptime idFromSourceLocation(src);
 
-        const attachments_allocated = self.scratch_allocator.allocator().alloc(RasterAttachment, attachments.len) catch unreachable;
+        const attachments_allocated = self.scratch_allocator.allocator().alloc(ColorAttachment, color_attachments.len) catch unreachable;
 
-        for (attachments_allocated, attachments) |*attachment_allocated, attachment| {
+        for (attachments_allocated, color_attachments) |*attachment_allocated, attachment| {
             attachment_allocated.* = .{
                 .image = attachment.image.getHandle(),
                 .clear = attachment.clear,
@@ -667,8 +664,8 @@ pub const Builder = struct {
             .entirety => {
                 offset_x = 0;
                 offset_y = 0;
-                width = self.imageGetWidth(attachments[0].image.*);
-                height = self.imageGetHeight(attachments[0].image.*);
+                width = self.imageGetWidth(color_attachments[0].image.*);
+                height = self.imageGetHeight(color_attachments[0].image.*);
             },
             .rectangle => |rectangle| {
                 offset_x = rectangle.offset_x;
@@ -688,7 +685,7 @@ pub const Builder = struct {
             },
         });
 
-        for (attachments) |attachment| {
+        for (color_attachments) |attachment| {
             self.referenceImageAsInput(attachment.image.*);
 
             attachment.image.* = .{
@@ -1190,8 +1187,6 @@ pub const CompileContext = struct {
 
         //Usage mapping
         for (dependencies.items) |*dependency| {
-            if (dependency.generated_commands) continue;
-
             const pass_index = dependency.pass_index;
             const pass_data: Builder.PassData = builder.passes.items(.data)[pass_index];
 
@@ -1278,10 +1273,9 @@ pub const CompileContext = struct {
         }
 
         //GPU Resource creation/fetching/allocation/deallocation/destruction pass
+        //TODO: resource creation should be driven by the dependency graph, not static reference counts
         {
-            const raster_pipeline_reference_counts = builder.raster_pipelines.items(.reference_count);
-
-            for (raster_pipeline_reference_counts, 0..) |reference_count, pipeline_index| {
+            for (builder.raster_pipelines.items(.reference_count), 0..) |reference_count, pipeline_index| {
                 if (reference_count == 0) {
                     //TODO: deallocate unreferenced pipelines if they have a backing store
                     continue;
@@ -1303,7 +1297,6 @@ pub const CompileContext = struct {
                 const push_constant_size = builder.raster_pipelines.items(.push_constant_size)[pipeline_index];
                 const attachment_formats = builder.raster_pipelines.items(.attachment_formats)[pipeline_index];
 
-                //otherwise create the pipeline
                 get_or_put_res.value_ptr.* = try graphics.GraphicsPipeline.init(
                     self.allocator,
                     .{
@@ -1316,7 +1309,6 @@ pub const CompileContext = struct {
                     },
                     //TODO: handle vertex layouts (if anyone's using that in 2024)
                     null,
-                    //TODO: runtime push constants
                     push_constant_size,
                 );
                 errdefer get_or_put_res.value_ptr.deinit(self.allocator);
@@ -1418,8 +1410,6 @@ pub const CompileContext = struct {
         //Staging memory preallocate pass
         {
             for (dependencies.items) |*dependency| {
-                if (dependency.generated_commands) continue;
-
                 var command_iter = builder.passCommandIterator(dependency.pass_index);
 
                 while (command_iter.next()) |command| {
@@ -1451,9 +1441,6 @@ pub const CompileContext = struct {
             defer barrier_map.deinit();
 
             for (dependencies.items) |*dependency| {
-                if (dependency.generated_commands) continue;
-                defer dependency.generated_commands = true;
-
                 const pass_index = dependency.pass_index;
                 const pass_data: Builder.PassData = builder.passes.items(.data)[pass_index];
 
@@ -1561,10 +1548,7 @@ pub const CompileContext = struct {
 
                     for (attachments_input, attachments) |input, *output| {
                         output.image = &self.images.getPtr(input.image).?.image;
-                        output.clear = if (input.clear != null) switch (input.clear.?) {
-                            .color => |color| .{ .color = color },
-                            else => unreachable,
-                        } else null;
+                        output.clear = if (input.clear != null) .{ .color = input.clear.? } else null;
                         output.store = input.store;
                     }
 
@@ -1709,9 +1693,6 @@ pub const CompileContext = struct {
 
     const Dependency = struct {
         pass_index: u32,
-        reference_count: u32 = 0,
-        ///Have the commands for this dependency already been compiled
-        generated_commands: bool = false,
     };
 
     fn compilePassDependencies(
@@ -1742,7 +1723,6 @@ pub const CompileContext = struct {
             if (found_existing) continue;
 
             pass_dependencies[dependency_count] = .{
-                .reference_count = 1,
                 .pass_index = pass_dependency_index,
             };
 
@@ -1757,7 +1737,6 @@ pub const CompileContext = struct {
             );
         } else {
             try dependencies.append(self.scratch_allocator.allocator(), .{
-                .reference_count = 1,
                 .pass_index = pass_index,
             });
         }

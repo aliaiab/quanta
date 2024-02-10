@@ -10,10 +10,6 @@ pub fn renderToGraph(
     target: *Image,
 ) void {
     const font_atlas = blk: {
-        const FontInit = struct {
-            var initialized: bool = false;
-        };
-
         const io: *imgui.ImGuiIO = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
         var pixel_pointer: [*c]u8 = undefined;
@@ -41,12 +37,16 @@ pub fn renderToGraph(
 
         // io.Fonts.*.TexID = @as(*anyopaque, @ptrFromInt(font_image.getHandle()));
 
-        graph.beginTransferPass(@src());
-        defer graph.endTransferPass();
+        const FontInit = struct {
+            var initialized: bool = false;
+        };
 
         //TODO: how do we handle resources who's data does not change
         //We *could* memcmp the inputs if we really want to but that's just silly(?)
         if (!FontInit.initialized) {
+            graph.beginTransferPass(@src());
+            defer graph.endTransferPass();
+
             graph.updateImage(
                 &font_image,
                 0,

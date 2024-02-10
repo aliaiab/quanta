@@ -771,11 +771,39 @@ pub fn update() !UpdateResult {
 
     const use_traditional_3d_renderer = false;
 
+    var scene_point_lights: std.ArrayListUnmanaged(renderer_3d_graph.PointLight) = .{};
+    defer scene_point_lights.deinit(state.allocator);
+
+    {
+        const without = quanta.ecs.ComponentStore.filterWithout;
+        const filterOr = quanta.ecs.ComponentStore.filterOr;
+        _ = filterOr;
+
+        var query = state.ecs_scene.query(.{
+            quanta.components.Position,
+            quanta.components.PointLight,
+        }, .{
+            without(quanta.components.Visibility), // !Visibility
+        });
+
+        while (query.nextBlock()) |block| {
+            for (block.Position, block.PointLight) |position, point_light| {
+                try scene_point_lights.append(state.allocator, .{
+                    .position = .{ position.x, position.y, position.z },
+                    .intensity = point_light.intensity,
+                    .diffuse = packUnorm4x8(.{ point_light.diffuse[0], point_light.diffuse[1], point_light.diffuse[2], 1 }),
+                });
+            }
+        }
+    }
+
     if (true)
         renderer_3d_graph.buildGraph(
             &state.render_graph,
             .{
                 .camera = state.camera,
+                .ambient_light = .{ .diffuse = packUnorm4x8(.{ 0.005, 0.005, 0.005, 1 }) },
+                .point_lights = scene_point_lights.items,
             },
             &graph_swap_image,
         );

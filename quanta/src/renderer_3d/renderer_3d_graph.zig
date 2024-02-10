@@ -54,10 +54,6 @@ pub fn buildGraph(
         graph.beginTransferPass(@src());
         defer graph.endTransferPass();
 
-        var vertex_positions_buffer = graph.createBuffer(@src(), 10_024 * @sizeOf(legacy.VertexPosition));
-
-        var verticies_buffer = graph.createBuffer(@src(), 10_024 * @sizeOf(legacy.Vertex));
-
         const test_vertex_positions = [_]VertexPosition{
             quantisePosition(.{ 0, 0, 0 }),
             quantisePosition(.{ 0.5, 1, 0 }),
@@ -95,12 +91,16 @@ pub fn buildGraph(
             test_transform_actual.data[3][0..3].*,
         };
 
+        var vertex_positions_buffer = graph.createBuffer(@src(), 10_024 * @sizeOf(legacy.VertexPosition));
+
         graph.updateBuffer(
             &vertex_positions_buffer,
             0,
             VertexPosition,
             graph.scratchDupe(VertexPosition, &test_vertex_positions),
         );
+
+        var verticies_buffer = graph.createBuffer(@src(), 10_024 * @sizeOf(legacy.Vertex));
 
         graph.updateBuffer(
             &verticies_buffer,
@@ -123,10 +123,8 @@ pub fn buildGraph(
         graph.updateBufferValue(&scene_uniforms_buffer, 0, SceneUniforms, .{
             .view_position = scene.camera.translation,
             .view_projection = view_projection.data,
-            .ambient_light = .{
-                .diffuse = quantiseColor(.{ 1, 1, 1, 1 }),
-            },
-            .point_light_count = 0,
+            .ambient_light = scene.ambient_light,
+            .point_light_count = @intCast(scene.point_lights.len),
             .primary_directional_light_index = 0,
         });
 
@@ -151,6 +149,10 @@ pub fn buildGraph(
             },
         }));
 
+        var point_light_buffer = graph.createBuffer(@src(), 1024 * @sizeOf(u32));
+
+        graph.updateBuffer(&point_light_buffer, 0, PointLight, scene.point_lights);
+
         break :block .{
             .vertex_positions_buffer = vertex_positions_buffer,
             .verticies_buffer = verticies_buffer,
@@ -159,6 +161,7 @@ pub fn buildGraph(
             .transform_buffer = transform_buffer,
             .material_indices = material_indices,
             .materials_buffer = materials_buffer,
+            .point_light_buffer = point_light_buffer,
         };
     };
 
@@ -167,7 +170,7 @@ pub fn buildGraph(
             @src(),
             &.{.{
                 .image = output_target,
-                .clear = .{ .color = .{ 0.2, 0.2, 0.2, 1 } },
+                .clear = .{ 0.2, 0.2, 0.2, 1 },
             }},
             .entirety,
         );
@@ -211,6 +214,7 @@ pub fn buildGraph(
         graph.setRasterPipelineResourceBuffer(color_pipeline, 3, 0, scene_data_pass.material_indices);
         graph.setRasterPipelineResourceBuffer(color_pipeline, 10, 0, scene_data_pass.scene_uniforms_buffer);
         graph.setRasterPipelineResourceBuffer(color_pipeline, 5, 0, scene_data_pass.materials_buffer);
+        graph.setRasterPipelineResourceBuffer(color_pipeline, 7, 0, scene_data_pass.point_light_buffer);
 
         graph.setRasterPipeline(color_pipeline);
 
@@ -253,9 +257,18 @@ pub fn buildGraph(
 
 pub const Scene = struct {
     camera: legacy.Camera,
+    ambient_light: AmbientLight,
+    point_lights: []PointLight,
+    environment_map: struct {} = .{},
 };
 
 pub const AmbientLight = extern struct {
+    diffuse: u32,
+};
+
+pub const PointLight = extern struct {
+    position: [3]f32,
+    intensity: f32,
     diffuse: u32,
 };
 

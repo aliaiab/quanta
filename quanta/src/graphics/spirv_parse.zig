@@ -33,8 +33,6 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
 
     const id_count = shader_module_code[3];
 
-    std.log.info("spirv id_count = {}", .{id_count});
-
     const Id = struct {
         opcode: u32,
         type_id: u32,
@@ -68,11 +66,7 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
 
         switch (instruction_opcode) {
             spirv.SpvOpEntryPoint => {
-                std.log.info("Found shader entry point", .{});
-
                 const name_begin = @as([*:0]const u8, @ptrCast(&words[3]));
-
-                std.log.info("{c}", .{name_begin[1]});
 
                 const name = std.mem.span(name_begin);
 
@@ -87,13 +81,9 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
 
                 switch (words[2]) {
                     spirv.SpvDecorationDescriptorSet => {
-                        std.log.info("Found descriptor set '{}'", .{words[3]});
-
                         ids[id].set = words[3];
                     },
                     spirv.SpvDecorationBinding => {
-                        std.log.info("Found descriptor set binding '{}'", .{words[3]});
-
                         ids[id].binding = words[3];
                     },
                     else => {},
@@ -106,8 +96,6 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
             spirv.SpvOpTypeArray,
             spirv.SpvOpTypeRuntimeArray,
             => {
-                std.log.info("Found shader descriptor", .{});
-
                 const id = words[1];
 
                 ids[id].opcode = instruction_opcode;
@@ -133,8 +121,6 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
                 ids[id].opcode = instruction_opcode;
                 ids[id].type_id = words[1];
                 ids[id].constant = words[3];
-
-                std.log.info("spirv const = {}", .{ids[id].constant});
             },
             spirv.SpvOpVariable => {
                 const id = words[2];
@@ -192,6 +178,4 @@ pub fn parseShaderModule(result: *ShaderParseResult, allocator: std.mem.Allocato
     if (local_size_z_id != null) {
         result.local_size_z = ids[local_size_z_id.?].constant;
     }
-
-    std.log.info("SPIRV entrypoint name: {s}", .{result.entry_point});
 }
