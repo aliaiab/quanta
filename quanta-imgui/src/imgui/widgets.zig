@@ -1,5 +1,5 @@
 const std = @import("std");
-const imgui = @import("cimgui.zig");
+const imgui = @import("../root.zig").cimgui;
 const zalgebra = @import("quanta").math.zalgebra;
 
 pub fn begin(title: [:0]const u8) bool {

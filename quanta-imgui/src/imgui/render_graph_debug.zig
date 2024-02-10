@@ -67,5 +67,5 @@ pub fn renderGraphDebug(graph: quanta.rendering.graph.Builder) void {
 
 const std = @import("std");
 const quanta = @import("quanta");
-const imgui = @import("cimgui.zig");
+const imgui = @import("../root.zig").cimgui;
 const widgets = @import("widgets.zig");

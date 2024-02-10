@@ -9,6 +9,10 @@
             .url = "https://github.com/CedricGuillemet/ImGuizmo/archive/ba662b119d64f9ab700bb2cd7b2781f9044f5565.tar.gz",
             .hash = "12203fc70cae3025e1c6f48f9d52b6a4a8d3bea336963a9d88db543dd09eaccf6036",
         },
+        .imgui = .{
+            .url = "https://github.com/ocornut/imgui/archive/32a3c61d0001d75cdcf033015a1e27f1ea12c848.tar.gz",
+            .hash = "12200dabba4d88194677de2160db8cf5f2811dc6c0c4cadb1ec8f7dd6c02c40e9a74",
+        },
     },
     .paths = .{
         "",

@@ -1,6 +1,6 @@
 const std = @import("std");
 const quanta = @import("quanta");
-const imgui = @import("cimgui.zig");
+const imgui = @import("../root.zig").cimgui;
 const imguizmo = @import("guizmo.zig");
 const widgets = @import("widgets.zig");
 const Window = quanta.windowing.Window;

@@ -8,7 +8,6 @@ interest in game engine design. It is not yet fully useable.
 
 ### Required System Dependencies:
 
-- Git
 - Zig 0.12.0 master
 
 ### Optional System Dependencies:

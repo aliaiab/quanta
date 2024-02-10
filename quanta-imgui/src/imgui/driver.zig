@@ -71,7 +71,6 @@ fn updateInputs(window: *Window) void {
         }
 
         imgui.ImGuiIO_ClearInputKeys(io);
-        imgui.ImGuiIO_ClearInputCharacters(io);
 
         return;
     }
@@ -335,7 +334,7 @@ fn quantaKeyToUtf8(key: windowing.Key) ?u8 {
 }
 
 const std = @import("std");
-const imgui = @import("cimgui.zig");
+const imgui = @import("../root.zig").cimgui;
 const windowing = quanta.windowing;
 const Window = quanta.windowing.Window;
 const quanta = @import("quanta");

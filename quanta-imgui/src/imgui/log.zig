@@ -1,6 +1,6 @@
 const std = @import("std");
 const quanta = @import("quanta");
-const imgui = @import("cimgui.zig");
+const imgui = @import("../root.zig").cimgui;
 const widgets = @import("widgets.zig");
 
 const Message = struct {
@@ -51,7 +51,7 @@ pub fn viewer(name: [:0]const u8) void {
 
     const reserve_height = (imgui.igGetStyle().*.ItemSpacing.y * 2) + imgui.igGetFrameHeightWithSpacing();
 
-    if (imgui.igBeginChild_Str("Scroll Area", .{ .x = 0, .y = -reserve_height }, false, imgui.ImGuiWindowFlags_HorizontalScrollbar)) {
+    if (imgui.igBeginChild_Str("Scroll Area", .{ .x = 0, .y = -reserve_height }, 0, imgui.ImGuiWindowFlags_HorizontalScrollbar)) {
         const message_count = @min(messages.items.len, viewed_message_count);
 
         for (messages.items[messages.items.len - message_count ..][0..message_count]) |message| {

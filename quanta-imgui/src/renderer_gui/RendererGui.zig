@@ -79,7 +79,7 @@ pub fn renderToGraph(
         var index_offset: usize = 0;
 
         for (0..@intCast(draw_data.CmdListsCount)) |command_list_index| {
-            const command_list: *imgui.ImDrawList = draw_data.CmdLists[command_list_index];
+            const command_list: *imgui.ImDrawList = draw_data.CmdLists.Data[command_list_index];
 
             const vertices: []const imgui.ImDrawVert = command_list.VtxBuffer.Data[0..@as(usize, @intCast(command_list.VtxBuffer.Size))];
             const indices: []const u16 = command_list.IdxBuffer.Data[0..@as(usize, @intCast(command_list.IdxBuffer.Size))];
@@ -200,7 +200,7 @@ pub fn renderToGraph(
         var index_offset: usize = 0;
 
         for (0..@intCast(draw_data.CmdListsCount)) |command_list_index| {
-            const command_list: *imgui.ImDrawList = draw_data.CmdLists[command_list_index];
+            const command_list: *imgui.ImDrawList = draw_data.CmdLists.Data[command_list_index];
 
             const vertices: []imgui.ImDrawVert = command_list.VtxBuffer.Data[0..@as(usize, @intCast(command_list.VtxBuffer.Size))];
             const indices: []u16 = command_list.IdxBuffer.Data[0..@as(usize, @intCast(command_list.IdxBuffer.Size))];
@@ -242,5 +242,5 @@ const RendererGui = @This();
 const std = @import("std");
 const quanta = @import("quanta");
 const zalgebra = quanta.math.zalgebra;
-const imgui = @import("../imgui/cimgui.zig");
+const imgui = @import("../root.zig").cimgui;
 const Image = quanta.rendering.graph.Image;

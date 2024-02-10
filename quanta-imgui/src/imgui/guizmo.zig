@@ -1,4 +1,4 @@
-const cimgui = @import("cimgui.zig");
+const cimgui = @import("../root.zig").cimgui;
 
 pub const Mode = enum(u32) { local, world };
 
