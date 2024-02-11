@@ -61,7 +61,7 @@ pub fn create(
 pub fn make(step: *Step, progress_node: *std.Progress.Node) !void {
     const self = step.cast(GlslCompileStep).?;
 
-    var cache_manifest = self.builder.cache.obtain();
+    var cache_manifest = self.builder.graph.cache.obtain();
     defer cache_manifest.deinit();
 
     var args_list: std.ArrayListUnmanaged([]const u8) = .{};

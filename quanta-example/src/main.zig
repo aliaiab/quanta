@@ -162,7 +162,16 @@ pub fn init() !void {
 
     log.info("assets_archive size = {}", .{asset_archive_fd_stat.size});
 
-    state.asset_archive_blob = try std.os.mmap(null, @as(usize, @intCast(asset_archive_fd_stat.size)), std.os.PROT.READ, std.os.MAP.PRIVATE, asset_archive_fd, 0);
+    state.asset_archive_blob = try std.os.mmap(
+        null,
+        @as(usize, @intCast(asset_archive_fd_stat.size)),
+        std.os.PROT.READ,
+        .{
+            .TYPE = .PRIVATE,
+        },
+        asset_archive_fd,
+        0,
+    );
 
     state.asset_archive = try asset.Archive.decode(state.allocator, state.asset_archive_blob);
 
@@ -797,7 +806,15 @@ pub fn update() !UpdateResult {
         }
     }
 
-    if (true)
+    const Statics = struct {
+        var enable_renderer_3d: bool = true;
+    };
+
+    if (state.window.getKey(.F2) == .press) {
+        Statics.enable_renderer_3d = !Statics.enable_renderer_3d;
+    }
+
+    if (Statics.enable_renderer_3d)
         renderer_3d_graph.buildGraph(
             &state.render_graph,
             .{
@@ -885,40 +902,42 @@ pub fn main() !void {
     }
 }
 
-pub const std_options = struct {
-    pub fn logFn(
-        comptime message_level: std.log.Level,
-        comptime scope: @Type(.EnumLiteral),
-        comptime format: []const u8,
-        args: anytype,
-    ) void {
-        const log_to_terminal = true;
+pub fn logFn(
+    comptime message_level: std.log.Level,
+    comptime scope: @Type(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    const log_to_terminal = true;
 
-        if (log_to_terminal) {
-            const terminal_red = "\x1B[31m";
-            const terminal_yellow = "\x1B[33m";
-            const terminal_blue = "\x1B[34m";
-            const terminal_green = "\x1B[32m";
+    if (log_to_terminal) {
+        const terminal_red = "\x1B[31m";
+        const terminal_yellow = "\x1B[33m";
+        const terminal_blue = "\x1B[34m";
+        const terminal_green = "\x1B[32m";
 
-            const color_begin = switch (message_level) {
-                .err => terminal_red,
-                .warn => terminal_yellow,
-                .info => terminal_blue,
-                .debug => terminal_green,
-            };
+        const color_begin = switch (message_level) {
+            .err => terminal_red,
+            .warn => terminal_yellow,
+            .info => terminal_blue,
+            .debug => terminal_green,
+        };
 
-            const color_end = "\x1B[0;39m";
+        const color_end = "\x1B[0;39m";
 
-            const level_txt = "[" ++ color_begin ++ comptime message_level.asText() ++ color_end ++ "]";
-            const prefix2 = if (scope == .default) ": " else "[" ++ @tagName(scope) ++ "]: ";
-            const stderr = std.io.getStdErr().writer();
-            std.debug.getStderrMutex().lock();
-            defer std.debug.getStderrMutex().unlock();
-            nosuspend stderr.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
-        }
-
-        quanta_imgui.log.logMessage(message_level, scope, format, args) catch return;
+        const level_txt = "[" ++ color_begin ++ comptime message_level.asText() ++ color_end ++ "]";
+        const prefix2 = if (scope == .default) ": " else "[" ++ @tagName(scope) ++ "]: ";
+        const stderr = std.io.getStdErr().writer();
+        std.debug.getStderrMutex().lock();
+        defer std.debug.getStderrMutex().unlock();
+        nosuspend stderr.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
     }
+
+    quanta_imgui.log.logMessage(message_level, scope, format, args) catch return;
+}
+
+pub const std_options: std.Options = .{
+    .logFn = logFn,
 };
 
 fn packUnorm4x8(v: [4]f32) u32 {

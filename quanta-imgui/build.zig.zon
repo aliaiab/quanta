@@ -13,6 +13,10 @@
             .url = "https://github.com/ocornut/imgui/archive/32a3c61d0001d75cdcf033015a1e27f1ea12c848.tar.gz",
             .hash = "12200dabba4d88194677de2160db8cf5f2811dc6c0c4cadb1ec8f7dd6c02c40e9a74",
         },
+        .imgui_node_editor = .{
+            .url = "https://github.com/thedmd/imgui-node-editor/archive/e78e447900909a051817a760efe13fe83e6e1afc.tar.gz",
+            .hash = "12207de23f4349f0aed65824cb7edae4a0d8cdff8f0310b41fe73629bba8d1fc3e91",
+        },
     },
     .paths = .{
         "",

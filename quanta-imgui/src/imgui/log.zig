@@ -31,6 +31,7 @@ pub fn viewer(name: [:0]const u8) void {
     defer widgets.end();
 
     if (!widgets.begin(name)) return;
+    defer dirty = false;
 
     _ = widgets.checkbox("info", &show_info);
     imgui.igSameLine(0, 10);
@@ -45,14 +46,19 @@ pub fn viewer(name: [:0]const u8) void {
 
     imgui.igSeparator();
 
-    if (dirty) {
-        defer dirty = false;
-    }
-
     const reserve_height = (imgui.igGetStyle().*.ItemSpacing.y * 2) + imgui.igGetFrameHeightWithSpacing();
 
-    if (imgui.igBeginChild_Str("Scroll Area", .{ .x = 0, .y = -reserve_height }, 0, imgui.ImGuiWindowFlags_HorizontalScrollbar)) {
+    if (imgui.igBeginChild_Str(
+        "Scroll Area",
+        .{ .x = 0, .y = -reserve_height },
+        0,
+        imgui.ImGuiWindowFlags_HorizontalScrollbar,
+    )) {
         const message_count = @min(messages.items.len, viewed_message_count);
+
+        if (dirty) {
+            imgui.igSetScrollY_Float(imgui.igGetScrollMaxY());
+        }
 
         for (messages.items[messages.items.len - message_count ..][0..message_count]) |message| {
             if (!show_info and message.level == .info) continue;

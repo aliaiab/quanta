@@ -65,8 +65,8 @@ pub fn renderToGraph(
     //upload
     //Could be it's own function (but that shouldn't be neccessary)
     const updated_buffers = blk: {
-        const max_vertices = 50_000;
-        const max_indices = 50_000;
+        const max_vertices = 100_000;
+        const max_indices = 100_000;
 
         //Notice how these resources are local to this scope. We pass these resources as inputs to passes, so these variable names needn't be referenced
         var vertex_buffer = graph.createBuffer(@src(), max_vertices * @sizeOf(imgui.ImDrawVert));
