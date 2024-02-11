@@ -856,3 +856,24 @@ pub const DispatchIndirectCommand = extern struct {
 pub fn computeDispatchIndirect(self: CommandBuffer, buffer: Buffer, offset: usize) void {
     Context.self.vkd.cmdDispatchIndirect(self.handle, buffer.handle, offset);
 }
+
+///Only does something in OptimizeMode.Debug
+pub fn debugLabelBegin(self: CommandBuffer, name: []const u8) void {
+    if (@import("builtin").mode != .Debug) return;
+
+    var name_buffer: [1024]u8 = undefined;
+
+    const name_z = std.fmt.bufPrintZ(&name_buffer, "{s}", .{name}) catch unreachable;
+
+    Context.self.vkd.cmdBeginDebugUtilsLabelEXT(self.handle, &.{
+        .p_label_name = name_z.ptr,
+        .color = .{ 0, 0, 0, 0 },
+    });
+}
+
+///Only does something in OptimizeMode.Debug
+pub fn debugLabelEnd(self: CommandBuffer) void {
+    if (@import("builtin").mode != .Debug) return;
+
+    Context.self.vkd.cmdEndDebugUtilsLabelEXT(self.handle);
+}

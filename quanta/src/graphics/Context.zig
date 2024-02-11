@@ -132,6 +132,9 @@ pub const DeviceDispatch = vk.DeviceWrapper(.{
     .waitSemaphores = true,
     .acquireNextImage2KHR = true,
     // .getDescriptorEXT = true,
+    .cmdBeginDebugUtilsLabelEXT = @import("builtin").mode == .Debug,
+    .cmdEndDebugUtilsLabelEXT = @import("builtin").mode == .Debug,
+    .setDebugUtilsObjectNameEXT = @import("builtin").mode == .Debug,
 });
 
 var vkGetInstanceProcAddr: vk.PfnGetInstanceProcAddr = undefined;

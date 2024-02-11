@@ -18,6 +18,10 @@ pub fn end() void {
     imgui.igEnd();
 }
 
+pub fn sameLine() void {
+    imgui.igSameLine(0, 0);
+}
+
 pub fn text(string: []const u8) void {
     imgui.igTextUnformatted(string.ptr, string.ptr + string.len);
 }

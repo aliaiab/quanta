@@ -72,6 +72,7 @@ pub fn renderToGraph(
         var vertex_buffer = graph.createBuffer(@src(), max_vertices * @sizeOf(imgui.ImDrawVert));
         var index_buffer = graph.createBuffer(@src(), max_indices * @sizeOf(u16));
 
+        //Upload buffers pass
         graph.beginTransferPass(@src());
         defer graph.endTransferPass();
 
@@ -113,6 +114,7 @@ pub fn renderToGraph(
         const target_width = graph.imageGetWidth(target.*);
         const target_height = graph.imageGetHeight(target.*);
 
+        //Color output pass
         graph.beginRasterPass(
             @src(),
             &.{

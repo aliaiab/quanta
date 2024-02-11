@@ -340,3 +340,18 @@ pub fn update(self: Buffer, comptime T: type, offset: usize, data: []const T) !v
 
     try command_buffer.submitAndWait();
 }
+
+///Does nothing in OptimizeMode.Debug
+pub fn debugSetName(self: Buffer, name: []const u8) void {
+    if (@import("builtin").mode != .Debug) return;
+
+    var name_buffer: [1024]u8 = undefined;
+
+    const name_z = std.fmt.bufPrintZ(&name_buffer, "{s}", .{name}) catch unreachable;
+
+    Context.self.vkd.setDebugUtilsObjectNameEXT(Context.self.device, &.{
+        .object_type = .buffer,
+        .object_handle = @intFromEnum(self.handle),
+        .p_object_name = name_z,
+    }) catch unreachable;
+}

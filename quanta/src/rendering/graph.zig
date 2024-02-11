@@ -251,7 +251,7 @@ pub const Builder = struct {
     }) = .{},
     ///List of top level passes (not render passes)
     passes: std.MultiArrayList(struct {
-        handle: u64,
+        handle: PassHandle,
         reference_count: u32,
         data: PassData,
         command_offset: u32,
@@ -277,6 +277,7 @@ pub const Builder = struct {
     ///TODO: Handle nested passes?
     ///We could have some kind of context? (IE when we call beginPass*, we context 'switch')
     current_pass_index: u32,
+    debug_info: DebugInfo = .{},
 
     pub const PassData = union(enum) {
         transfer: void,
@@ -289,10 +290,6 @@ pub const Builder = struct {
         },
         compute: void,
     };
-
-    ///Compile time constant to include debug information into each graph builder
-    ///Includes source locations for each
-    pub const include_debug_info = false;
 
     pub fn init(allocator: std.mem.Allocator) @This() {
         return .{
@@ -311,6 +308,8 @@ pub const Builder = struct {
 
         self.passes.deinit(self.allocator);
         self.pass_inputs.deinit(self.allocator);
+
+        self.debug_info.deinit(self.*);
 
         self.commands.deinit(self.allocator);
         self.scratch_allocator.deinit();
@@ -333,6 +332,7 @@ pub const Builder = struct {
         self.export_resource = null;
 
         self.commands.reset();
+        self.debug_info.reset(self.*);
 
         _ = self.scratch_allocator.reset(std.heap.ArenaAllocator.ResetMode{ .retain_capacity = {} });
     }
@@ -528,7 +528,11 @@ pub const Builder = struct {
     ) void {
         const pass_id = comptime idFromSourceLocation(src);
 
+        const pass_index: u32 = @intCast(self.passes.len);
+
         self.beginPassGeneric(pass_id, .transfer);
+
+        self.debug_info.addPass(self.*, src, pass_index);
     }
 
     pub fn endTransferPass(
@@ -675,6 +679,8 @@ pub const Builder = struct {
             },
         }
 
+        const pass_index: u32 = @intCast(self.passes.len);
+
         self.beginPassGeneric(pass_id, .{
             .raster = .{
                 .render_offset_x = offset_x,
@@ -684,6 +690,8 @@ pub const Builder = struct {
                 .attachments = attachments_allocated,
             },
         });
+
+        self.debug_info.addPass(self.*, src, pass_index);
 
         for (color_attachments) |attachment| {
             self.referenceImageAsInput(attachment.image.*);
@@ -711,7 +719,7 @@ pub const Builder = struct {
         self.current_pass_index = @intCast(self.passes.len);
 
         self.passes.append(self.allocator, .{
-            .handle = id,
+            .handle = .{ .id = id },
             .reference_count = 0,
             .command_offset = @intCast(self.commands.tags.items.len),
             .command_count = 0,
@@ -1126,7 +1134,7 @@ pub const CompileContext = struct {
     ///Compiles a built graph to low level api commands
     pub fn compile(
         self: *@This(),
-        builder: Builder,
+        builder: *Builder,
     ) !CompileResult {
         defer {
             self.buffer_index += 1;
@@ -1169,7 +1177,7 @@ pub const CompileContext = struct {
             };
 
             try self.compilePassDependencies(
-                builder,
+                builder.*,
                 root_pass_index,
                 &dependencies,
             );
@@ -1442,6 +1450,7 @@ pub const CompileContext = struct {
 
             for (dependencies.items) |*dependency| {
                 const pass_index = dependency.pass_index;
+                const pass_handle = builder.passes.items(.handle)[pass_index];
                 const pass_data: Builder.PassData = builder.passes.items(.data)[pass_index];
 
                 var current_pipline: ?*graphics.GraphicsPipeline = null;
@@ -1536,6 +1545,12 @@ pub const CompileContext = struct {
                 );
                 barrier_map.image_barriers.shrinkRetainingCapacity(0);
 
+                const maybe_pass_name = builder.debug_info.getPassName(builder.*, pass_handle);
+
+                if (maybe_pass_name) |pass_name| {
+                    command_buffer.debugLabelBegin(pass_name);
+                }
+
                 if (pass_data == .raster) {
                     const x = pass_data.raster.render_offset_x;
                     const y = pass_data.raster.render_offset_y;
@@ -1561,7 +1576,12 @@ pub const CompileContext = struct {
                         null,
                     );
                 }
-                defer if (pass_data == .raster) command_buffer.endRenderPass();
+                defer if (maybe_pass_name) |_| {
+                    command_buffer.debugLabelEnd();
+                };
+                defer if (pass_data == .raster) {
+                    command_buffer.endRenderPass();
+                };
 
                 current_pipline = null;
                 current_index_buffer = null;
@@ -1788,6 +1808,8 @@ pub const CompileContext = struct {
         frame_data.staging_buffer = try graphics.Buffer.init(frame_data.staging_buffer_size, .staging);
         errdefer frame_data.staging_buffer.?.deinit();
 
+        frame_data.staging_buffer.?.debugSetName("staging");
+
         const mapped_region = try frame_data.staging_buffer.?.map(u8);
 
         frame_data.staging_buffer_mapping = mapped_region.ptr;
@@ -1991,6 +2013,10 @@ pub const CompileContext = struct {
 pub const ResourceType = enum {
     buffer,
     image,
+};
+
+pub const PassHandle = packed struct(u64) {
+    id: u64,
 };
 
 ///Generic type erased resource handle
@@ -2317,3 +2343,4 @@ test {
 
 const Graph = @This();
 const std = @import("std");
+const DebugInfo = @import("debug.zig").DebugInfo;

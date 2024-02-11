@@ -1,4 +1,4 @@
-pub fn renderGraphDebug(graph: quanta.rendering.graph.Builder) void {
+pub fn renderGraphDebug(graph: *quanta.rendering.graph.Builder) void {
     defer widgets.end();
     if (!widgets.beginWindow("Render Graph Debug", .{})) return;
 
@@ -14,10 +14,12 @@ pub fn renderGraphDebug(graph: quanta.rendering.graph.Builder) void {
         Globals.editor_context = node_editor.im_node_create_editor();
     }
 
+    comptime std.debug.assert(rendering.debug.debug_info_enabled);
+
     var pass_deps: std.ArrayListUnmanaged(u32) = .{};
     defer pass_deps.deinit(std.heap.c_allocator);
 
-    createDepGraph(graph, &pass_deps);
+    createDepGraph(graph.*, &pass_deps);
 
     if (pass_deps.items.len == 0) return;
 
@@ -148,71 +150,127 @@ pub fn renderGraphDebug(graph: quanta.rendering.graph.Builder) void {
 
     imgui.igNextColumn();
 
-    _ = imgui.igBeginChild_Str("Pass Content Viewer", .{}, 0, 0);
+    _ = imgui.igBeginChild_Str("Pass Content Viewer", .{}, 0, imgui.ImGuiWindowFlags_HorizontalScrollbar);
     defer imgui.igEndChild();
-
-    widgets.textFormat("Passes: {}", .{graph.passes.len});
-
-    for (graph.raster_pipelines.items(.reference_count), 0..) |reference_count, index| {
-        widgets.textFormat("Referenced raster pipline[{}] {} times", .{ index, reference_count });
-    }
-
-    for (graph.buffers.items(.reference_count), 0..) |reference_count, index| {
-        widgets.textFormat("Referenced buffer[{}] {} times", .{ index, reference_count });
-    }
 
     if (selected_pass_index) |pass_index| {
         const pass_data = graph.passes.items(.data)[pass_index];
-        const pass_id = graph.passes.items(.handle)[pass_index];
-        _ = pass_id;
+        const pass_handle = graph.passes.items(.handle)[pass_index];
         _ = pass_data;
 
-        // if (!widgets.treeNodePush("Pass({s}): {}", .{ @tagName(pass_data), pass_index }, false)) break :block;
-        // defer widgets.treeNodePop();
+        const pass_source: std.builtin.SourceLocation = graph.debug_info.passes.get(pass_handle).?.source_location;
 
-        widgets.text("Commands:");
-        imgui.igNewLine();
+        const pass_name = graph.debug_info.getPassName(graph.*, pass_handle);
 
-        const input_offset = graph.passes.items(.input_offset)[pass_index];
-        const input_count = graph.passes.items(.input_count)[pass_index];
+        widgets.textFormat("fn {s}(...) from {s}:{}:{}", .{
+            pass_source.fn_name,
+            std.fs.path.basename(pass_source.file),
+            pass_source.line,
+            pass_source.column,
+        });
 
-        const command_offset = graph.passes.items(.command_offset)[pass_index];
-        const command_count = graph.passes.items(.command_count)[pass_index];
-        const command_data_offset = graph.passes.items(.command_data_offset)[pass_index];
+        if (pass_name) |comment| {
+            imgui.igPushStyleColor_Vec4(imgui.ImGuiCol_Text, .{ .x = 0, .y = 1 * 0.8, .z = 0.5 * 0.8, .w = 1 });
 
-        for (0..input_count) |input_index| {
-            const input_pass = graph.pass_inputs.items(.pass_index)[input_offset + input_index];
+            widgets.text(comment);
 
-            widgets.textFormat("=> input[{}]: from pass #{}", .{
-                input_index,
-                input_pass,
-            });
+            imgui.igPopStyleColor(1);
         }
 
-        widgets.textFormat("pass_commands: count = {}", .{command_count});
+        if (false) {
+            var line_buffer: [1024]u8 = undefined;
 
-        var iterator = graph.commands.iterator(
-            command_offset,
-            command_count,
-            command_data_offset,
-        );
+            const line_text = std.fmt.bufPrintZ(&line_buffer, "{s}", .{"pass_line"}) catch unreachable;
 
-        var command_index: u32 = 0;
+            var tokenizer = std.zig.Tokenizer.init(line_text);
 
-        while (iterator.next()) |command| : (command_index += 1) {
-            switch (command) {
-                .draw_indexed => |draw_indexed| {
-                    widgets.textFormat("[{}]: {s}({}, {}, {})", .{
-                        command_index,
-                        @tagName(command),
-                        draw_indexed.index_count,
-                        draw_indexed.instance_count,
-                        draw_indexed.first_index,
+            var paren_depth: u32 = 1;
+
+            var previous_token: ?std.zig.Token = null;
+
+            while (tokenizer.index < tokenizer.buffer.len) {
+                const token = tokenizer.next();
+                defer previous_token = token;
+
+                const trailing_text: []const u8 = if (previous_token != null) block: {
+                    break :block tokenizer.buffer[previous_token.?.loc.end..token.loc.start];
+                } else "";
+
+                const token_text = tokenizer.buffer[token.loc.start..token.loc.end];
+
+                const token_color: imgui.ImVec4 = switch (token.tag) {
+                    .builtin => .{ .x = 0.93, .y = 0.7, .z = 0.5, .w = 1 },
+                    .identifier => .{ .x = 0, .y = 0.5, .z = 0.9, .w = 1 },
+                    .l_paren, .r_paren => switch (paren_depth % 2) {
+                        0 => .{ .x = 0, .y = 0.2, .z = 0.8, .w = 1 },
+                        1 => .{ .x = 0.6, .y = 0.4, .z = 0.01, .w = 1 },
+                        else => unreachable,
+                    },
+                    else => .{ .x = 1, .y = 1, .z = 1, .w = 1 },
+                };
+
+                widgets.text(trailing_text);
+                widgets.sameLine();
+
+                imgui.igPushStyleColor_Vec4(imgui.ImGuiCol_Text, token_color);
+
+                widgets.text(token_text);
+                widgets.sameLine();
+
+                imgui.igPopStyleColor(1);
+
+                switch (token.tag) {
+                    .l_paren => paren_depth += 1,
+                    .r_paren => paren_depth -= 1,
+                    else => {},
+                }
+            }
+
+            imgui.igNewLine();
+        }
+
+        if (imgui.igBeginTabBar("Pass Information", 0)) {
+            defer imgui.igEndTabBar();
+
+            if (imgui.igBeginTabItem("Commands", null, 0)) {
+                defer imgui.igEndTabItem();
+
+                var iterator = graph.passCommandIterator(pass_index);
+
+                var command_index: u32 = 0;
+
+                while (iterator.next()) |command| : (command_index += 1) {
+                    switch (command) {
+                        .draw_indexed => |draw_indexed| {
+                            widgets.textFormat("[{}]: {s}({}, {}, {})", .{
+                                command_index,
+                                @tagName(command),
+                                draw_indexed.index_count,
+                                draw_indexed.instance_count,
+                                draw_indexed.first_index,
+                            });
+                        },
+                        else => {
+                            widgets.textFormat("[{}]: {s}", .{ command_index, @tagName(command) });
+                        },
+                    }
+                }
+            }
+
+            if (imgui.igBeginTabItem("Input Resources", null, 0)) {
+                defer imgui.igEndTabItem();
+
+                const input_offset = graph.passes.items(.input_offset)[pass_index];
+                const input_count = graph.passes.items(.input_count)[pass_index];
+
+                for (0..input_count) |input_index| {
+                    const input_pass = graph.pass_inputs.items(.pass_index)[input_offset + input_index];
+
+                    widgets.textFormat("=> input[{}]: from pass #{}", .{
+                        input_index,
+                        input_pass,
                     });
-                },
-                else => {
-                    widgets.textFormat("[{}]: {s}", .{ command_index, @tagName(command) });
-                },
+                }
             }
         }
     }
@@ -289,6 +347,7 @@ fn createDepGraphRecursive(
 
 const std = @import("std");
 const quanta = @import("quanta");
+const rendering = quanta.rendering;
 const imgui = @import("../root.zig").cimgui;
 const widgets = @import("widgets.zig");
 const node_editor = @import("node_editor.zig");

@@ -51,6 +51,7 @@ pub fn buildGraph(
     const view_projection = projection.mul(view);
 
     const scene_data_pass = block: {
+        //Upload scene data
         graph.beginTransferPass(@src());
         defer graph.endTransferPass();
 
@@ -166,12 +167,10 @@ pub fn buildGraph(
     };
 
     const color_pass = block: {
+        //Color pass
         graph.beginRasterPass(
             @src(),
-            &.{.{
-                .image = output_target,
-                .clear = .{ 0.2, 0.2, 0.2, 1 },
-            }},
+            &.{.{ .image = output_target, .clear = .{ 0.2, 0.2, 0.2, 1 } }},
             .entirety,
         );
         defer graph.endRasterPass();

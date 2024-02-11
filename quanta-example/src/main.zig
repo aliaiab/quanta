@@ -759,7 +759,7 @@ pub fn update() !UpdateResult {
             }
         }
 
-        quanta_imgui.render_graph_debug.renderGraphDebug(state.render_graph);
+        quanta_imgui.render_graph_debug.renderGraphDebug(&state.render_graph);
 
         imgui.igRender();
     }
@@ -855,7 +855,7 @@ pub fn update() !UpdateResult {
     }
 
     const render_graph_compiled = try state.render_graph_compile_context.compile(
-        state.render_graph,
+        &state.render_graph,
     );
 
     render_graph_compiled.graphics_command_buffer.imageBarrier(color_image, .{
