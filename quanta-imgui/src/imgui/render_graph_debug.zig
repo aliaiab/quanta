@@ -2,9 +2,6 @@ pub fn renderGraphDebug(graph: *quanta.rendering.graph.Builder) void {
     defer widgets.end();
     if (!widgets.beginWindow("Render Graph Debug", .{})) return;
 
-    imgui.igColumns(2, "columns", true);
-    defer imgui.igEndColumns();
-
     const Globals = struct {
         var editor_context: ?*node_editor.EditorContext = null;
         var first_frame: bool = true;
@@ -14,7 +11,10 @@ pub fn renderGraphDebug(graph: *quanta.rendering.graph.Builder) void {
         Globals.editor_context = node_editor.im_node_create_editor();
     }
 
-    comptime std.debug.assert(rendering.debug.debug_info_enabled);
+    if (!rendering.debug.debug_info_enabled) {
+        widgets.text("Render graph debug info is disabled");
+        return;
+    }
 
     var pass_deps: std.ArrayListUnmanaged(u32) = .{};
     defer pass_deps.deinit(std.heap.c_allocator);
@@ -26,6 +26,9 @@ pub fn renderGraphDebug(graph: *quanta.rendering.graph.Builder) void {
     defer Globals.first_frame = false;
 
     var selected_pass_index: ?u32 = null;
+
+    imgui.igColumns(2, "columns", true);
+    defer imgui.igEndColumns();
 
     {
         node_editor.im_node_set_current_editor(Globals.editor_context);

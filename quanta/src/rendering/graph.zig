@@ -418,6 +418,12 @@ pub const Builder = struct {
             .reference_count = 0,
         }) catch unreachable;
 
+        self.debug_info.addBuffer(
+            self.*,
+            src,
+            handle,
+        );
+
         return .{
             .handle = handle,
         };
@@ -528,11 +534,9 @@ pub const Builder = struct {
     ) void {
         const pass_id = comptime idFromSourceLocation(src);
 
-        const pass_index: u32 = @intCast(self.passes.len);
-
         self.beginPassGeneric(pass_id, .transfer);
 
-        self.debug_info.addPass(self.*, src, pass_index);
+        self.debug_info.addPass(self.*, src, .{ .id = pass_id });
     }
 
     pub fn endTransferPass(
@@ -679,8 +683,6 @@ pub const Builder = struct {
             },
         }
 
-        const pass_index: u32 = @intCast(self.passes.len);
-
         self.beginPassGeneric(pass_id, .{
             .raster = .{
                 .render_offset_x = offset_x,
@@ -691,7 +693,7 @@ pub const Builder = struct {
             },
         });
 
-        self.debug_info.addPass(self.*, src, pass_index);
+        self.debug_info.addPass(self.*, src, .{ .id = pass_id });
 
         for (color_attachments) |attachment| {
             self.referenceImageAsInput(attachment.image.*);
@@ -1344,6 +1346,12 @@ pub const CompileContext = struct {
                     buffer_usages.get(handle).?.usage,
                 );
                 errdefer get_or_put_res.value_ptr.deinit();
+
+                const maybe_buffer_name = builder.debug_info.getBufferName(builder.*, handle);
+
+                if (maybe_buffer_name) |buffer_name| {
+                    get_or_put_res.value_ptr.*.debugSetName(buffer_name);
+                }
             }
 
             for (builder.images.items(.reference_count), 0..) |reference_count, image_index| {

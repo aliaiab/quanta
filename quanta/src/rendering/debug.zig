@@ -12,11 +12,21 @@ pub const DebugInfo = if (debug_info_enabled) struct {
         source_location: std.builtin.SourceLocation,
         pass_name: ?[]const u8 = null,
     }) = .{},
+    buffers: std.AutoArrayHashMapUnmanaged(graph.BufferHandle, struct {
+        source_location: std.builtin.SourceLocation,
+        name: ?[]const u8 = null,
+    }) = .{},
     file_map: std.StringHashMapUnmanaged(struct {
         source_code: []u8,
     }) = .{},
 
     pub fn deinit(self: *@This(), builder: Builder) void {
+        for (self.buffers.values()) |pass| {
+            if (pass.name == null) continue;
+
+            builder.allocator.free(pass.name.?);
+        }
+
         for (self.passes.values()) |pass| {
             if (pass.pass_name == null) continue;
 
@@ -24,6 +34,7 @@ pub const DebugInfo = if (debug_info_enabled) struct {
         }
 
         self.passes.deinit(builder.allocator);
+        self.buffers.deinit(builder.allocator);
 
         var file_map_values = self.file_map.valueIterator();
 
@@ -45,11 +56,20 @@ pub const DebugInfo = if (debug_info_enabled) struct {
         self: *@This(),
         builder: Builder,
         comptime src: std.builtin.SourceLocation,
-        pass_index: u32,
+        pass: graph.PassHandle,
     ) void {
-        const pass_handle = builder.passes.items(.handle)[pass_index];
+        _ = self.passes.getOrPutValue(builder.allocator, pass, .{
+            .source_location = src,
+        }) catch unreachable;
+    }
 
-        _ = self.passes.getOrPutValue(builder.allocator, pass_handle, .{
+    pub fn addBuffer(
+        self: *@This(),
+        builder: Builder,
+        comptime src: std.builtin.SourceLocation,
+        buffer: graph.BufferHandle,
+    ) void {
+        _ = self.buffers.getOrPutValue(builder.allocator, buffer, .{
             .source_location = src,
         }) catch unreachable;
     }
@@ -65,7 +85,6 @@ pub const DebugInfo = if (debug_info_enabled) struct {
             const file_data = self.file_map.getOrPut(builder.allocator, pass_source.file) catch unreachable;
 
             if (!file_data.found_existing) {
-                //TODO: only read source in when trying to read debug info
                 const file_source = std.fs.cwd().readFileAlloc(builder.allocator, pass_source.file, std.math.maxInt(usize)) catch unreachable;
 
                 file_data.value_ptr.* = .{
@@ -147,14 +166,104 @@ pub const DebugInfo = if (debug_info_enabled) struct {
 
         return pass_info.pass_name orelse null;
     }
-} else struct {
-    passes: void,
 
+    pub fn getBufferName(self: *@This(), builder: Builder, buffer: graph.BufferHandle) ?[]const u8 {
+        var buffer_info = self.buffers.getPtr(buffer) orelse return null;
+
+        if (buffer_info.name == null) {
+            const pass_source: std.builtin.SourceLocation = buffer_info.source_location;
+
+            const file_data = self.file_map.getOrPut(builder.allocator, pass_source.file) catch unreachable;
+
+            if (!file_data.found_existing) {
+                const file_source = std.fs.cwd().readFileAlloc(builder.allocator, pass_source.file, std.math.maxInt(usize)) catch unreachable;
+
+                file_data.value_ptr.* = .{
+                    .source_code = file_source,
+                };
+            }
+
+            const file_source: []const u8 = file_data.value_ptr.source_code;
+
+            var pass_line: []const u8 = "";
+            var pass_line_index: u32 = 0;
+
+            {
+                var line_index: u32 = 1;
+
+                var source_lines = std.mem.splitScalar(u8, file_source, '\n');
+
+                var previous_line: []const u8 = "";
+
+                while (source_lines.next()) |source_line| : (line_index += 1) {
+                    defer previous_line = source_line;
+
+                    if (line_index + 1 == pass_source.line) {
+                        //If the pass call has it's args split between multiple lines, then
+                        //the @src() builtin will have a comma after it.
+                        //We have made it in graph.Builder that @src() will ALWAYS be the first argument (after self)
+                        const is_multiline = std.mem.endsWith(u8, source_lines.peek().?, ",");
+
+                        if (is_multiline) {
+                            pass_line = source_line;
+                            break;
+                        }
+                    }
+
+                    if (line_index == pass_source.line) {
+                        pass_line = source_line;
+                        break;
+                    }
+                }
+
+                pass_line_index = line_index - 1;
+
+                source_lines.reset();
+
+                line_index = 0;
+            }
+
+            var tokenizer_buffer: [1024]u8 = undefined;
+
+            const tokenizer_string = std.fmt.bufPrintZ(&tokenizer_buffer, "{s}", .{pass_line}) catch unreachable;
+
+            var tokenizer = std.zig.Tokenizer.init(tokenizer_string);
+
+            _ = tokenizer.next();
+            const identifier_token = tokenizer.next();
+
+            const name = std.mem.concat(builder.allocator, u8, &.{
+                tokenizer_string[identifier_token.loc.start..identifier_token.loc.end],
+            }) catch unreachable;
+
+            buffer_info.name = name;
+        }
+
+        return buffer_info.name orelse null;
+    }
+} else struct {
     pub inline fn deinit(_: *@This(), _: Builder) void {}
-    pub inline fn reset(_: *@This()) void {}
-    pub inline fn addPass(_: *@This(), _: Builder, _: std.builtin.SourceLocation) void {}
+    pub inline fn reset(_: *@This(), _: Builder) void {}
+
+    pub inline fn addPass(
+        _: *@This(),
+        _: Builder,
+        _: std.builtin.SourceLocation,
+        _: graph.PassHandle,
+    ) void {}
+
+    pub inline fn addBuffer(
+        _: *@This(),
+        _: Builder,
+        _: std.builtin.SourceLocation,
+        _: graph.BufferHandle,
+    ) void {}
 
     pub inline fn getPassName(_: *@This(), _: Builder, _: graph.PassHandle) ?[]const u8 {
+        return null;
+    }
+
+    pub inline fn getBufferName(_: *@This(), _: Builder, _: graph.BufferHandle) ?[]const u8 {
         return null;
     }
 };
