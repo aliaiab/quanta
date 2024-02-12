@@ -214,6 +214,7 @@ pub const Builder = struct {
 
         push_constant_size: u32,
         attachment_formats: []const ImageFormat,
+        depth_attachment_format: ImageFormat,
         depth_state: @import("../graphics.zig").GraphicsPipeline.Options.DepthState,
         rasterisation_state: @import("../graphics.zig").GraphicsPipeline.Options.RasterisationState,
         blend_state: @import("../graphics.zig").GraphicsPipeline.Options.BlendState,
@@ -276,6 +277,16 @@ pub const Builder = struct {
     ///We could have some kind of context? (IE when we call beginPass*, we context 'switch')
     current_pass_index: u32,
     debug_info: DebugInfo = .{},
+    ///Persistant buffer handles. Has nothing to do with the persistant of backend allocations or data.
+    persistant_buffers: std.AutoArrayHashMapUnmanaged(BufferHandle, struct {
+        size: usize,
+    }) = .{},
+    persistant_images: std.AutoArrayHashMapUnmanaged(ImageHandle, struct {
+        format: ImageFormat,
+        width: u32,
+        height: u32,
+        depth: u32,
+    }) = .{},
 
     pub const PassData = union(enum) {
         transfer: void,
@@ -285,6 +296,11 @@ pub const Builder = struct {
             render_width: u32,
             render_height: u32,
             attachments: []const ColorAttachment,
+            depth_attachment: ?struct {
+                image: ImageHandle,
+                clear: ?f32 = null,
+                store: bool = true,
+            },
         },
         compute: void,
     };
@@ -308,6 +324,9 @@ pub const Builder = struct {
         self.pass_inputs.deinit(self.allocator);
 
         self.debug_info.deinit(self.*);
+
+        self.persistant_buffers.deinit(self.allocator);
+        self.persistant_images.deinit(self.allocator);
 
         self.commands.deinit(self.allocator);
         self.scratch_allocator.deinit();
@@ -345,6 +364,7 @@ pub const Builder = struct {
 
     const CreateRasterPipelineOptions = struct {
         attachment_formats: []const ImageFormat,
+        depth_attachment_format: ImageFormat = .undefined,
         depth_state: @import("../graphics.zig").GraphicsPipeline.Options.DepthState = .{},
         rasterisation_state: @import("../graphics.zig").GraphicsPipeline.Options.RasterisationState = .{},
         blend_state: @import("../graphics.zig").GraphicsPipeline.Options.BlendState = .{},
@@ -371,6 +391,7 @@ pub const Builder = struct {
             .reference_count = 0,
             .push_constant_size = @intCast(push_constant_size),
             .attachment_formats = self.scratch_allocator.allocator().dupe(ImageFormat, options.attachment_formats) catch unreachable,
+            .depth_attachment_format = options.depth_attachment_format,
             .depth_state = options.depth_state,
             .rasterisation_state = options.rasterisation_state,
             .blend_state = options.blend_state,
@@ -434,6 +455,69 @@ pub const Builder = struct {
         };
     }
 
+    ///Return the persistant handle for image
+    ///Can be stored outside of the render graph and then reimported using imageFromHandle in another instance of this graph
+    ///Implicitly creates a persistant handle mapping
+    pub fn bufferGetPersistantHandle(
+        self: *@This(),
+        buffer: Buffer,
+    ) BufferHandle {
+        const handle = self.buffers.items(.handle)[buffer.index];
+
+        const maybe_buffer = self.persistant_buffers.getOrPut(self.allocator, handle) catch unreachable;
+
+        if (!maybe_buffer.found_existing) {
+            maybe_buffer.value_ptr.* = .{
+                .size = self.buffers.items(.size)[buffer.index],
+            };
+        }
+
+        return handle;
+    }
+
+    ///Create an buffer pointer from a handle
+    ///Returns an image that is identical to the image returned from the last createImage called on that handle
+    pub fn bufferFromPersistantHandle(
+        self: *@This(),
+        buffer_handle: BufferHandle,
+    ) Image {
+        const maybe_buffer = self.persistant_buffers.get(buffer_handle);
+
+        if (maybe_buffer == null) {
+            for (self.buffers.items(.handle), 0..) |handle, buffer_index| {
+                if (handle == buffer_handle) return .{
+                    .index = @intCast(buffer_index),
+                    .pass_index = null,
+                };
+            }
+
+            @panic("Invalid buffer handle");
+        } else {
+            const index: u32 = @intCast(self.buffers.len);
+
+            self.buffers.append(self.allocator, .{
+                .handle = buffer_handle,
+                .size = maybe_buffer.?.size,
+                .reference_count = 0,
+            }) catch unreachable;
+
+            return .{
+                .index = index,
+                .pass_index = null,
+            };
+        }
+    }
+
+    ///Return the size of a persistant buffer handle
+    pub fn bufferPersistantGetSize(
+        self: @This(),
+        buffer_handle: BufferHandle,
+    ) usize {
+        const buffer_info = self.persistant_buffers.get(buffer_handle) orelse unreachable;
+
+        return buffer_info.size;
+    }
+
     pub fn createImage(
         self: *@This(),
         comptime src: SourceLocation,
@@ -465,6 +549,28 @@ pub const Builder = struct {
             .index = index,
             .pass_index = null,
         };
+    }
+
+    ///Create an image pointer from a handle
+    ///The handle for image must have been created during the graph instance using createImage
+    pub fn imageFromHandle(
+        self: *@This(),
+        image_handle: ImageHandle,
+    ) Image {
+        for (self.images.items(.handle), 0..) |handle, image_index| {
+            if (handle == image_handle) return image_index;
+        }
+
+        @panic("Invalid image handle");
+    }
+
+    ///Return the persistant handle for image
+    ///Can be stored outside of the render graph and then reimported using imageFromHandle in another instance of this graph
+    pub fn imageGetHandle(
+        self: *@This(),
+        image: Image,
+    ) ImageHandle {
+        return self.images.items(.handle)[image.index];
     }
 
     pub fn imageGetWidth(
@@ -611,11 +717,6 @@ pub const Builder = struct {
         image: ImageHandle,
         clear: ?[4]f32 = null,
         store: bool = true,
-
-        pub const Clear = union(enum) {
-            color: [4]f32,
-            depth: f32,
-        };
     };
 
     pub const RasterRenderArea = union(enum) {
@@ -637,6 +738,16 @@ pub const Builder = struct {
             clear: ?[4]f32 = null,
             ///TODO: determine this at graph compile?
             store: bool = true,
+        },
+        depth_attachment: ?union(enum) {
+            read_only: struct {
+                image: Image,
+            },
+            read_write: struct {
+                image: *Image,
+                clear: ?f32 = null,
+                store: bool = true,
+            },
         },
         render_area: RasterRenderArea,
     ) void {
@@ -679,6 +790,20 @@ pub const Builder = struct {
                 .render_width = width,
                 .render_height = height,
                 .attachments = attachments_allocated,
+                .depth_attachment = if (depth_attachment != null) .{
+                    .image = switch (depth_attachment.?) {
+                        .read_only => |read_only_depth| self.images.items(.handle)[read_only_depth.image.index],
+                        .read_write => |read_write_depth| self.images.items(.handle)[read_write_depth.image.index],
+                    },
+                    .clear = switch (depth_attachment.?) {
+                        .read_only => null,
+                        .read_write => |read_write_depth| read_write_depth.clear,
+                    },
+                    .store = switch (depth_attachment.?) {
+                        .read_only => false,
+                        .read_write => |read_write_depth| read_write_depth.store,
+                    },
+                } else null,
             },
         });
 
@@ -688,6 +813,17 @@ pub const Builder = struct {
             self.referenceImageAsInput(attachment.image.*);
 
             attachment.image.pass_index = @intCast(self.current_pass_index);
+        }
+
+        if (depth_attachment != null) {
+            switch (depth_attachment.?) {
+                .read_only => @panic("not yet supported"),
+                .read_write => |read_write_depth| {
+                    self.referenceImageAsInput(read_write_depth.image.*);
+
+                    read_write_depth.image.pass_index = @intCast(self.current_pass_index);
+                },
+            }
         }
     }
 
@@ -1160,7 +1296,7 @@ pub const CompileContext = struct {
         }) = .{};
         defer image_usages.deinit(self.scratch_allocator.allocator());
 
-        //Usage mapping
+        //usage mapping
         for (dependencies.items) |*dependency| {
             const pass_index = dependency.pass_index;
             const pass_data: Builder.PassData = builder.passes.items(.data)[pass_index];
@@ -1168,9 +1304,7 @@ pub const CompileContext = struct {
             if (pass_data == .raster) {
                 const attachments_input = pass_data.raster.attachments;
 
-                for (attachments_input) |
-                    input,
-                | {
+                for (attachments_input) |input| {
                     const result = try image_usages.getOrPutValue(
                         self.scratch_allocator.allocator(),
                         input.image,
@@ -1180,6 +1314,18 @@ pub const CompileContext = struct {
                     );
 
                     result.value_ptr.*.usage.color_attachment_bit = true;
+                }
+
+                if (pass_data.raster.depth_attachment != null) {
+                    const result = try image_usages.getOrPutValue(
+                        self.scratch_allocator.allocator(),
+                        pass_data.raster.depth_attachment.?.image,
+                        .{
+                            .usage = .{},
+                        },
+                    );
+
+                    result.value_ptr.*.usage.depth_stencil_attachment_bit = true;
                 }
             }
 
@@ -1271,11 +1417,13 @@ pub const CompileContext = struct {
                 const fragment_module: RasterModule = builder.raster_pipelines.items(.fragment_module)[pipeline_index];
                 const push_constant_size = builder.raster_pipelines.items(.push_constant_size)[pipeline_index];
                 const attachment_formats = builder.raster_pipelines.items(.attachment_formats)[pipeline_index];
+                const depth_attachment_format = builder.raster_pipelines.items(.depth_attachment_format)[pipeline_index];
 
                 get_or_put_res.value_ptr.* = try graphics.GraphicsPipeline.init(
                     self.allocator,
                     .{
                         .color_attachment_formats = @as([*]const graphics.vulkan.Format, @alignCast(@ptrCast(attachment_formats.ptr)))[0..attachment_formats.len],
+                        .depth_attachment_format = @enumFromInt(@intFromEnum(depth_attachment_format)),
                         .vertex_shader_binary = @alignCast(vertex_module.code),
                         .fragment_shader_binary = @alignCast(fragment_module.code),
                         .depth_state = pipeline.depth_state,
@@ -1299,12 +1447,15 @@ pub const CompileContext = struct {
 
                 const get_or_put_res = try self.buffers.getOrPut(self.allocator, handle);
 
+                const buffer_size = builder.buffers.items(.size)[buffer_index];
+
                 //cache hit
                 if (get_or_put_res.found_existing) {
+                    //TODO: handle buffer resizing between frames
+                    std.debug.assert(get_or_put_res.value_ptr.size == buffer_size);
+
                     continue;
                 }
-
-                const buffer_size = builder.buffers.items(.size)[buffer_index];
 
                 get_or_put_res.value_ptr.* = try graphics.Buffer.initUsageFlags(
                     buffer_size,
@@ -1327,19 +1478,31 @@ pub const CompileContext = struct {
 
                 const handle = builder.images.items(.handle)[image_index];
 
-                const get_or_put_res = try self.images.getOrPut(self.allocator, handle);
-
-                //cache hit
-                if (get_or_put_res.found_existing) {
-                    continue;
-                }
-
                 const image_width = builder.images.items(.width)[image_index];
                 const image_height = builder.images.items(.height)[image_index];
                 const image_depth = builder.images.items(.depth)[image_index];
                 const image_format = builder.images.items(.format)[image_index];
 
-                if (image_usages.get(handle) == null) continue;
+                const get_or_put_res = try self.images.getOrPut(self.allocator, handle);
+
+                //cache hit
+                if (get_or_put_res.found_existing) {
+                    if (image_width != get_or_put_res.value_ptr.image.width) {
+                        std.log.info("image_width: {}, actual_width: {}", .{
+                            image_width,
+                            get_or_put_res.value_ptr.image.width,
+                        });
+                    }
+
+                    //TODO: handle image resizing between frames
+                    std.debug.assert(image_width == get_or_put_res.value_ptr.image.width);
+                    std.debug.assert(image_height == get_or_put_res.value_ptr.image.height);
+                    std.debug.assert(image_depth == get_or_put_res.value_ptr.image.depth);
+
+                    continue;
+                }
+
+                const image_usage = image_usages.get(handle).?;
 
                 get_or_put_res.value_ptr.*.image = try graphics.Image.init(
                     .@"2d",
@@ -1349,7 +1512,7 @@ pub const CompileContext = struct {
                     1,
                     @enumFromInt(@intFromEnum(image_format)),
                     .shader_read_only_optimal,
-                    image_usages.get(handle).?.usage,
+                    image_usage.usage,
                 );
                 errdefer get_or_put_res.value_ptr.image.deinit();
             }
@@ -1546,7 +1709,11 @@ pub const CompileContext = struct {
                         width,
                         height,
                         attachments,
-                        null,
+                        if (pass_data.raster.depth_attachment != null) .{
+                            .image = &self.images.getPtr(pass_data.raster.depth_attachment.?.image).?.image,
+                            .clear = if (pass_data.raster.depth_attachment.?.clear != null) .{ .depth = pass_data.raster.depth_attachment.?.clear.? } else null,
+                            .store = pass_data.raster.depth_attachment.?.store,
+                        } else null,
                     );
                 }
                 defer if (maybe_pass_name) |_| {
@@ -2034,6 +2201,7 @@ pub const ResourceHandle = packed struct(u64) {
 };
 
 pub const ImageFormat = enum(u32) {
+    undefined = 0,
     r4g4_unorm_pack8 = 1,
     r4g4b4a4_unorm_pack16 = 2,
     b4g4r4a4_unorm_pack16 = 3,

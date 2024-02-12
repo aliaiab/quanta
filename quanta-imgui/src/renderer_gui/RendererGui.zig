@@ -124,6 +124,7 @@ pub fn renderToGraph(
                     .image = target,
                 },
             },
+            null,
             .entirety,
         );
         defer graph.endRasterPass();

@@ -2,7 +2,7 @@
 
 pub fn buildGraph(
     graph: *rendering.graph.Builder,
-    scene: Scene,
+    scene: *Scene,
     scene_view: SceneView,
     output_target: *Image,
 ) void {
@@ -17,7 +17,7 @@ pub fn buildGraph(
     });
     _ = radiance_target;
 
-    const depth_target = graph.createImage(@src(), .{
+    var depth_target = graph.createImage(@src(), .{
         .format = .d32_sfloat,
         .width = render_width,
         .height = render_height,
@@ -54,34 +54,6 @@ pub fn buildGraph(
         graph.beginTransferPass(@src());
         defer graph.endTransferPass();
 
-        const test_vertex_positions = [_]VertexPosition{
-            quantisePosition(.{ 0, 0, 0 }),
-            quantisePosition(.{ 0.5, 1, 0 }),
-            quantisePosition(.{ 1, 0, 0 }),
-        };
-
-        const test_vertices = [_]Vertex{
-            .{
-                .uv = quantiseUV(.{ 0, 0 }),
-                .normal = quantiseNormal(.{ 0, 0, 1 }),
-                .color = quantiseColor(.{ 1, 0, 0, 1 }),
-            },
-            .{
-                .uv = quantiseUV(.{ 0, 0 }),
-                .normal = quantiseNormal(.{ 0, 0, 1 }),
-                .color = quantiseColor(.{ 1, 0, 0, 1 }),
-            },
-            .{
-                .uv = quantiseUV(.{ 0, 0 }),
-                .normal = quantiseNormal(.{ 0, 0, 1 }),
-                .color = quantiseColor(.{ 1, 0, 0, 1 }),
-            },
-        };
-
-        const test_indices = [_]u32{
-            0, 1, 2,
-        };
-
         const test_transform_actual = zalgebra.Mat4.identity();
 
         const test_transform: [4][3]f32 = .{
@@ -95,32 +67,29 @@ pub fn buildGraph(
             .size = 10_024 * @sizeOf(legacy.VertexPosition),
         });
 
-        graph.updateBuffer(
-            &vertex_positions_buffer,
-            0,
-            VertexPosition,
-            graph.scratchDupe(VertexPosition, &test_vertex_positions),
-        );
-
         var verticies_buffer = graph.createBuffer(@src(), .{
             .size = 10_024 * @sizeOf(legacy.Vertex),
         });
 
-        graph.updateBuffer(
-            &verticies_buffer,
-            0,
-            Vertex,
-            graph.scratchDupe(Vertex, &test_vertices),
-        );
-
         var index_buffer = graph.createBuffer(@src(), .{ .size = 10_024 * @sizeOf(u32) });
 
-        graph.updateBuffer(
-            &index_buffer,
-            0,
-            u32,
-            graph.scratchDupe(u32, &test_indices),
-        );
+        for (scene.meshes.items) |*mesh| {
+            if (mesh.positions_buffer != null) continue;
+
+            mesh.vertex_offset = scene.mesh_vertex_offset;
+            mesh.index_offset = scene.mesh_index_offset;
+
+            graph.updateBuffer(&vertex_positions_buffer, mesh.vertex_offset * @sizeOf(VertexPosition), u8, mesh.positions_data);
+            graph.updateBuffer(&verticies_buffer, mesh.vertex_offset * @sizeOf(Vertex), u8, mesh.vertex_data);
+            graph.updateBuffer(&index_buffer, mesh.index_offset * @sizeOf(u32), u8, mesh.index_data);
+
+            scene.mesh_vertex_offset += mesh.positions_data.len / @sizeOf(VertexPosition);
+            scene.mesh_index_offset += mesh.index_data.len / @sizeOf(u32);
+
+            mesh.positions_buffer = graph.bufferGetPersistantHandle(vertex_positions_buffer);
+            mesh.vertex_buffer = graph.bufferGetPersistantHandle(verticies_buffer);
+            mesh.index_buffer = graph.bufferGetPersistantHandle(index_buffer);
+        }
 
         var scene_uniforms_buffer = graph.createBuffer(@src(), .{ .size = max_instance_count * @sizeOf(SceneUniforms) });
 
@@ -177,6 +146,12 @@ pub fn buildGraph(
                 .image = output_target,
                 .clear = .{ 0.2, 0.2, 0.2, 1 },
             }},
+            .{
+                .read_write = .{
+                    .image = &depth_target,
+                    .clear = 0,
+                },
+            },
             .entirety,
         );
         defer graph.endRasterPass();
@@ -209,6 +184,16 @@ pub fn buildGraph(
                 .attachment_formats = &.{
                     graph.imageGetFormat(output_target.*),
                 },
+                .depth_attachment_format = graph.imageGetFormat(depth_target),
+                .depth_state = .{
+                    .write_enabled = true,
+                    .test_enabled = true,
+                    .compare_op = .greater_or_equal,
+                },
+                .rasterisation_state = .{
+                    .polygon_mode = .fill,
+                    .cull_mode = .back,
+                },
             },
             0,
         );
@@ -225,13 +210,17 @@ pub fn buildGraph(
 
         graph.setIndexBuffer(scene_data_pass.index_buffer, .u32);
 
-        graph.drawIndexed(
-            3,
-            1,
-            0,
-            0,
-            0,
-        );
+        for (scene.mesh_instances.items) |instance| {
+            const mesh = scene.meshes.items[instance.mesh_index];
+
+            graph.drawIndexed(
+                @intCast(mesh.index_data.len / @sizeOf(u32)),
+                1,
+                @intCast(mesh.index_offset),
+                @intCast(mesh.vertex_offset),
+                0,
+            );
+        }
 
         break :block .{
             .color_target = output_target,
@@ -255,15 +244,55 @@ pub fn buildGraph(
         };
     };
 
-    _ = depth_target;
     _ = color_pass;
     _ = resolve_to_output;
 }
 
+///Scene description consumed by the render graph builder
 pub const Scene = struct {
     ambient_light: AmbientLight,
     point_lights: []PointLight,
     environment_map: struct {} = .{},
+    meshes: std.ArrayListUnmanaged(Mesh) = .{},
+    mesh_instances: std.ArrayListUnmanaged(MeshInstance) = .{},
+
+    mesh_vertex_offset: usize = 0,
+    mesh_index_offset: usize = 0,
+
+    pub fn clearInstances(self: *@This()) void {
+        self.mesh_instances.items.len = 0;
+    }
+
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        self.mesh_instances.deinit(allocator);
+        self.meshes.deinit(allocator);
+
+        self.* = undefined;
+    }
+
+    pub const Mesh = struct {
+        ///By default these are null
+        ///When the meshes are created in buildScene, at render time, these will be initialized
+        positions_buffer: ?rendering.graph.BufferHandle = null,
+        vertex_buffer: ?rendering.graph.BufferHandle = null,
+        index_buffer: ?rendering.graph.BufferHandle = null,
+
+        vertex_offset: usize = 0,
+        index_offset: usize = 0,
+
+        positions_data: []const u8,
+        vertex_data: []const u8,
+        index_data: []const u8,
+    };
+
+    pub const MeshInstance = struct {
+        mesh_index: u32,
+    };
+
+    pub const Texture = struct {
+        image_handle: ?rendering.graph.ImageHandle,
+        //TODO: sampler
+    };
 };
 
 ///Represents a single view into a scene
@@ -281,12 +310,12 @@ pub const PointLight = extern struct {
     diffuse: u32,
 };
 
-const VertexPosition = legacy.VertexPosition;
-const VertexNormal = legacy.VertexNormal;
-const VertexUV = legacy.VertexUV;
-const Vertex = legacy.Vertex;
+pub const VertexPosition = legacy.VertexPosition;
+pub const VertexNormal = legacy.VertexNormal;
+pub const VertexUV = legacy.VertexUV;
+pub const Vertex = legacy.Vertex;
 
-const Material = extern struct {
+pub const Material = extern struct {
     albedo_texture_index: u32,
     albedo: u32,
     metalness_texture_index: u32,
@@ -309,7 +338,7 @@ fn perspectiveProjection(fovy_degrees: f32, aspect_ratio: f32, znear: f32) zalge
     };
 }
 
-fn quantisePosition(
+pub fn quantisePosition(
     pos: @Vector(3, f32),
 ) VertexPosition {
     const quantised = VertexPosition{
@@ -321,7 +350,7 @@ fn quantisePosition(
     return quantised;
 }
 
-fn quantiseNormal(normal: @Vector(3, f32)) VertexNormal {
+pub fn quantiseNormal(normal: @Vector(3, f32)) VertexNormal {
     const quantised = VertexNormal{
         .x = quantiseFloat(i10, normal[0]),
         .y = quantiseFloat(i10, normal[1]),
@@ -331,7 +360,7 @@ fn quantiseNormal(normal: @Vector(3, f32)) VertexNormal {
     return quantised;
 }
 
-fn quantiseUV(uv: @Vector(2, f32)) VertexUV {
+pub fn quantiseUV(uv: @Vector(2, f32)) VertexUV {
     const quantised = VertexUV{
         .u = @floatCast(uv[0]),
         .v = @floatCast(uv[1]),
@@ -340,7 +369,7 @@ fn quantiseUV(uv: @Vector(2, f32)) VertexUV {
     return quantised;
 }
 
-fn quantiseFloat(comptime T: type, float: f32) T {
+pub fn quantiseFloat(comptime T: type, float: f32) T {
     if (@typeInfo(T).Int.signedness == .unsigned) {
         const normalized = @abs(std.math.clamp(float, -1, 1));
 
@@ -352,7 +381,7 @@ fn quantiseFloat(comptime T: type, float: f32) T {
     }
 }
 
-fn quantiseColor(v: [4]f32) u32 {
+pub fn quantiseColor(v: [4]f32) u32 {
     const Unorm4x8 = packed struct(u32) {
         x: u8,
         y: u8,

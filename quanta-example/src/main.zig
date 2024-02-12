@@ -71,9 +71,11 @@ var state: struct {
     cloned_entity_last_frame: bool = false,
     mouse_pressed_last_Frame: bool = false,
 
-    ///Main global render graph
+    ///Main window render graph
     render_graph: quanta.rendering.graph.Builder = undefined,
     render_graph_compile_context: quanta.rendering.graph.CompileContext = undefined,
+
+    graph_renderer_scene: renderer_3d_graph.Scene = undefined,
 
     delta_time: f32 = 0.016,
 } = .{};
@@ -271,6 +273,27 @@ pub fn init() !void {
         });
     }
 
+    //the render graph scene
+    {
+        state.graph_renderer_scene = .{
+            .ambient_light = .{ .diffuse = packUnorm4x8(.{ 0.005, 0.005, 0.005, 1 }) },
+            .point_lights = &.{},
+        };
+
+        for (test_scene_import.sub_meshes, 0..) |sub_mesh, i| {
+            _ = i; // autofix
+            const mesh_positions = test_scene_import.vertex_positions[sub_mesh.vertex_offset .. sub_mesh.vertex_offset + sub_mesh.vertex_count];
+            const mesh_vertices = test_scene_import.vertices[sub_mesh.vertex_offset .. sub_mesh.vertex_offset + sub_mesh.vertex_count];
+            const mesh_indices = test_scene_import.indices[sub_mesh.index_offset .. sub_mesh.index_offset + sub_mesh.index_count];
+
+            try state.graph_renderer_scene.meshes.append(state.allocator, .{
+                .positions_data = std.mem.sliceAsBytes(mesh_positions),
+                .vertex_data = std.mem.sliceAsBytes(mesh_vertices),
+                .index_data = std.mem.sliceAsBytes(mesh_indices),
+            });
+        }
+    }
+
     const target_frame_time: f32 = 16;
 
     state.delta_time = target_frame_time;
@@ -424,6 +447,7 @@ pub fn deinit() void {
     defer state.asset_storage.deinit();
     defer state.render_graph.deinit();
     defer state.render_graph_compile_context.deinit();
+    defer state.graph_renderer_scene.deinit(state.allocator);
 }
 
 pub fn update() !UpdateResult {
@@ -808,24 +832,38 @@ pub fn update() !UpdateResult {
 
     const Statics = struct {
         var enable_renderer_3d: bool = true;
+
+        var meshes: [1]renderer_3d_graph.Scene.Mesh = .{.{
+            .vertex_data = undefined,
+            .positions_data = undefined,
+            .index_data = undefined,
+        }};
     };
 
     if (state.window.getKey(.F2) == .press) {
         Statics.enable_renderer_3d = !Statics.enable_renderer_3d;
     }
 
-    if (Statics.enable_renderer_3d)
+    if (Statics.enable_renderer_3d) {
+        state.graph_renderer_scene.point_lights = scene_point_lights.items;
+
+        state.graph_renderer_scene.clearInstances();
+
+        for (1..4) |index| {
+            try state.graph_renderer_scene.mesh_instances.append(state.allocator, .{
+                .mesh_index = @intCast(index),
+            });
+        }
+
         renderer_3d_graph.buildGraph(
             &state.render_graph,
-            .{
-                .ambient_light = .{ .diffuse = packUnorm4x8(.{ 0.005, 0.005, 0.005, 1 }) },
-                .point_lights = scene_point_lights.items,
-            },
+            &state.graph_renderer_scene,
             .{
                 .camera = state.camera,
             },
             &graph_swap_image,
         );
+    }
 
     if (imgui.igGetDrawData() != null) {
         RendererGui.renderToGraph(
