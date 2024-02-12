@@ -818,9 +818,11 @@ pub fn update() !UpdateResult {
         renderer_3d_graph.buildGraph(
             &state.render_graph,
             .{
-                .camera = state.camera,
                 .ambient_light = .{ .diffuse = packUnorm4x8(.{ 0.005, 0.005, 0.005, 1 }) },
                 .point_lights = scene_point_lights.items,
+            },
+            .{
+                .camera = state.camera,
             },
             &graph_swap_image,
         );

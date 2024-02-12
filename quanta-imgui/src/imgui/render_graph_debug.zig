@@ -120,10 +120,6 @@ pub fn renderGraphDebug(graph: *quanta.rendering.graph.Builder) void {
             const input_offset = graph.passes.items(.input_offset)[pass_index];
             const input_count = graph.passes.items(.input_count)[pass_index];
 
-            const command_offset = graph.passes.items(.command_offset)[pass_index];
-            const command_count = graph.passes.items(.command_count)[pass_index];
-            const command_data_offset = graph.passes.items(.command_data_offset)[pass_index];
-
             const output_pass_info = pass_infos.items[dep_index];
 
             for (0..input_count) |input_index| {
@@ -141,13 +137,6 @@ pub fn renderGraphDebug(graph: *quanta.rendering.graph.Builder) void {
 
                 unique_id += 1;
             }
-
-            const iterator = graph.commands.iterator(
-                command_offset,
-                command_count,
-                command_data_offset,
-            );
-            _ = iterator;
         }
     }
 
@@ -245,7 +234,7 @@ pub fn renderGraphDebug(graph: *quanta.rendering.graph.Builder) void {
                 while (iterator.next()) |command| : (command_index += 1) {
                     switch (command) {
                         .draw_indexed => |draw_indexed| {
-                            widgets.textFormat("[{}]: {s}({}, {}, {})", .{
+                            widgets.textFormat("[{:0>2}]: {s}({}, {}, {})", .{
                                 command_index,
                                 @tagName(command),
                                 draw_indexed.index_count,
@@ -254,7 +243,7 @@ pub fn renderGraphDebug(graph: *quanta.rendering.graph.Builder) void {
                             });
                         },
                         else => {
-                            widgets.textFormat("[{}]: {s}", .{ command_index, @tagName(command) });
+                            widgets.textFormat("[{:0>2}]: {s}", .{ command_index, @tagName(command) });
                         },
                     }
                 }
@@ -299,8 +288,8 @@ fn createDepGraph(
     if (builder.export_resource == null) return;
 
     const root_pass_index: u32 = switch (builder.export_resource.?) {
-        .image => |image| image.from_pass.pass_index,
-        .buffer => |buffer| buffer.from_pass.pass_index,
+        .image => |image| image.pass_index.?,
+        .buffer => |buffer| buffer.pass_index.?,
     };
 
     createDepGraphRecursive(builder, root_pass_index, dependencies) catch unreachable;

@@ -3,27 +3,26 @@
 pub fn buildGraph(
     graph: *rendering.graph.Builder,
     scene: Scene,
+    scene_view: SceneView,
     output_target: *Image,
 ) void {
     const render_width = 1920;
     const render_height = 1080;
 
-    const radiance_target = graph.createImage(
-        @src(),
-        .r16g16b16a16_sfloat,
-        render_width,
-        render_height,
-        1,
-    );
+    const radiance_target = graph.createImage(@src(), .{
+        .format = .r16g16b16a16_sfloat,
+        .width = render_width,
+        .height = render_height,
+        .depth = 1,
+    });
     _ = radiance_target;
 
-    const depth_target = graph.createImage(
-        @src(),
-        .d32_sfloat,
-        render_width,
-        render_height,
-        1,
-    );
+    const depth_target = graph.createImage(@src(), .{
+        .format = .d32_sfloat,
+        .width = render_width,
+        .height = render_height,
+        .depth = 1,
+    });
 
     const max_instance_count = 1024;
 
@@ -40,12 +39,12 @@ pub fn buildGraph(
 
     const aspect_ratio: f32 = @as(f32, @floatFromInt(target_width)) / @as(f32, @floatFromInt(target_height));
     const near_plane: f32 = 0.01;
-    const fov: f32 = scene.camera.fov;
+    const fov: f32 = scene_view.camera.fov;
 
     const projection = perspectiveProjection(fov, aspect_ratio, near_plane);
     const view = zalgebra.lookAt(
-        .{ .data = scene.camera.translation },
-        .{ .data = scene.camera.target },
+        .{ .data = scene_view.camera.translation },
+        .{ .data = scene_view.camera.target },
         .{ .data = .{ 0, 1, 0 } },
     );
     const view_projection = projection.mul(view);
@@ -92,7 +91,9 @@ pub fn buildGraph(
             test_transform_actual.data[3][0..3].*,
         };
 
-        var vertex_positions_buffer = graph.createBuffer(@src(), 10_024 * @sizeOf(legacy.VertexPosition));
+        var vertex_positions_buffer = graph.createBuffer(@src(), .{
+            .size = 10_024 * @sizeOf(legacy.VertexPosition),
+        });
 
         graph.updateBuffer(
             &vertex_positions_buffer,
@@ -101,7 +102,9 @@ pub fn buildGraph(
             graph.scratchDupe(VertexPosition, &test_vertex_positions),
         );
 
-        var verticies_buffer = graph.createBuffer(@src(), 10_024 * @sizeOf(legacy.Vertex));
+        var verticies_buffer = graph.createBuffer(@src(), .{
+            .size = 10_024 * @sizeOf(legacy.Vertex),
+        });
 
         graph.updateBuffer(
             &verticies_buffer,
@@ -110,7 +113,7 @@ pub fn buildGraph(
             graph.scratchDupe(Vertex, &test_vertices),
         );
 
-        var index_buffer = graph.createBuffer(@src(), 10_024 * @sizeOf(u32));
+        var index_buffer = graph.createBuffer(@src(), .{ .size = 10_024 * @sizeOf(u32) });
 
         graph.updateBuffer(
             &index_buffer,
@@ -119,25 +122,25 @@ pub fn buildGraph(
             graph.scratchDupe(u32, &test_indices),
         );
 
-        var scene_uniforms_buffer = graph.createBuffer(@src(), max_instance_count * @sizeOf(SceneUniforms));
+        var scene_uniforms_buffer = graph.createBuffer(@src(), .{ .size = max_instance_count * @sizeOf(SceneUniforms) });
 
         graph.updateBufferValue(&scene_uniforms_buffer, 0, SceneUniforms, .{
-            .view_position = scene.camera.translation,
+            .view_position = scene_view.camera.translation,
             .view_projection = view_projection.data,
             .ambient_light = scene.ambient_light,
             .point_light_count = @intCast(scene.point_lights.len),
             .primary_directional_light_index = 0,
         });
 
-        var transform_buffer = graph.createBuffer(@src(), max_instance_count * @sizeOf([4][3]f32));
+        var transform_buffer = graph.createBuffer(@src(), .{ .size = max_instance_count * @sizeOf([4][3]f32) });
 
         graph.updateBuffer(&transform_buffer, 0, [4][3]f32, graph.scratchDupe([4][3]f32, &.{test_transform}));
 
-        var material_indices = graph.createBuffer(@src(), max_instance_count * @sizeOf(u32));
+        var material_indices = graph.createBuffer(@src(), .{ .size = max_instance_count * @sizeOf(u32) });
 
         graph.updateBuffer(&material_indices, 0, u32, graph.scratchDupe(u32, &.{0}));
 
-        var materials_buffer = graph.createBuffer(@src(), max_instance_count * @sizeOf(Material));
+        var materials_buffer = graph.createBuffer(@src(), .{ .size = max_instance_count * @sizeOf(Material) });
 
         graph.updateBuffer(&materials_buffer, 0, Material, graph.scratchDupe(Material, &.{
             .{
@@ -150,7 +153,7 @@ pub fn buildGraph(
             },
         }));
 
-        var point_light_buffer = graph.createBuffer(@src(), 1024 * @sizeOf(u32));
+        var point_light_buffer = graph.createBuffer(@src(), .{ .size = 1024 * @sizeOf(u32) });
 
         graph.updateBuffer(&point_light_buffer, 0, PointLight, scene.point_lights);
 
@@ -170,7 +173,10 @@ pub fn buildGraph(
         //Color pass
         graph.beginRasterPass(
             @src(),
-            &.{.{ .image = output_target, .clear = .{ 0.2, 0.2, 0.2, 1 } }},
+            &.{.{
+                .image = output_target,
+                .clear = .{ 0.2, 0.2, 0.2, 1 },
+            }},
             .entirety,
         );
         defer graph.endRasterPass();
@@ -255,10 +261,14 @@ pub fn buildGraph(
 }
 
 pub const Scene = struct {
-    camera: legacy.Camera,
     ambient_light: AmbientLight,
     point_lights: []PointLight,
     environment_map: struct {} = .{},
+};
+
+///Represents a single view into a scene
+pub const SceneView = struct {
+    camera: legacy.Camera,
 };
 
 pub const AmbientLight = extern struct {
@@ -285,7 +295,7 @@ const Material = extern struct {
     roughness: f32,
 };
 
-//Reverse-z perspective
+///Reverse-z perspective
 fn perspectiveProjection(fovy_degrees: f32, aspect_ratio: f32, znear: f32) zalgebra.Mat4 {
     const f = 1 / std.math.tan(std.math.degreesToRadians(f32, fovy_degrees) / 2);
 

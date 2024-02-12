@@ -29,10 +29,12 @@ pub fn renderToGraph(
 
         var font_image = graph.createImage(
             @src(),
-            .r8g8b8a8_srgb,
-            @intCast(width),
-            @intCast(height),
-            1,
+            .{
+                .format = .r8g8b8a8_srgb,
+                .width = @intCast(width),
+                .height = @intCast(height),
+                .depth = 1,
+            },
         );
 
         // io.Fonts.*.TexID = @as(*anyopaque, @ptrFromInt(font_image.getHandle()));
@@ -69,8 +71,8 @@ pub fn renderToGraph(
         const max_indices = 100_000;
 
         //Notice how these resources are local to this scope. We pass these resources as inputs to passes, so these variable names needn't be referenced
-        var vertex_buffer = graph.createBuffer(@src(), max_vertices * @sizeOf(imgui.ImDrawVert));
-        var index_buffer = graph.createBuffer(@src(), max_indices * @sizeOf(u16));
+        var vertex_buffer = graph.createBuffer(@src(), .{ .size = max_vertices * @sizeOf(imgui.ImDrawVert) });
+        var index_buffer = graph.createBuffer(@src(), .{ .size = max_indices * @sizeOf(u16) });
 
         //Upload buffers pass
         graph.beginTransferPass(@src());
