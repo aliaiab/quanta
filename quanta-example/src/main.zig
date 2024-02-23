@@ -124,8 +124,6 @@ pub fn init() !void {
         GraphicsContext.self.surface.surface,
     );
 
-    try Renderer3D.init(state.allocator);
-
     const imgui_context = imgui.igCreateContext(null);
 
     std.debug.assert(imgui_context != null);
@@ -157,7 +155,7 @@ pub fn init() !void {
 
     const asset_archive_file_path = "example_assets_archive";
 
-    const asset_archive_fd = try std.os.open(asset_archive_file_path, std.os.O.RDONLY, std.os.S.IRUSR | std.os.S.IWUSR);
+    const asset_archive_fd = try std.os.open(asset_archive_file_path, .{}, std.os.S.IRUSR | std.os.S.IWUSR);
     defer std.os.close(asset_archive_fd);
 
     const asset_archive_fd_stat = try std.os.fstat(asset_archive_fd);
@@ -191,57 +189,52 @@ pub fn init() !void {
     state.test_scene_materials = try state.allocator.alloc(Renderer3D.MaterialHandle, test_scene_import.materials.len);
 
     for (test_scene_import.sub_meshes, 0..) |sub_mesh, i| {
-        state.test_scene_meshes[i] = try Renderer3D.createMesh(
-            test_scene_import.vertex_positions[sub_mesh.vertex_offset .. sub_mesh.vertex_offset + sub_mesh.vertex_count],
-            test_scene_import.vertices[sub_mesh.vertex_offset .. sub_mesh.vertex_offset + sub_mesh.vertex_count],
-            test_scene_import.indices[sub_mesh.index_offset .. sub_mesh.index_offset + sub_mesh.index_count],
-            sub_mesh.bounding_min,
-            sub_mesh.bounding_max,
-        );
+        _ = sub_mesh; // autofix
+        _ = i; // autofix
+        // state.test_scene_meshes[i] = try Renderer3D.createMesh(
+        //     test_scene_import.vertex_positions[sub_mesh.vertex_offset .. sub_mesh.vertex_offset + sub_mesh.vertex_count],
+        //     test_scene_import.vertices[sub_mesh.vertex_offset .. sub_mesh.vertex_offset + sub_mesh.vertex_count],
+        //     test_scene_import.indices[sub_mesh.index_offset .. sub_mesh.index_offset + sub_mesh.index_count],
+        //     sub_mesh.bounding_min,
+        //     sub_mesh.bounding_max,
+        // );
     }
 
     for (test_scene_import.textures, 0..) |texture, i| {
-        state.test_scene_textures[i] = try Renderer3D.createTexture(
-            texture.data,
-            texture.width,
-            texture.height,
-        );
+        _ = texture; // autofix
+        _ = i; // autofix
+        // state.test_scene_textures[i] = try Renderer3D.createTexture(
+        //     texture.data,
+        //     texture.width,
+        //     texture.height,
+        // );
     }
 
-    if (test_scene_import.materials.len != 0) {
-        for (test_scene_import.materials, 0..) |material, i| {
-            log.info("material albedo index {}", .{material.albedo_texture_index});
-            log.info("material albedo {any}", .{material.albedo});
+    for (test_scene_import.materials, 0..) |material, i| {
+        _ = i; // autofix
+        log.info("material albedo index {}", .{material.albedo_texture_index});
+        log.info("material albedo {any}", .{material.albedo});
 
-            state.test_scene_materials[i] = try Renderer3D.createMaterial(
-                if (material.albedo_texture_index != 0) state.test_scene_textures[material.albedo_texture_index - 1] else null,
-                material.albedo,
-                null,
-                material.metalness,
-                if (material.roughness_texture_index != 0) state.test_scene_textures[material.roughness_texture_index - 1] else null,
-                material.roughness,
-            );
-        }
+        // state.test_scene_materials[i] = try Renderer3D.createMaterial(
+        //     if (material.albedo_texture_index != 0) state.test_scene_textures[material.albedo_texture_index - 1] else null,
+        //     material.albedo,
+        //     null,
+        //     material.metalness,
+        //     if (material.roughness_texture_index != 0) state.test_scene_textures[material.roughness_texture_index - 1] else null,
+        //     material.roughness,
+        // );
     }
 
     const environment_map = try state.asset_storage.load(asset.CubeMap, "skybox/skybox.png");
     const environment_map_data = state.asset_storage.get(asset.CubeMap, environment_map).?;
+    _ = environment_map_data; // autofix
 
     state.ecs_scene = try quanta.ecs.ComponentStore.init(state.allocator);
-
-    state.renderer_scene = try Renderer3D.createScene(
-        1,
-        50_000,
-        4,
-        4096,
-        environment_map_data.data,
-        environment_map_data.width,
-        environment_map_data.height,
-    );
 
     for (test_scene_import.sub_meshes, 0..) |sub_mesh, i| {
         const decomposed = zalgebra.Mat4.decompose(.{ .data = sub_mesh.transform });
         const translation = decomposed.t;
+        const scale = decomposed.s;
 
         var rotation: @Vector(3, f32) = undefined;
 
@@ -263,13 +256,28 @@ pub fn init() !void {
             rotation = .{ zalgebra.toDegrees(yaw), zalgebra.toDegrees(pitch), zalgebra.toDegrees(roll) };
         }
 
-        const scale = decomposed.s;
+        const material = test_scene_import.materials[sub_mesh.material_index];
 
         _ = try state.ecs_scene.entityCreate(.{
-            quanta.components.Position{ .x = translation.x(), .y = translation.y(), .z = translation.z() },
-            quanta.components.Orientation{ .x = rotation[0], .y = rotation[1], .z = rotation[2] },
-            quanta.components.NonUniformScale{ .x = scale.x(), .y = scale.y(), .z = scale.z() },
-            quanta.components.RendererMesh{ .mesh = state.test_scene_meshes[i], .material = state.test_scene_materials[sub_mesh.material_index] },
+            // quanta.components.Position{ .x = translation.x(), .y = translation.y(), .z = translation.z() },
+            // quanta.components.Orientation{ .x = rotation[0], .y = rotation[1], .z = rotation[2] },
+            // quanta.components.NonUniformScale{ .x = scale.x(), .y = scale.y(), .z = scale.z() },
+            quanta.components.RigidTransform{
+                .position = .{ .x = translation.x(), .y = translation.y(), .z = translation.z() },
+                .orientation = .{ .x = rotation[0], .y = rotation[1], .z = rotation[2] },
+                .scale = .{ .x = scale.x(), .y = scale.y(), .z = scale.z() },
+            },
+            quanta.components.RendererMeshInstance{
+                .mesh = @intCast(i),
+                .material = .{
+                    .albedo_texture_index = 0,
+                    .albedo = packUnorm4x8(material.albedo),
+                    .metalness_texture_index = 0,
+                    .metalness = material.metalness,
+                    .roughness_texture_index = 0,
+                    .roughness = material.roughness,
+                },
+            },
         });
     }
 
@@ -433,7 +441,6 @@ pub fn deinit() void {
     };
 
     defer state.swapchain.deinit();
-    defer Renderer3D.deinit();
     defer imgui.igDestroyContext(imgui.igGetCurrentContext());
     defer quanta_imgui.driver.deinit();
     defer std.os.munmap(state.asset_archive_blob);
@@ -441,7 +448,6 @@ pub fn deinit() void {
     defer state.allocator.free(state.test_scene_textures);
     defer state.allocator.free(state.test_scene_materials);
     defer state.ecs_scene.deinit();
-    defer Renderer3D.destroyScene(state.renderer_scene);
     defer state.entity_debugger_commands.deinit();
     defer state.selected_entities.deinit();
     defer state.asset_storage.deinit();
@@ -802,8 +808,6 @@ pub fn update() !UpdateResult {
         color_image,
     );
 
-    const use_traditional_3d_renderer = false;
-
     var scene_point_lights: std.ArrayListUnmanaged(renderer_3d_graph.PointLight) = .{};
     defer scene_point_lights.deinit(state.allocator);
 
@@ -832,12 +836,6 @@ pub fn update() !UpdateResult {
 
     const Statics = struct {
         var enable_renderer_3d: bool = true;
-
-        var meshes: [1]renderer_3d_graph.Scene.Mesh = .{.{
-            .vertex_data = undefined,
-            .positions_data = undefined,
-            .index_data = undefined,
-        }};
     };
 
     if (state.window.getKey(.F2) == .press) {
@@ -849,11 +847,11 @@ pub fn update() !UpdateResult {
 
         state.graph_renderer_scene.clearInstances();
 
-        for (1..4) |index| {
-            try state.graph_renderer_scene.mesh_instances.append(state.allocator, .{
-                .mesh_index = @intCast(index),
-            });
-        }
+        quanta.systems.mesh_instance_system.run(
+            &state.ecs_scene,
+            &state.graph_renderer_scene,
+            state.allocator,
+        );
 
         renderer_3d_graph.buildGraph(
             &state.render_graph,
@@ -874,25 +872,6 @@ pub fn update() !UpdateResult {
     }
 
     state.render_graph.export_resource = .{ .image = graph_swap_image };
-
-    if (use_traditional_3d_renderer) {
-        try Renderer3D.beginSceneRender(
-            state.renderer_scene,
-            &.{Renderer3D.View{ .camera = state.camera }},
-            .{ .diffuse = packUnorm4x8(.{ 0.005, 0.005, 0.005, 1 }) },
-            0,
-        );
-        defer Renderer3D.endSceneRender(
-            state.renderer_scene,
-            color_image,
-            image.image_acquired,
-            image.render_finished,
-        ) catch unreachable;
-
-        quanta.systems.mesh_instance_system.run(&state.ecs_scene, state.renderer_scene);
-        quanta.systems.point_light_system.run(&state.ecs_scene, state.renderer_scene);
-        quanta.systems.directional_light_system.run(&state.ecs_scene, state.renderer_scene);
-    }
 
     const render_graph_compiled = try state.render_graph_compile_context.compile(
         &state.render_graph,
