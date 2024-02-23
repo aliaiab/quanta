@@ -259,7 +259,7 @@ pub const Type = union(enum) {
                 };
             },
             .Type => {},
-            else => unreachable,
+            else => @compileError("Type is not supported"),
         }
 
         return type_data;
@@ -309,7 +309,7 @@ pub const Type = union(enum) {
                     }
                 }
             },
-            else => unreachable,
+            else => return null,
         }
 
         return null;

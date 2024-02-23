@@ -54,15 +54,6 @@ pub fn buildGraph(
         graph.beginTransferPass(@src());
         defer graph.endTransferPass();
 
-        const test_transform_actual = zalgebra.Mat4.identity();
-
-        const test_transform: [4][3]f32 = .{
-            test_transform_actual.data[0][0..3].*,
-            test_transform_actual.data[1][0..3].*,
-            test_transform_actual.data[2][0..3].*,
-            test_transform_actual.data[3][0..3].*,
-        };
-
         var vertex_positions_buffer = graph.createBuffer(@src(), .{
             .size = 10_024 * @sizeOf(legacy.VertexPosition),
         });
@@ -71,7 +62,9 @@ pub fn buildGraph(
             .size = 10_024 * @sizeOf(legacy.Vertex),
         });
 
-        var index_buffer = graph.createBuffer(@src(), .{ .size = 10_024 * @sizeOf(u32) });
+        var index_buffer = graph.createBuffer(@src(), .{
+            .size = 10_024 * @sizeOf(u32),
+        });
 
         for (scene.meshes.items) |*mesh| {
             if (mesh.positions_buffer != null) continue;
@@ -103,7 +96,7 @@ pub fn buildGraph(
 
         var transform_buffer = graph.createBuffer(@src(), .{ .size = max_instance_count * @sizeOf([4][3]f32) });
 
-        graph.updateBuffer(&transform_buffer, 0, [4][3]f32, graph.scratchDupe([4][3]f32, &.{test_transform}));
+        graph.updateBuffer(&transform_buffer, 0, [4][3]f32, scene.mesh_transforms.items);
 
         var material_indices = graph.createBuffer(@src(), .{ .size = max_instance_count * @sizeOf(u32) });
 
@@ -111,16 +104,7 @@ pub fn buildGraph(
 
         var materials_buffer = graph.createBuffer(@src(), .{ .size = max_instance_count * @sizeOf(Material) });
 
-        graph.updateBuffer(&materials_buffer, 0, Material, graph.scratchDupe(Material, &.{
-            .{
-                .albedo_texture_index = 0,
-                .albedo = quantiseColor(.{ 1, 1, 1, 1 }),
-                .metalness_texture_index = 0,
-                .metalness = 0,
-                .roughness_texture_index = 0,
-                .roughness = 1,
-            },
-        }));
+        graph.updateBuffer(&materials_buffer, 0, Material, scene.materials.items);
 
         var point_light_buffer = graph.createBuffer(@src(), .{ .size = 1024 * @sizeOf(u32) });
 
@@ -195,7 +179,7 @@ pub fn buildGraph(
                     .cull_mode = .back,
                 },
             },
-            0,
+            @sizeOf(u32),
         );
 
         graph.setRasterPipelineResourceBuffer(color_pipeline, 0, 0, scene_data_pass.vertex_positions_buffer);
@@ -210,8 +194,10 @@ pub fn buildGraph(
 
         graph.setIndexBuffer(scene_data_pass.index_buffer, .u32);
 
-        for (scene.mesh_instances.items) |instance| {
+        for (scene.mesh_instances.items, 0..) |instance, instance_index| {
             const mesh = scene.meshes.items[instance.mesh_index];
+
+            graph.setPushData(u32, @intCast(instance_index));
 
             graph.drawIndexed(
                 @intCast(mesh.index_data.len / @sizeOf(u32)),
@@ -231,13 +217,14 @@ pub fn buildGraph(
         graph.beginTransferPass(
             @src(),
         );
-        defer graph.endRasterPass();
+        defer graph.endTransferPass();
 
         const pipeline = graph.createComputePipeline(@src(), .{
             .code = @alignCast(@embedFile("color_resolve.comp.spv")),
         }, 0);
 
         graph.setComputePipeline(pipeline);
+        graph.computeDispatch(render_width, render_height, 1);
 
         break :block .{
             .output_target = output_target,
@@ -255,19 +242,51 @@ pub const Scene = struct {
     environment_map: struct {} = .{},
     meshes: std.ArrayListUnmanaged(Mesh) = .{},
     mesh_instances: std.ArrayListUnmanaged(MeshInstance) = .{},
+    mesh_transforms: std.ArrayListUnmanaged([4][3]f32) = .{},
+    material_indices: std.ArrayListUnmanaged(u32) = .{},
+    materials: std.ArrayListUnmanaged(Material) = .{},
 
     mesh_vertex_offset: usize = 0,
     mesh_index_offset: usize = 0,
 
     pub fn clearInstances(self: *@This()) void {
         self.mesh_instances.items.len = 0;
+        self.mesh_transforms.items.len = 0;
+        self.material_indices.items.len = 0;
+        self.materials.items.len = 0;
     }
 
     pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-        self.mesh_instances.deinit(allocator);
         self.meshes.deinit(allocator);
+        self.mesh_instances.deinit(allocator);
+        self.mesh_transforms.deinit(allocator);
+        self.material_indices.deinit(allocator);
+        self.materials.deinit(allocator);
 
         self.* = undefined;
+    }
+
+    pub fn addInstance(
+        self: *@This(),
+        allocator: std.mem.Allocator,
+        mesh_index: u32,
+        transform: zalgebra.Mat4,
+        material: Material,
+    ) !void {
+        const actual_transform: [4][3]f32 = .{
+            transform.data[0][0..3].*,
+            transform.data[1][0..3].*,
+            transform.data[2][0..3].*,
+            transform.data[3][0..3].*,
+        };
+
+        try self.mesh_instances.append(allocator, .{
+            .mesh_index = mesh_index,
+        });
+
+        try self.mesh_transforms.append(allocator, actual_transform);
+
+        try self.materials.append(allocator, material);
     }
 
     pub const Mesh = struct {

@@ -5,12 +5,10 @@
 #include "std/stdint.glsl"
 #include "material_interface.glsl"
 
-layout(push_constant, scalar) uniform Constants
+layout(push_constant) uniform Constants
 {
-    mat4 view_projection;
-    u32 point_light_count;
-    vec3 view_position;
-} constants;
+    u32 draw_id;
+} push_consts;
 
 out Out
 {
@@ -23,15 +21,18 @@ out Out
     vec2 uv;
 } out_data;
 
-#define USING_CPU_DRIVEN_COMMANDS true
+#define USING_CPU_DRIVEN_COMMANDS
 
 void main() 
 {
-    #if USING_CPU_DRIVEN_COMMAND 
-        u32 instance_index = 0;
-    #else 
-        u32 instance_index = draw_commands[gl_DrawIDARB].instance_index;
-    #endif
+    //TODO: #else doesn't seem to work, is this an issue with glslang?
+    // #ifdef USING_CPU_DRIVEN_COMMAND 
+        // u32 instance_index = push_consts.draw_id;
+    // #else 
+        // u32 instance_index = draw_commands[gl_DrawIDARB].instance_index;
+    // #endif
+
+    u32 instance_index = push_consts.draw_id;
     
     Vertex vertex = vertices[gl_VertexIndex]; 
 
@@ -63,7 +64,8 @@ void main()
     out_data.color = unpackUnorm4x8(vertex.color);
     out_data.normal = normalize(mat3(transpose(inverse(transform))) * dequantised_normal);
     out_data.uv = dequantised_uv;
-    out_data.material_index = material_indices[instance_index];
+    // out_data.material_index = material_indices[instance_index];
+    out_data.material_index = instance_index;
     out_data.triangle_index = gl_VertexIndex / 3;
 
     gl_Position = scene_uniforms.view_projection * translation;

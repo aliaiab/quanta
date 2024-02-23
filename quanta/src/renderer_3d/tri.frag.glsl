@@ -235,4 +235,10 @@ void main()
     // output_color *= unpackUnorm4x8(in_data.triangle_index);
     // output_color = albedo;
     // output_color = vec4(in_data.normal, 1);
+
+    float gamma = 2.2;
+    float exposure = 3;
+
+    output_color.rgb = vec3(1.0) - exp(-output_color.rgb * exposure);
+    output_color.rgb = pow(output_color.rgb, vec3(1.0 / gamma));
 }

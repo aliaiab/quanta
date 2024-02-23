@@ -360,7 +360,7 @@ pub fn init(allocator: std.mem.Allocator) !void {
             },
         },
         null,
-        0,
+        @sizeOf(u32),
     );
     errdefer self.color_pipeline.deinit(allocator);
 

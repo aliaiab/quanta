@@ -1013,6 +1013,21 @@ pub const Builder = struct {
         });
     }
 
+    pub fn computeDispatch(
+        self: *@This(),
+        thread_count_x: u32,
+        thread_count_y: u32,
+        thread_count_z: u32,
+    ) void {
+        self.commands.add(self.allocator, .{
+            .compute_dispatch = .{
+                .thread_count_x = thread_count_x,
+                .thread_count_y = thread_count_y,
+                .thread_count_z = thread_count_z,
+            },
+        });
+    }
+
     ///References a buffer as an input to a pass
     fn referenceBufferAsInput(self: *@This(), buffer: Buffer) void {
         self.referenceBuffer(buffer);
@@ -1596,19 +1611,31 @@ pub const CompileContext = struct {
                     const attachments_input = pass_data.raster.attachments;
 
                     // attachment barrier prepass
-                    for (attachments_input) |
-                        input,
-                    | {
+                    for (attachments_input) |input| {
                         const image = &self.images.getPtr(input.image).?.image;
 
-                        if (input.store) {
-                            try barrier_map.readWriteImage(
-                                image,
-                                .{ .color_attachment_output = true },
-                                .{ .color_attachment_write = true },
-                                .color_attachment_optimal,
-                            );
-                        }
+                        try barrier_map.readWriteImage(
+                            image,
+                            .{ .color_attachment_output = true },
+                            .{ .color_attachment_write = true },
+                            .color_attachment_optimal,
+                        );
+                    }
+
+                    if (pass_data.raster.depth_attachment != null) {
+                        const image = &self.images.getPtr(pass_data.raster.depth_attachment.?.image).?.image;
+
+                        try barrier_map.readWriteImage(
+                            image,
+                            .{
+                                .early_fragment_tests = true,
+                            },
+                            .{
+                                .depth_attachment_read = true,
+                                .depth_attachment_write = pass_data.raster.depth_attachment.?.store,
+                            },
+                            .depth_attachment_optimal,
+                        );
                     }
                 }
 

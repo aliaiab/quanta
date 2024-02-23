@@ -208,123 +208,171 @@ pub fn entityViewer(
                             //Find meta data related to this editor
                             const edit_info = component_type_info.*.getDecl("editor");
 
-                            switch (component_type_info.*) {
-                                .Struct => |struct_info| {
-                                    for (struct_info.fields) |field| {
-                                        const field_editor_info = if (edit_info == null) null else edit_info.?.type.getStructField(field.name);
-
-                                        switch (field.type.*) {
-                                            .Bool => {
-                                                const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
-                                                const ptr_to_field = @as([*]u8, @ptrCast(ptr_to_struct)) + field.offset;
-
-                                                const ptr_to_bool = @as(*bool, @ptrCast(ptr_to_field));
-
-                                                _ = imgui.igCheckbox(field.name.ptr, ptr_to_bool);
-                                            },
-                                            .Int => unreachable,
-                                            .Float => {
-                                                const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
-
-                                                const ptr_to_field = @as([*]u8, @ptrCast(ptr_to_struct)) + field.offset;
-
-                                                const ptr_to_float: *f32 = @as(*f32, @ptrCast(@alignCast(ptr_to_field)));
-
-                                                widgets.dragFloat(field.name, ptr_to_float);
-                                            },
-                                            .Array => |array_info| {
-                                                const ptr_to_array = @as([*]u8, @ptrCast(ecs_scene.entityGetComponentPtr(entity, component_type_info))) + field.offset;
-
-                                                switch (array_info.len) {
-                                                    1 => unreachable,
-                                                    2 => unreachable,
-                                                    3 => {
-                                                        const array_ptr_f32 = @as(*f32, @ptrCast(@alignCast(ptr_to_array)));
-
-                                                        if (field_editor_info == null) {
-                                                            _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.floatMin(f32), std.math.floatMax(f32), null, 0);
-
-                                                            continue;
-                                                        }
-
-                                                        widgets.textFormat("{any}", .{field_editor_info});
-
-                                                        const edit_type_field = field_editor_info.?.type.getStructField("edit_type");
-
-                                                        const edit_type_ptr = quanta.reflect.Type.getStructFieldValue([]const u8, edit_info.?.value, edit_type_field.?);
-
-                                                        widgets.textFormat("edit_type = {s}", .{edit_type_ptr.*});
-
-                                                        if (std.mem.eql(u8, edit_type_ptr.*, "color")) {
-                                                            _ = imgui.igColorEdit3(field.name.ptr, array_ptr_f32, 0);
-                                                        } else {
-                                                            _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.floatMin(f32), std.math.floatMax(f32), null, 0);
-                                                        }
-                                                    },
-                                                    else => unreachable,
-                                                }
-                                            },
-                                            else => {
-                                                widgets.textFormat("{s} = {*}", .{ field.name, ecs_scene.entityGetComponentPtr(entity, component_type_info) });
-                                            },
-                                        }
-                                    }
-                                },
-                                .Enum => |enum_info| {
-                                    const ptr_to_enum = @as([*]u8, @ptrCast(ecs_scene.entityGetComponentPtr(entity, component_type_info)));
-
-                                    var items: [256][*c]const u8 = undefined;
-
-                                    for (enum_info.fields, 0..) |field, i| {
-                                        items[i] = field.name.ptr;
-                                    }
-
-                                    var current_item: c_int = @as(c_int, @intCast(ptr_to_enum[0]));
-
-                                    if (imgui.igCombo_Str_arr("value", &current_item, &items, @as(c_int, @intCast(enum_info.fields.len)), 0)) {
-                                        ptr_to_enum[0] = @as(u8, @intCast(current_item));
-                                    }
-                                },
-                                .Union => |union_info| {
-                                    const ptr_to_enum = @as([*]u8, @ptrCast(ecs_scene.entityGetComponentPtr(entity, component_type_info))) + union_info.tag_offset;
-
-                                    var items: [256][*c]const u8 = undefined;
-
-                                    for (union_info.fields, 0..) |field, i| {
-                                        items[i] = field.name.ptr;
-
-                                        widgets.textFormat("{s}", .{field.name});
-                                    }
-
-                                    var current_item: c_int = @as(c_int, @intCast(ptr_to_enum[0]));
-
-                                    if (imgui.igCombo_Str_arr("value", &current_item, &items, @as(c_int, @intCast(union_info.fields.len)), 0)) {
-                                        ptr_to_enum[0] = @as(u8, @intCast(current_item));
-                                    }
-
-                                    for (union_info.fields, 0..) |field, i| {
-                                        if (i != @as(usize, @intCast(current_item))) {
-                                            // continue;
-                                        }
-
-                                        widgets.textFormat("{s}", .{field.name});
-
-                                        switch (field.type.*) {
-                                            .Int => |int_info| {
-                                                widgets.textFormat("{}", .{int_info});
-                                            },
-                                            .Void => {},
-                                            else => {},
-                                        }
-                                    }
-                                },
-                                else => {},
-                            }
+                            componentEditType(
+                                ecs_scene,
+                                entity,
+                                component_type_info.*,
+                                edit_info,
+                                component_type_info,
+                                0,
+                            );
                         }
                     }
                 }
             }
         }
+    }
+}
+
+fn componentEditType(
+    ecs_scene: *ecs.ComponentStore,
+    entity: ecs.ComponentStore.Entity,
+    type_info: quanta.reflect.Type,
+    edit_info: ?quanta.reflect.Type.Declaration,
+    component_type_info: quanta.ecs.ComponentStore.ComponentId,
+    base_address: u32,
+) void {
+    switch (type_info) {
+        .Struct => |struct_info| {
+            for (struct_info.fields) |field| {
+                const field_editor_info = if (edit_info == null) null else edit_info.?.type.getStructField(field.name);
+
+                switch (field.type.*) {
+                    .Bool => {
+                        const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
+                        const ptr_to_field = @as([*]u8, @ptrCast(ptr_to_struct)) + base_address + field.offset;
+
+                        const ptr_to_bool = @as(*bool, @ptrCast(ptr_to_field));
+
+                        _ = imgui.igCheckbox(field.name.ptr, ptr_to_bool);
+                    },
+                    .Int => |int| {
+                        const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
+                        const ptr_to_field = @as([*]u8, @ptrCast(ptr_to_struct)) + base_address + field.offset;
+
+                        switch (int.bits) {
+                            8, 16 => unreachable,
+                            32 => {
+                                _ = imgui.igDragInt(
+                                    field.name.ptr,
+                                    @ptrCast(@alignCast(ptr_to_field)),
+                                    0.1,
+                                    0,
+                                    std.math.maxInt(i32),
+                                    null,
+                                    0,
+                                );
+                            },
+                            64 => unreachable,
+                            else => unreachable,
+                        }
+                    },
+                    .Float => {
+                        const ptr_to_struct = ecs_scene.entityGetComponentPtr(entity, component_type_info);
+
+                        const ptr_to_field = @as([*]u8, @ptrCast(ptr_to_struct)) + base_address + field.offset;
+
+                        const ptr_to_float: *f32 = @as(*f32, @ptrCast(@alignCast(ptr_to_field)));
+
+                        widgets.dragFloat(field.name, ptr_to_float);
+                    },
+                    .Array => |array_info| {
+                        const ptr_to_array = @as([*]u8, @ptrCast(ecs_scene.entityGetComponentPtr(entity, component_type_info))) + base_address + field.offset;
+
+                        switch (array_info.len) {
+                            1 => unreachable,
+                            2 => unreachable,
+                            3 => {
+                                const array_ptr_f32 = @as(*f32, @ptrCast(@alignCast(ptr_to_array)));
+
+                                if (field_editor_info == null) {
+                                    _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.floatMin(f32), std.math.floatMax(f32), null, 0);
+
+                                    continue;
+                                }
+
+                                widgets.textFormat("{any}", .{field_editor_info});
+
+                                const edit_type_field = field_editor_info.?.type.getStructField("edit_type");
+
+                                const edit_type_ptr = quanta.reflect.Type.getStructFieldValue([]const u8, edit_info.?.value, edit_type_field.?);
+
+                                widgets.textFormat("edit_type = {s}", .{edit_type_ptr.*});
+
+                                if (std.mem.eql(u8, edit_type_ptr.*, "color")) {
+                                    _ = imgui.igColorEdit3(field.name.ptr, array_ptr_f32, 0);
+                                } else {
+                                    _ = imgui.igDragFloat3(field.name.ptr, array_ptr_f32, 0.1, std.math.floatMin(f32), std.math.floatMax(f32), null, 0);
+                                }
+                            },
+                            else => unreachable,
+                        }
+                    },
+                    .Struct => {
+                        componentEditType(
+                            ecs_scene,
+                            entity,
+                            field.type.*,
+                            null,
+                            component_type_info,
+                            base_address + field.offset,
+                        );
+                    },
+                    else => {
+                        widgets.textFormat("{s} = {*}", .{ field.name, ecs_scene.entityGetComponentPtr(entity, component_type_info) });
+                    },
+                }
+            }
+        },
+        .Enum => |enum_info| {
+            const ptr_to_enum = @as([*]u8, @ptrCast(ecs_scene.entityGetComponentPtr(entity, component_type_info)));
+
+            var items: [256][*c]const u8 = undefined;
+
+            for (enum_info.fields, 0..) |field, i| {
+                items[i] = field.name.ptr;
+            }
+
+            var current_item: c_int = @as(c_int, @intCast(ptr_to_enum[0]));
+
+            if (imgui.igCombo_Str_arr("value", &current_item, &items, @as(c_int, @intCast(enum_info.fields.len)), 0)) {
+                ptr_to_enum[0] = @as(u8, @intCast(current_item));
+            }
+        },
+        .Union => |union_info| {
+            const ptr_to_enum = @as([*]u8, @ptrCast(ecs_scene.entityGetComponentPtr(entity, component_type_info))) + union_info.tag_offset;
+
+            var items: [256][*c]const u8 = undefined;
+
+            for (union_info.fields, 0..) |field, i| {
+                items[i] = field.name.ptr;
+
+                widgets.textFormat("{s}", .{field.name});
+            }
+
+            var current_item: c_int = @as(c_int, @intCast(ptr_to_enum[0]));
+
+            if (imgui.igCombo_Str_arr("value", &current_item, &items, @as(c_int, @intCast(union_info.fields.len)), 0)) {
+                ptr_to_enum[0] = @as(u8, @intCast(current_item));
+            }
+
+            for (union_info.fields, 0..) |field, i| {
+                if (i != @as(usize, @intCast(current_item))) {
+                    // continue;
+                }
+
+                widgets.textFormat("{s}", .{field.name});
+
+                switch (field.type.*) {
+                    .Int => |int_info| {
+                        widgets.textFormat("{}", .{int_info});
+                    },
+                    .Void => {},
+                    else => {},
+                }
+            }
+        },
+        else => {},
     }
 }
 

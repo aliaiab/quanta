@@ -522,6 +522,10 @@ pub fn entityClear(self: *ComponentStore, entity: Entity) void {
     entity_description.row = .{};
 }
 
+comptime {
+    std.debug.assert(isComponentSet(f32) == false);
+}
+
 pub fn entityAddComponent(
     self: *ComponentStore,
     entity: Entity,
@@ -544,7 +548,12 @@ pub fn entityAddComponent(
     std.debug.assert(archetype_index != source_archetype_index);
     std.debug.assert(self.archetypeHasComponent(archetype_index, T));
 
-    const row = try self.archetypeMoveRow(source_archetype_index, archetype_index, entity_description.row, entity);
+    const row = try self.archetypeMoveRow(
+        source_archetype_index,
+        archetype_index,
+        entity_description.row,
+        entity,
+    );
 
     entity_description.archetype_index = archetype_index;
     entity_description.row = row;
@@ -561,8 +570,16 @@ pub fn entityAddComponents(
     entity: Entity,
     components: anytype,
 ) !void {
-    inline for (components) |component| {
-        try self.entityAddComponent(entity, component);
+    inline for (std.meta.fields(@TypeOf(components))) |component_field| {
+        if (comptime isComponentSet(component_field.type)) {
+            inline for (std.meta.fields(component_field.type)) |component_field_2| {
+                if (component_field_2.type == IsComponentSet) continue;
+
+                try self.entityAddComponent(entity, @field(@field(components, component_field.name), component_field_2.name));
+            }
+        } else {
+            try self.entityAddComponent(entity, @field(components, component_field.name));
+        }
     }
 }
 
@@ -571,6 +588,10 @@ pub fn entityRemoveComponent(
     entity: Entity,
     comptime Component: type,
 ) !void {
+    if (isComponentSet(Component)) {
+        @compileError("We don't yet support component sets");
+    }
+
     //Doesn't seem to work when using componentId(Component) instead of this, why?
     //I suspect it might be an issue with the compiler and compile time function memoisation but I have no clue
     const component_type = componentType(Component);
@@ -618,6 +639,10 @@ pub fn entityGetComponent(
     entity: Entity,
     comptime T: type,
 ) ?*T {
+    if (comptime isComponentSet(T)) {
+        // @compileError("We don't yet support component sets");
+    }
+
     const component_id = componentId(T);
 
     const entity_description = self.entity_map.get(entity) orelse return null;
@@ -762,10 +787,19 @@ pub const Filter = union(enum) {
 
 pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anytype) type {
     comptime var component_fetches_slice: []const type = &.{};
+    comptime var components_optional: []const type = &.{};
 
     inline for (component_fetches) |component_fetch| {
-        component_fetches_slice = component_fetches_slice ++ &[_]type{component_fetch};
+        const component_Fetch_info = @typeInfo(component_fetch);
 
+        switch (component_Fetch_info) {
+            .Optional => {
+                components_optional = components_optional ++ &[_]type{std.meta.Child(component_fetch)};
+            },
+            else => {
+                component_fetches_slice = component_fetches_slice ++ &[_]type{component_fetch};
+            },
+        }
         if (componentIsTag(component_fetch)) {
             @compileError("Query cannot fetch a tag component!");
         }
@@ -800,8 +834,6 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
                 .blocks = .{},
             };
 
-            // self.invalidate() catch unreachable;
-
             return self;
         }
 
@@ -810,25 +842,44 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
         }
 
         pub const Block = block: {
-            var fields: [required_component_slice.len + 1]std.builtin.Type.StructField = undefined;
+            const field_count = required_component_slice.len + components_optional.len + 1;
 
-            fields[0] = .{
+            var fields: [field_count]std.builtin.Type.StructField = undefined;
+
+            var field_index = 0;
+
+            fields[field_index] = .{
                 .name = "entities",
                 .type = []const Entity,
                 .default_value = null,
                 .is_comptime = false,
                 .alignment = @alignOf([]const Entity),
             };
+            field_index += 1;
 
-            for (required_component_slice, 1..) |component_type, i| {
-                fields[i] = .{
-                    .name = componentName(component_type),
+            for (required_component_slice, 0..) |component_type, i| {
+                fields[field_index + i] = .{
+                    .name = componentFieldName(component_type),
                     .type = []component_type,
                     .default_value = null,
                     .is_comptime = false,
                     .alignment = @alignOf([]component_type),
                 };
             }
+
+            field_index += required_component_slice.len;
+
+            for (components_optional, 0..) |component_type, i| {
+                fields[field_index + i] = .{
+                    .name = componentFieldName(component_type),
+                    .type = ?[]component_type,
+                    .default_value = null,
+                    .is_comptime = false,
+                    .alignment = @alignOf(?[]component_type),
+                };
+            }
+
+            field_index += required_component_slice.len;
 
             break :block @Type(.{ .Struct = .{
                 .layout = .Auto,
@@ -860,7 +911,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
 
             for (required_component_slice, 2..) |component_type, i| {
                 fields[i] = .{
-                    .name = componentName(component_type),
+                    .name = componentFieldName(component_type),
                     .type = [*]component_type,
                     .default_value = null,
                     .is_comptime = false,
@@ -922,7 +973,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
                     inline for (component_fetches) |component_type| {
                         const column: *ChunkColumn = &chunk.columns[archetype_record.column];
 
-                        @field(block, componentName(component_type)) = chunk.getComponents(component_type, column.offset).ptr;
+                        @field(block, componentFieldName(component_type)) = chunk.getComponents(component_type, column.offset).ptr;
                     }
 
                     try self.blocks.append(self.component_store.allocator, block);
@@ -952,8 +1003,12 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             }
 
             if (self.chunk_index >= archetype.chunks.items.len) {
-                defer self.archetype_index += 1;
+                self.archetype_index += 1;
                 self.chunk_index = 0;
+
+                if (self.archetype_index >= self.component_store.archetypes.items.len) {
+                    return null;
+                }
 
                 return self.archetype_index;
             }
@@ -962,29 +1017,8 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
         }
 
         pub fn nextBlock(self: *@This()) ?Block {
-            // if (true) {
-            //     defer self.chunk_index += 1;
-
-            //     if (self.blocks.items.len == 0) {
-            //         return null;
-            //     }
-
-            //     const cached = self.blocks.items[self.chunk_index];
-
-            //     const entity_count = cached.entity_count.*;
-
-            //     var block: Block = undefined;
-
-            //     block.entities = cached.entities[0..entity_count];
-
-            //     inline for (component_fetches) |component_type| {
-            //         @field(block, componentName(component_type)) = @field(cached, componentName(component_type))[0..entity_count];
-            //     }
-
-            //     return null;
-            // }
-
             const archetype_index: ArchetypeIndex = self.nextArchetype() orelse return null;
+
             var archetype: *const Archetype = &self.component_store.archetypes.items[archetype_index];
 
             if (self.chunk_index >= archetype.chunks.items.len) {
@@ -1002,14 +1036,28 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
 
             block.entities = chunk.entities();
 
-            inline for (component_fetches) |component_type| {
+            inline for (required_component_slice) |component_type| {
                 const component_type_desc = self.component_store.component_index.get(componentId(component_type)).?;
 
                 const archetype_record = component_type_desc.archetypes.get(archetype_index).?;
 
                 const column: *ChunkColumn = &chunk.columns[archetype_record.column];
 
-                @field(block, componentName(component_type)) = chunk.getComponents(component_type, column.offset);
+                @field(block, componentFieldName(component_type)) = chunk.getComponents(component_type, column.offset);
+            }
+
+            inline for (components_optional) |component_type| {
+                const component_type_desc = self.component_store.component_index.get(componentId(component_type)).?;
+
+                const maybe_archetype_record = component_type_desc.archetypes.get(archetype_index);
+
+                if (maybe_archetype_record) |archetype_record| {
+                    const column: *ChunkColumn = &chunk.columns[archetype_record.column];
+
+                    @field(block, componentFieldName(component_type)) = chunk.getComponents(component_type, column.offset);
+                } else {
+                    @field(block, componentFieldName(component_type)) = null;
+                }
             }
 
             self.chunk_index += 1;
@@ -1017,8 +1065,9 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             return block;
         }
 
-        fn componentName(comptime T: type) [:0]const u8 {
-            const full_type_name = @typeName(T);
+        ///Returns the name of the field in Block that contains the []T
+        pub fn componentFieldName(comptime T: type) [:0]const u8 {
+            const full_type_name = @typeName(if (@typeInfo(T) == .Optional) std.meta.Child(T) else T);
 
             const index_of_name = std.mem.lastIndexOf(u8, full_type_name, &.{'.'}).? + 1;
 
@@ -1038,11 +1087,36 @@ pub fn query(
     return QueryIterator(component_fetches, component_filters).init(self);
 }
 
+///Indicates a set type which defines a weak relationship between its components.
+///Allows for optional components and default components, which are components that don't have to be on an entity for it to conform to the set.
+///Queries allow for querying a component set, which will ensure the correct optionality and defaulting rules of the set type.
+pub const IsComponentSet = struct {};
+
+pub fn isComponentSet(comptime T: type) bool {
+    comptime {
+        switch (@typeInfo(T)) {
+            .Struct => for (std.meta.fields(T)) |field| {
+                if (field.type == IsComponentSet) {
+                    return true;
+                }
+            },
+            else => return false,
+        }
+
+        return false;
+    }
+}
+
 pub fn foreach(
     self: *ComponentStore,
-    comptime Fn: anytype,
+    context: anytype,
+    comptime function: anytype,
 ) void {
-    const args_types = std.meta.ArgsTuple(@TypeOf(Fn));
+    if (true) @compileError("");
+
+    const ContextType = @TypeOf(context);
+
+    const args_types = std.meta.ArgsTuple(@TypeOf(function));
 
     comptime var args_type_fields = std.meta.fields(args_types);
 
@@ -1053,10 +1127,14 @@ pub fn foreach(
         .decls = &[_]std.builtin.Type.Declaration{},
     } });
 
-    comptime var component_types: [if (args_type_fields[0].type == Entity) args_type_fields.len - 1 else args_type_fields.len]type = undefined;
+    const arg_start = if (args_type_fields[1].type == Entity) 2 else 1;
 
-    comptime for (&component_types, args_type_fields[if (args_type_fields[0].type == Entity) 1 else 0..]) |*component_type, arg_type| {
-        if (std.meta.trait.isSingleItemPtr(arg_type.type)) {
+    const component_count = if (args_type_fields[1].type == Entity) args_type_fields.len - 2 else args_type_fields.len - 1;
+
+    comptime var component_types: [component_count]type = undefined;
+
+    comptime for (&component_types, args_type_fields[arg_start..]) |*component_type, arg_type| {
+        if (@typeInfo(arg_type.type) == .Pointer and @typeInfo(arg_type.type).Pointer.size == .One) {
             component_type.* = std.meta.Child(arg_type.type);
         } else {
             component_type.* = arg_type.type;
@@ -1065,24 +1143,38 @@ pub fn foreach(
 
     var foreach_query = self.query(component_types, .{});
 
-    while (foreach_query.next()) |entity| {
-        var args: ArgsType = undefined;
+    while (foreach_query.nextBlock()) |block| {
+        const entities = block.entities;
 
-        if (args_type_fields[0].type == Entity) {
-            args[0] = entity;
-        }
+        for (entities, 0..) |entity, entity_index| {
+            var args: ArgsType = undefined;
 
-        const arg_start = if (args_type_fields[0].type == Entity) 1 else 0;
-
-        inline for (args_type_fields[arg_start..], arg_start..) |arg_type, i| {
-            if (std.meta.trait.isSingleItemPtr(arg_type.type)) {
-                args[i] = foreach_query.getComponent(std.meta.Child(arg_type.type));
-            } else {
-                args[i] = foreach_query.getComponent(arg_type.type).*;
+            if (args_type_fields[0].type == ContextType) {
+                args[0] = context;
             }
-        }
 
-        @call(.always_inline, Fn, args);
+            if (args_type_fields[1].type == Entity) {
+                args[1] = entity;
+            }
+
+            inline for (args_type_fields[arg_start..], arg_start..) |arg_type, i| {
+                if (@typeInfo(arg_type.type) == .Pointer) {
+                    const field_name = comptime @TypeOf(foreach_query).componentFieldName(std.meta.Child(arg_type.type));
+
+                    args[i] = &@field(block, field_name)[entity_index];
+                } else {
+                    const field_name = comptime @TypeOf(foreach_query).componentFieldName(arg_type.type);
+
+                    if (@typeInfo(arg_type.type) == .Optional) {
+                        args[i] = @field(block, field_name).?[entity_index];
+                    } else {
+                        args[i] = @field(block, field_name)[entity_index];
+                    }
+                }
+            }
+
+            @call(.always_inline, function, args);
+        }
     }
 }
 
@@ -1537,20 +1629,28 @@ fn archetypeRemoveRow(
     row: RowLocation,
 ) void {
     const archetype: *Archetype = &self.archetypes.items[archetype_index];
+
+    defer {
+        archetype.entity_count -|= 1;
+    }
+
+    if (archetype.chunks.items.len == 0) {
+        return;
+    }
+
     const chunk: *Chunk = &archetype.chunks.items[row.chunk_index];
 
     defer {
         chunk.row_count -|= 1;
-        archetype.entity_count -|= 1;
 
         if (chunk.row_count == 0) {
             self.archetypeFreeChunk(archetype_index, row.chunk_index);
-        } else {
+
             archetype.next_free_chunk_index = @min(archetype.next_free_chunk_index, row.chunk_index);
         }
     }
 
-    if (chunk.row_count == 1 or row.row_index >= chunk.row_count - 1) {
+    if (chunk.row_count == 1 or row.row_index == chunk.row_count - 1) {
         return;
     }
 
@@ -1559,7 +1659,8 @@ fn archetypeRemoveRow(
 
         const dst_start = column.offset + row.row_index * column.element_size;
         const dst = chunk.data.?[dst_start .. dst_start + column.element_size];
-        const src_start = column.offset + (chunk.row_count * column.element_size) - column.element_size;
+
+        const src_start = column.offset + (chunk.row_count - 1) * column.element_size;
         const src = chunk.data.?[src_start .. src_start + column.element_size];
 
         @memcpy(dst, src);
@@ -1569,13 +1670,11 @@ fn archetypeRemoveRow(
 
     const entity_to_update = entities[entities.len - 1];
 
-    std.mem.swap(Entity, &entities[row.row_index], &entities[entities.len - 1]);
+    entities[row.row_index] = entities[entities.len - 1];
 
     const entity_to_update_description = self.entity_map.get(entity_to_update) orelse return;
 
     entity_to_update_description.row = row;
-
-    archetype.entity_count -|= 1;
 }
 
 const RowLocation = packed struct(u32) {
@@ -1612,32 +1711,22 @@ fn archetypeCopyRow(
     }
 }
 
-///Removes the row at row_index from the source archetype and adds a row to dest archetype and moves it there
-///Returns an index to the new row
-fn archetypeMoveRow(
+fn archetypeCopyRowMultiArchetype(
     self: *ComponentStore,
     source_archetype_index: ArchetypeIndex,
     destination_archetype_index: ArchetypeIndex,
     source_row: RowLocation,
-    entity: Entity,
-) !RowLocation {
-    std.debug.assert(destination_archetype_index != 0);
-
-    const destination_row = try self.archetypeAddRow(destination_archetype_index, entity);
-
-    if (source_archetype_index == 0) {
-        return destination_row;
-    }
+    destination_row: RowLocation,
+) !void {
+    std.debug.assert(source_archetype_index != 0);
 
     const source_archetype: *Archetype = &self.archetypes.items[source_archetype_index];
     const destination_archetype: *Archetype = &self.archetypes.items[destination_archetype_index];
 
-    var source_chunk: *Chunk = &source_archetype.chunks.items[source_row.chunk_index];
-    var destination_chunk: *Chunk = &destination_archetype.chunks.items[destination_row.chunk_index];
+    const source_chunk: *Chunk = &source_archetype.chunks.items[source_row.chunk_index];
+    const destination_chunk: *Chunk = &destination_archetype.chunks.items[destination_row.chunk_index];
 
     const minimum_length = @min(source_chunk.columns.len, destination_chunk.columns.len);
-    const maximum_length = @max(source_chunk.columns.len, destination_chunk.columns.len);
-    _ = maximum_length;
 
     for (0..minimum_length) |i| {
         var source_column = &source_chunk.columns[i];
@@ -1672,12 +1761,6 @@ fn archetypeMoveRow(
             }
         }
 
-        //not entirely sure what's happening here, if this is called as part of the removeComponent
-        //procedure then this makes sense, but I don't know why it's causing corrupted component data
-        if (src_id != dst_id) {
-            std.debug.assert(false);
-        }
-
         std.debug.assert(src_id == dst_id);
         std.debug.assert(source_column.element_size == destination_column.element_size);
         std.debug.assert(source_column.element_alignment == destination_column.element_alignment);
@@ -1692,31 +1775,35 @@ fn archetypeMoveRow(
         const src_start = source_column.offset + source_column.element_size * source_row.row_index;
         const src = source_chunk.data.?[src_start .. src_start + source_column.element_size];
 
-        const src_end_start = source_column.offset + (source_chunk.row_count * source_column.element_size) - source_column.element_size;
-        const src_end = source_chunk.data.?[src_end_start .. src_end_start + source_column.element_size];
-
         @memcpy(dst, src);
-        @setRuntimeSafety(false);
-        // @memcpy(src, src_end);
+    }
+}
 
-        std.mem.copyForwards(u8, src_end, src);
+///Removes the row at row_index from the source archetype and adds a row to dest archetype and moves it there
+///Returns an index to the new row
+fn archetypeMoveRow(
+    self: *ComponentStore,
+    source_archetype_index: ArchetypeIndex,
+    destination_archetype_index: ArchetypeIndex,
+    source_row: RowLocation,
+    entity: Entity,
+) !RowLocation {
+    std.debug.assert(destination_archetype_index != 0);
+
+    const destination_row = try self.archetypeAddRow(destination_archetype_index, entity);
+
+    if (source_archetype_index == 0) {
+        return destination_row;
     }
 
-    const entities = source_chunk.entities();
+    try self.archetypeCopyRowMultiArchetype(
+        source_archetype_index,
+        destination_archetype_index,
+        source_row,
+        destination_row,
+    );
 
-    const entity_to_update = entities[entities.len - 1];
-
-    std.mem.swap(Entity, &entities[source_row.row_index], &entities[entities.len - 1]);
-
-    const entity_to_update_description = self.entity_map.get(entity_to_update).?;
-
-    entity_to_update_description.row = source_row;
-
-    source_chunk.row_count -= 1;
-
-    if (source_chunk.row_count == 0) {
-        self.archetypeFreeChunk(source_archetype_index, source_row.chunk_index);
-    }
+    self.archetypeRemoveRow(source_archetype_index, source_row);
 
     return destination_row;
 }

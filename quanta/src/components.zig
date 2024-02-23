@@ -38,14 +38,19 @@ pub const Orientation = struct {
     z: f32,
 };
 
-pub const UniformScale = struct {
-    value: f32,
-};
-
 pub const NonUniformScale = struct {
     x: f32,
     y: f32,
     z: f32,
+};
+
+//Represents a rigid transformation of an entities' vector basis to its position vector in space R3
+pub const RigidTransform = struct {
+    _: ecs.ComponentStore.IsComponentSet = .{},
+
+    position: Position,
+    orientation: Orientation = .{ .x = 0, .y = 0, .z = 0 },
+    scale: NonUniformScale = .{ .x = 1, .y = 1, .z = 1 },
 };
 
 pub const Visibility = struct {
@@ -72,13 +77,6 @@ pub const PointLight = struct {
     intensity: f32,
     diffuse: [3]f32,
 
-    ///Tells the editor how to serialize this field
-    // pub const editor = .{
-    //     .diffuse = .{
-    //         .edit_type = "color",
-    //     },
-    // };
-
     pub const editor = EditorInfo{ .diffuse = .{ .edit_type = "color" } };
 
     pub const EditorInfo = struct {
@@ -86,4 +84,11 @@ pub const PointLight = struct {
     };
 };
 
+pub const RendererMeshInstance = struct {
+    mesh: u32,
+    material: renderer_3d_graph.Material,
+};
+
 const Renderer3D = @import("renderer_3d.zig").Renderer3D;
+const renderer_3d_graph = @import("renderer_3d/renderer_3d_graph.zig");
+const ecs = @import("ecs.zig");
