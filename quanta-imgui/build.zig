@@ -32,7 +32,7 @@ pub fn build(builder: *Build) !void {
     quanta_imgui_module.addIncludePath(imguizmo.path(""));
     quanta_imgui_module.addIncludePath(imgui_node_editor.path(""));
     quanta_imgui_module.addCSourceFiles(.{
-        .dependency = imgui,
+        .root = imgui.path(""),
         .files = &[_][]const u8{
             "imgui.cpp",
             "imgui_draw.cpp",
@@ -44,21 +44,21 @@ pub fn build(builder: *Build) !void {
     });
     quanta_imgui_module.addCSourceFiles(.{
         .files = &[_][]const u8{
-            builder.pathFromRoot("src/imgui/cimgui.cpp"),
-            builder.pathFromRoot("src/imgui/guizmo.cpp"),
-            builder.pathFromRoot("src/imgui/node_editor.cpp"),
+            "src/imgui/cimgui.cpp",
+            "src/imgui/guizmo.cpp",
+            "src/imgui/node_editor.cpp",
         },
         .flags = &[_][]const u8{},
     });
     quanta_imgui_module.addCSourceFiles(.{
-        .dependency = imguizmo,
+        .root = imguizmo.path(""),
         .files = &[_][]const u8{
             "ImGuizmo.cpp",
         },
         .flags = &[_][]const u8{},
     });
     quanta_imgui_module.addCSourceFiles(.{
-        .dependency = imgui_node_editor,
+        .root = imgui_node_editor.path(""),
         .files = &[_][]const u8{
             "crude_json.cpp",
             "imgui_canvas.cpp",

@@ -10,7 +10,7 @@ pub fn build(builder: *std.Build) !void {
 
     glslang_module.addIncludePath(glslang_dep.path(""));
     glslang_module.addCSourceFiles(.{
-        .dependency = glslang_dep,
+        .root = glslang_dep.path(""),
         .files = &[_][]const u8{
             //cinterface
             "glslang/CInterface/glslang_c_interface.cpp",

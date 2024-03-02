@@ -1,4 +1,6 @@
 zig-out/
 zig-cache/
+quanta/src/gpu/
+quanta/src/gpu.zig
 
 *.blend1
