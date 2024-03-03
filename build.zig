@@ -2,74 +2,7 @@ pub fn build(builder: *std.Build) !void {
     const target = builder.standardTargetOptions(.{});
     const optimize = builder.standardOptimizeOption(.{});
 
-    const glslang_dep = builder.dependency("glslang", .{});
-
-    const glslang_module = builder.createModule(.{
-        .link_libcpp = true,
-    });
-
-    glslang_module.addIncludePath(glslang_dep.path(""));
-    glslang_module.addCSourceFiles(.{
-        .root = glslang_dep.path(""),
-        .files = &[_][]const u8{
-            //cinterface
-            "glslang/CInterface/glslang_c_interface.cpp",
-
-            //Codegen
-            "glslang/GenericCodeGen/Link.cpp",
-            "glslang/GenericCodeGen/CodeGen.cpp",
-
-            //Preprocessor
-            "glslang/MachineIndependent/preprocessor/Pp.cpp",
-            "glslang/MachineIndependent/preprocessor/PpAtom.cpp",
-            "glslang/MachineIndependent/preprocessor/PpContext.cpp",
-            "glslang/MachineIndependent/preprocessor/PpScanner.cpp",
-            "glslang/MachineIndependent/preprocessor/PpTokens.cpp",
-
-            "glslang/MachineIndependent/limits.cpp",
-            "glslang/MachineIndependent/linkValidate.cpp",
-            "glslang/MachineIndependent/parseConst.cpp",
-            "glslang/MachineIndependent/ParseContextBase.cpp",
-            "glslang/MachineIndependent/ParseHelper.cpp",
-            "glslang/MachineIndependent/PoolAlloc.cpp",
-            "glslang/MachineIndependent/reflection.cpp",
-            "glslang/MachineIndependent/RemoveTree.cpp",
-            "glslang/MachineIndependent/Scan.cpp",
-            "glslang/MachineIndependent/ShaderLang.cpp",
-            "glslang/MachineIndependent/SpirvIntrinsics.cpp",
-            "glslang/MachineIndependent/SymbolTable.cpp",
-            "glslang/MachineIndependent/Versions.cpp",
-            "glslang/MachineIndependent/Intermediate.cpp",
-            "glslang/MachineIndependent/Constant.cpp",
-            "glslang/MachineIndependent/attribute.cpp",
-            "glslang/MachineIndependent/glslang_tab.cpp",
-            "glslang/MachineIndependent/InfoSink.cpp",
-            "glslang/MachineIndependent/Initialize.cpp",
-            "glslang/MachineIndependent/intermOut.cpp",
-            "glslang/MachineIndependent/IntermTraverse.cpp",
-            "glslang/MachineIndependent/propagateNoContraction.cpp",
-            "glslang/MachineIndependent/iomapper.cpp",
-
-            //OsDependent
-            "glslang/OSDependent/Unix/ossource.cpp",
-
-            "glslang/ResourceLimits/resource_limits_c.cpp",
-            "glslang/ResourceLimits/ResourceLimits.cpp",
-
-            //SPIRV backend
-            "SPIRV/CInterface/spirv_c_interface.cpp",
-            "SPIRV/GlslangToSpv.cpp",
-            "SPIRV/SpvPostProcess.cpp",
-            "SPIRV/SPVRemapper.cpp",
-            "SPIRV/SpvTools.cpp",
-            "SPIRV/SpvBuilder.cpp",
-            "SPIRV/Logger.cpp",
-            "SPIRV/InReadableOrder.cpp",
-            "SPIRV/doc.cpp",
-        },
-        .flags = &[_][]const u8{},
-    });
-    glslang_module.sanitize_c = false;
+    const glslang_zig = builder.dependency("glslang_zig", .{});
 
     const glsl_compiler = builder.addExecutable(.{
         .name = "glsl_compiler",
@@ -80,7 +13,7 @@ pub fn build(builder: *std.Build) !void {
     });
 
     glsl_compiler.addIncludePath(.{ .path = builder.pathFromRoot("") });
-    glsl_compiler.root_module.addImport("glslang", glslang_module);
+    glsl_compiler.root_module.addImport("glslang", glslang_zig.module("glslang-zig"));
 
     const install_glsl_compiler = builder.addInstallArtifact(glsl_compiler, .{});
 

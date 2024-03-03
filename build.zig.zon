@@ -14,9 +14,9 @@
             .url = "https://github.com/kooparse/zgltf/archive/79de7be54e57235496fc3277708991fc857ef7e7.tar.gz",
             .hash = "12205d4f90da23c4d6dc48b94b8327be3e898a23fe528babf0b223674e8977d8f473",
         },
-        .glslang = .{
-            .url = "https://github.com/KhronosGroup/glslang/archive/30661abd9c3e97144f79cb30f2fb5a0da2c7b93c.tar.gz",
-            .hash = "12200da24e9f16994df0c70d8d15108c5cc8f3d0fc8619f579e1b128333dec568e09",
+        .glslang_zig = .{
+            .url = "https://github.com/zkburke/glslang-zig/archive/7e2cc3a48bf6c5f6f79c3453b9407f9f64b8b50b.tar.gz",
+            .hash = "1220c632a719f7719fd0d6cb55279d4029118dfe4b5132712060a489eb430d1a43af",
         },
         .zalgebra = .{
             .url = "https://github.com/kooparse/zalgebra/archive/27013efdea89e6f9b838b088e916fe7e55a828fa.tar.gz",
