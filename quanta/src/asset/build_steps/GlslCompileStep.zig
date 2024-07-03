@@ -58,7 +58,7 @@ pub fn create(
     return self;
 }
 
-pub fn make(step: *Step, progress_node: *std.Progress.Node) !void {
+pub fn make(step: *Step, progress_node: std.Progress.Node) anyerror!void {
     const self = step.cast(GlslCompileStep).?;
 
     var cache_manifest = self.builder.graph.cache.obtain();
@@ -77,6 +77,7 @@ pub fn make(step: *Step, progress_node: *std.Progress.Node) !void {
     cache_manifest.hash.addListOfBytes(args_list.items);
 
     const input_file_index = try cache_manifest.addFile(self.input_path, std.math.maxInt(u32));
+    _ = input_file_index; // autofix
 
     const found_existing = try step.cacheHit(&cache_manifest);
 
@@ -90,15 +91,17 @@ pub fn make(step: *Step, progress_node: *std.Progress.Node) !void {
         return;
     }
 
-    const input_file: *std.Build.Cache.File = &cache_manifest.files.items[input_file_index];
+    const contents = try std.fs.cwd().readFileAlloc(self.builder.allocator, self.input_path, std.math.maxInt(usize));
 
-    if (input_file.contents == null) {
-        input_file.contents = try std.fs.cwd().readFileAlloc(self.builder.allocator, self.input_path, std.math.maxInt(usize));
-    }
+    // const input_file: *std.Build.Cache.File = &cache_manifest;
+
+    // if (input_file.contents == null) {
+    // input_file.contents = try std.fs.cwd().readFileAlloc(self.builder.allocator, self.input_path, std.math.maxInt(usize));
+    // }
 
     const source_directory = std.fs.path.dirname(self.input_path).?;
 
-    const includes = try getIncludesRecursive(self.builder.allocator, source_directory, input_file.contents.?);
+    const includes = try getIncludesRecursive(self.builder.allocator, source_directory, contents);
 
     for (includes) |include| {
         // const include_path = try std.fs.path.join(self.builder.allocator, &.{ source_directory, include });
@@ -148,7 +151,7 @@ pub fn make(step: *Step, progress_node: *std.Progress.Node) !void {
 
         const error_message = self.glsl_compiler.step.result_error_msgs.items[0];
 
-        var info_log_lines = std.mem.tokenize(u8, error_message, &.{'\n'});
+        var info_log_lines = std.mem.tokenizeSequence(u8, error_message, &.{'\n'});
 
         while (info_log_lines.next()) |info_log_line| {
             const error_token: []const u8 = "error: ";
@@ -174,7 +177,9 @@ pub fn compileModule(
 ) *std.Build.Module {
     const step = GlslCompileStep.create(builder, quanta_dependency, input, input, output, stage, mode);
 
-    return builder.createModule(.{ .root_source_file = std.Build.LazyPath{ .generated = &step.generated_file } });
+    return builder.createModule(.{
+        .root_source_file = std.Build.LazyPath{ .generated = .{ .file = &step.generated_file } },
+    });
 }
 
 ///Returns a linear list of all includes, including transitive ones

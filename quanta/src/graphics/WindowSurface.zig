@@ -29,4 +29,4 @@ const WindowSurface = @This();
 const std = @import("std");
 const windowing = @import("../windowing.zig");
 const Context = @import("Context.zig");
-const vk = @import("vk.zig");
+const vk = @import("vulkan");

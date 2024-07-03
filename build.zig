@@ -2,17 +2,24 @@ pub fn build(builder: *std.Build) !void {
     const target = builder.standardTargetOptions(.{});
     const optimize = builder.standardOptimizeOption(.{});
 
+    const vk_gen = builder.dependency("vulkan_zig", .{}).artifact("vulkan-zig-generator");
+    const vk_generate_cmd = builder.addRunArtifact(vk_gen);
+
+    const registry = builder.dependency("vulkan_headers", .{}).path("registry/vk.xml");
+
+    vk_generate_cmd.addFileArg(registry);
+
     const glslang_zig = builder.dependency("glslang_zig", .{});
 
     const glsl_compiler = builder.addExecutable(.{
         .name = "glsl_compiler",
-        .root_source_file = std.Build.LazyPath.relative("quanta/src/asset/build_steps/glsl_compiler.zig"),
+        .root_source_file = builder.path("quanta/src/asset/build_steps/glsl_compiler.zig"),
         .target = builder.host,
         .optimize = .Debug,
         .sanitize_thread = true,
     });
 
-    glsl_compiler.addIncludePath(.{ .path = builder.pathFromRoot("") });
+    glsl_compiler.addIncludePath(builder.path(""));
     glsl_compiler.root_module.addImport("glslang", glslang_zig.module("glslang-zig"));
 
     const install_glsl_compiler = builder.addInstallArtifact(glsl_compiler, .{});
@@ -37,7 +44,7 @@ pub fn build(builder: *std.Build) !void {
     const options = builder.addOptions();
 
     const quanta_module = builder.addModule("quanta", .{
-        .root_source_file = .{ .path = builder.pathFromRoot("quanta/src/root.zig") },
+        .root_source_file = builder.path("quanta/src/root.zig"),
         .imports = &.{
             .{ .name = "options", .module = options.createModule() },
             .{ .name = "zgltf", .module = builder.dependency("zgltf", .{}).module("zgltf") },
@@ -47,6 +54,10 @@ pub fn build(builder: *std.Build) !void {
         },
         .link_libc = true,
         .target = target,
+    });
+
+    quanta_module.addAnonymousImport("vulkan", .{
+        .root_source_file = vk_generate_cmd.addOutputFileArg("vk.zig"),
     });
 
     quanta_module.addImport("quanta", quanta_module);
@@ -62,7 +73,7 @@ pub fn build(builder: *std.Build) !void {
     //TODO: allow user to override asset compiler
     const asset_compiler = builder.addExecutable(.{
         .name = "asset_compiler",
-        .root_source_file = std.Build.LazyPath.relative("quanta/src/asset/compiler_main.zig"),
+        .root_source_file = builder.path("quanta/src/asset/compiler_main.zig"),
         .target = builder.host,
         .optimize = .Debug,
     });
@@ -77,7 +88,7 @@ pub fn build(builder: *std.Build) !void {
 
         const quanta_test = builder.addTest(.{
             .name = "test",
-            .root_source_file = std.Build.LazyPath.relative("quanta/src/root.zig"),
+            .root_source_file = builder.path("quanta/src/root.zig"),
             .optimize = .Debug,
         });
 
@@ -157,7 +168,7 @@ pub fn addGlslCompileStep(
 
         const GlslCompileStep = quanta.asset.build_steps.GlslCompileStep;
 
-        const string_to_stage = std.ComptimeStringMap(GlslCompileStep.ShaderStage, .{
+        const string_to_stage = std.StaticStringMap(GlslCompileStep.ShaderStage).initComptime(.{
             .{ ".vert", .vertex },
             .{ ".frag", .fragment },
             .{ ".comp", .compute },

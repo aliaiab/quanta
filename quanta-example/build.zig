@@ -16,7 +16,7 @@ pub fn build(builder: *std.Build) !void {
 
     const exe = builder.addExecutable(.{
         .name = "example",
-        .root_source_file = .{ .path = builder.pathFromRoot("src/main.zig") },
+        .root_source_file = builder.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
         .strip = optimize == .ReleaseFast or optimize == .ReleaseSmall,
@@ -42,13 +42,13 @@ pub fn build(builder: *std.Build) !void {
     const run_cmd = builder.addRunArtifact(exe);
 
     run_cmd.step.dependOn(builder.getInstallStep());
-    run_cmd.step.dependOn(compile_assets.step);
+    // run_cmd.step.dependOn(compile_assets.step);
 
     if (builder.args) |args| {
         run_cmd.addArgs(args);
     }
 
-    run_cmd.cwd = .{ .path = builder.pathFromRoot("zig-out/bin/") };
+    run_cmd.cwd = builder.path("zig-out/bin/");
 
     const run_step = builder.step("run", "Run the application");
     run_step.dependOn(&run_cmd.step);

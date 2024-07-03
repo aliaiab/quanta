@@ -8,134 +8,143 @@ pub const vulkan_version = std.SemanticVersion{
 
 const use_custom_allocator: bool = builtin.mode == .Debug;
 
-pub const BaseDispatch = vk.BaseWrapper(.{
-    .createInstance = true,
-    .enumerateInstanceLayerProperties = true,
-});
+pub const vk_apis: []const vk.ApiInfo = &.{
+    .{
+        .base_commands = .{
+            .createInstance = true,
+            .enumerateInstanceLayerProperties = true,
+        },
+        .instance_commands = .{
+            .destroyInstance = true,
+            .createDevice = true,
+            .destroySurfaceKHR = true,
+            .enumeratePhysicalDevices = true,
+            .getPhysicalDeviceProperties2 = true,
+            .enumerateDeviceExtensionProperties = true,
+            .getPhysicalDeviceSurfaceFormatsKHR = true,
+            .getPhysicalDeviceSurfacePresentModesKHR = true,
+            .getPhysicalDeviceSurfaceCapabilitiesKHR = true,
+            .getPhysicalDeviceQueueFamilyProperties = true,
+            .getPhysicalDeviceSurfaceSupportKHR = true,
+            .getPhysicalDeviceMemoryProperties2 = true,
+            .getPhysicalDeviceFeatures2 = true,
+            .getDeviceProcAddr = true,
+            .getPhysicalDeviceFeatures = true,
+            .createDebugUtilsMessengerEXT = enable_debug_messenger,
+            .destroyDebugUtilsMessengerEXT = enable_debug_messenger,
+            .createXcbSurfaceKHR = true,
+        },
+        .device_commands = .{
+            .destroyDevice = true,
+            .getDeviceQueue = true,
+            .createPipelineCache = true,
+            .createDescriptorSetLayout = true,
+            .createSemaphore = true,
+            .createFence = true,
+            .createImageView = true,
+            .destroyImageView = true,
+            .destroySemaphore = true,
+            .destroyFence = true,
+            .getSwapchainImagesKHR = true,
+            .createSwapchainKHR = true,
+            .destroySwapchainKHR = true,
+            .deviceWaitIdle = true,
+            .waitForFences = true,
+            .resetFences = true,
+            .queueSubmit2 = true,
+            .queuePresentKHR = true,
+            .createCommandPool = true,
+            .destroyCommandPool = true,
+            .allocateCommandBuffers = true,
+            .freeCommandBuffers = true,
+            .queueWaitIdle = true,
+            .createShaderModule = true,
+            .destroyShaderModule = true,
+            .createPipelineLayout = true,
+            .destroyPipelineLayout = true,
+            .createRenderPass = true,
+            .destroyRenderPass = true,
+            .createGraphicsPipelines = true,
+            .createComputePipelines = true,
+            .destroyPipeline = true,
+            .createFramebuffer = true,
+            .destroyFramebuffer = true,
+            .beginCommandBuffer = true,
+            .endCommandBuffer = true,
+            .allocateMemory = true,
+            .freeMemory = true,
+            .createBuffer = true,
+            .destroyBuffer = true,
+            .getBufferMemoryRequirements2 = true,
+            .mapMemory = true,
+            .unmapMemory = true,
+            .bindBufferMemory = true,
+            .cmdBindPipeline = true,
+            .cmdDraw = true,
+            .cmdSetViewport = true,
+            .cmdSetScissor = true,
+            .cmdBindVertexBuffers = true,
+            .cmdCopyBuffer = true,
+            .cmdFillBuffer = true,
+            .cmdUpdateBuffer = true,
+            .createImage = true,
+            .getImageMemoryRequirements2 = true,
+            .destroyImage = true,
+            .bindImageMemory = true,
+            .getPipelineCacheData = true,
+            .resetCommandBuffer = true,
+            .cmdBindIndexBuffer = true,
+            .cmdPushConstants = true,
+            .cmdDrawIndexed = true,
+            .destroyDescriptorPool = true,
+            .destroyDescriptorSetLayout = true,
+            .destroyPipelineCache = true,
+            .cmdBeginRendering = true,
+            .cmdEndRendering = true,
+            .cmdDispatch = true,
+            .cmdBindDescriptorSets = true,
+            .allocateDescriptorSets = true,
+            .freeDescriptorSets = true,
+            .createDescriptorPool = true,
+            .updateDescriptorSets = true,
+            .cmdPipelineBarrier2 = true,
+            .cmdCopyBufferToImage2 = true,
+            .createSampler = true,
+            .destroySampler = true,
+            .cmdDispatchIndirect = true,
+            .cmdDrawIndexedIndirect = true,
+            .cmdDrawIndexedIndirectCount = true,
+            .cmdSetEvent = true,
+            .cmdSetEvent2 = true,
+            .getEventStatus = true,
+            .createEvent = true,
+            .destroyEvent = true,
+            .getFenceStatus = true,
+            .createQueryPool = true,
+            .destroyQueryPool = true,
+            .cmdWriteTimestamp2 = true,
+            .resetQueryPool = true,
+            .cmdResetQueryPool = true,
+            .cmdBeginQuery = true,
+            .cmdEndQuery = true,
+            .getQueryPoolResults = true,
+            .getBufferDeviceAddress = true,
+            .waitSemaphores = true,
+            .acquireNextImage2KHR = true,
+            // .getDescriptorEXT = true,
+            .cmdBeginDebugUtilsLabelEXT = @import("builtin").mode == .Debug,
+            .cmdEndDebugUtilsLabelEXT = @import("builtin").mode == .Debug,
+            .setDebugUtilsObjectNameEXT = @import("builtin").mode == .Debug,
+        },
+    },
+    vk.features.version_1_0,
+    vk.extensions.khr_surface,
+    vk.extensions.khr_swapchain,
+};
 
-pub const InstanceDispatch = vk.InstanceWrapper(.{
-    .destroyInstance = true,
-    .createDevice = true,
-    .destroySurfaceKHR = true,
-    .enumeratePhysicalDevices = true,
-    .getPhysicalDeviceProperties2 = true,
-    .enumerateDeviceExtensionProperties = true,
-    .getPhysicalDeviceSurfaceFormatsKHR = true,
-    .getPhysicalDeviceSurfacePresentModesKHR = true,
-    .getPhysicalDeviceSurfaceCapabilitiesKHR = true,
-    .getPhysicalDeviceQueueFamilyProperties = true,
-    .getPhysicalDeviceSurfaceSupportKHR = true,
-    .getPhysicalDeviceMemoryProperties2 = true,
-    .getPhysicalDeviceFeatures2 = true,
-    .getDeviceProcAddr = true,
-    .getPhysicalDeviceFeatures = true,
-    .createDebugUtilsMessengerEXT = enable_debug_messenger,
-    .destroyDebugUtilsMessengerEXT = enable_debug_messenger,
-    .createXcbSurfaceKHR = true,
-});
-
-pub const DeviceDispatch = vk.DeviceWrapper(.{
-    .destroyDevice = true,
-    .getDeviceQueue = true,
-    .createPipelineCache = true,
-    .createDescriptorSetLayout = true,
-    .createSemaphore = true,
-    .createFence = true,
-    .createImageView = true,
-    .destroyImageView = true,
-    .destroySemaphore = true,
-    .destroyFence = true,
-    .getSwapchainImagesKHR = true,
-    .createSwapchainKHR = true,
-    .destroySwapchainKHR = true,
-    .deviceWaitIdle = true,
-    .waitForFences = true,
-    .resetFences = true,
-    .queueSubmit2 = true,
-    .queuePresentKHR = true,
-    .createCommandPool = true,
-    .destroyCommandPool = true,
-    .allocateCommandBuffers = true,
-    .freeCommandBuffers = true,
-    .queueWaitIdle = true,
-    .createShaderModule = true,
-    .destroyShaderModule = true,
-    .createPipelineLayout = true,
-    .destroyPipelineLayout = true,
-    .createRenderPass = true,
-    .destroyRenderPass = true,
-    .createGraphicsPipelines = true,
-    .createComputePipelines = true,
-    .destroyPipeline = true,
-    .createFramebuffer = true,
-    .destroyFramebuffer = true,
-    .beginCommandBuffer = true,
-    .endCommandBuffer = true,
-    .allocateMemory = true,
-    .freeMemory = true,
-    .createBuffer = true,
-    .destroyBuffer = true,
-    .getBufferMemoryRequirements2 = true,
-    .mapMemory = true,
-    .unmapMemory = true,
-    .bindBufferMemory = true,
-    .cmdBindPipeline = true,
-    .cmdDraw = true,
-    .cmdSetViewport = true,
-    .cmdSetScissor = true,
-    .cmdBindVertexBuffers = true,
-    .cmdCopyBuffer = true,
-    .cmdFillBuffer = true,
-    .cmdUpdateBuffer = true,
-    .createImage = true,
-    .getImageMemoryRequirements2 = true,
-    .destroyImage = true,
-    .bindImageMemory = true,
-    .getPipelineCacheData = true,
-    .resetCommandBuffer = true,
-    .cmdBindIndexBuffer = true,
-    .cmdPushConstants = true,
-    .cmdDrawIndexed = true,
-    .destroyDescriptorPool = true,
-    .destroyDescriptorSetLayout = true,
-    .destroyPipelineCache = true,
-    .cmdBeginRendering = true,
-    .cmdEndRendering = true,
-    .cmdDispatch = true,
-    .cmdBindDescriptorSets = true,
-    .allocateDescriptorSets = true,
-    .freeDescriptorSets = true,
-    .createDescriptorPool = true,
-    .updateDescriptorSets = true,
-    .cmdPipelineBarrier2 = true,
-    .cmdCopyBufferToImage2 = true,
-    .createSampler = true,
-    .destroySampler = true,
-    .cmdDispatchIndirect = true,
-    .cmdDrawIndexedIndirect = true,
-    .cmdDrawIndexedIndirectCount = true,
-    .cmdSetEvent = true,
-    .cmdSetEvent2 = true,
-    .getEventStatus = true,
-    .createEvent = true,
-    .destroyEvent = true,
-    .getFenceStatus = true,
-    .createQueryPool = true,
-    .destroyQueryPool = true,
-    .cmdWriteTimestamp2 = true,
-    .resetQueryPool = true,
-    .cmdResetQueryPool = true,
-    .cmdBeginQuery = true,
-    .cmdEndQuery = true,
-    .getQueryPoolResults = true,
-    .getBufferDeviceAddress = true,
-    .waitSemaphores = true,
-    .acquireNextImage2KHR = true,
-    // .getDescriptorEXT = true,
-    .cmdBeginDebugUtilsLabelEXT = @import("builtin").mode == .Debug,
-    .cmdEndDebugUtilsLabelEXT = @import("builtin").mode == .Debug,
-    .setDebugUtilsObjectNameEXT = @import("builtin").mode == .Debug,
-});
+pub const BaseDispatch = vk.BaseWrapper(vk_apis);
+pub const InstanceDispatch = vk.InstanceWrapper(vk_apis);
+pub const DeviceDispatch = vk.DeviceWrapper(vk_apis);
 
 var vkGetInstanceProcAddr: vk.PfnGetInstanceProcAddr = undefined;
 
@@ -153,13 +162,13 @@ fn debugUtilsMessengerCallback(
     _ = p_user_data;
 
     if (message_severity.error_bit_ext) {
-        log.err("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message });
+        log.err("{any} {any}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message });
         @panic("");
     } else if (message_severity.warning_bit_ext) {
-        log.warn("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message });
+        log.warn("{any} {any}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message });
         @panic("");
     } else {
-        log.debug("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message });
+        log.debug("{any} {any}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message });
     }
 
     return vk.FALSE;
@@ -278,15 +287,15 @@ optional_extensions: OptionalExtensions,
 
 ///Required *device* extensions
 pub const RequiredExtensions = struct {
-    khr_swapchain: [:0]const u8 = vk.extension_info.khr_swapchain.name,
+    khr_swapchain: [:0]const u8 = vk.extensions.khr_swapchain.name,
     //TODO: for future implementation of descriptor buffer
-    // ext_descriptor_buffer: [:0]const u8 = vk.extension_info.ext_descriptor_buffer.name,
+    // ext_descriptor_buffer: [:0]const u8 = vk.extensions.ext_descriptor_buffer.name,
 };
 
 ///Optional *device* extensions
 ///If the extension is supported at runtime, it is kept as non-null, otherwise it's set to null
 pub const OptionalExtensions = struct {
-    ext_memory_budget: ?[:0]const u8 = vk.extension_info.ext_memory_budget.name,
+    ext_memory_budget: ?[:0]const u8 = vk.extensions.ext_memory_budget.name,
 };
 
 pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: []const u8) !void {
@@ -321,14 +330,14 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
     comptime var instance_extentions: []const [*:0]const u8 = &.{};
 
     if (enable_debug_messenger) {
-        instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extension_info.ext_debug_utils.name};
+        instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extensions.ext_debug_utils.name};
     }
 
-    instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extension_info.khr_surface.name};
+    instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extensions.khr_surface.name};
 
     switch (windowing.backend) {
         .xcb => {
-            instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extension_info.khr_xcb_surface.name};
+            instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extensions.khr_xcb_surface.name};
         },
         else => @compileError("Windowing backend not supported by vulkan"),
     }
@@ -1270,7 +1279,7 @@ pub fn getPipelineCacheData() ![]const u8 {
 const Context = @This();
 const builtin = @import("builtin");
 const std = @import("std");
-const vk = @import("vk.zig");
+const vk = @import("vulkan");
 const windowing = @import("../windowing.zig");
 const Window = windowing.Window;
 const log = @import("../log.zig").log;

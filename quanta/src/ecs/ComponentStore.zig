@@ -805,20 +805,23 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
         }
     }
 
-    comptime var required_component_slice: []const type = &(component_fetches_slice[0..].*);
-    comptime var excluded_component_slice: []const type = &.{};
+    comptime var required_component_slice_var: []const type = &(component_fetches_slice[0..].*);
+    comptime var excluded_component_slice_var: []const type = &.{};
 
     inline for (filters) |filter| {
         switch (filter) {
             .with => |with_type| {
-                required_component_slice = required_component_slice ++ &[_]type{with_type};
+                required_component_slice_var = required_component_slice_var ++ &[_]type{with_type};
             },
             .without => |without_type| {
-                excluded_component_slice = excluded_component_slice ++ &[_]type{without_type};
+                excluded_component_slice_var = excluded_component_slice_var ++ &[_]type{without_type};
             },
             else => {},
         }
     }
+
+    const required_component_slice = required_component_slice_var[0..].*;
+    const excluded_component_slice = excluded_component_slice_var[0..].*;
 
     return struct {
         component_store: *const ComponentStore,
@@ -882,7 +885,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             field_index += required_component_slice.len;
 
             break :block @Type(.{ .Struct = .{
-                .layout = .Auto,
+                .layout = .auto,
                 .backing_integer = null,
                 .fields = &fields,
                 .decls = &.{},
@@ -920,7 +923,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             }
 
             break :block @Type(.{ .Struct = .{
-                .layout = .Auto,
+                .layout = .auto,
                 .backing_integer = null,
                 .fields = &fields,
                 .decls = &.{},
@@ -1121,7 +1124,7 @@ pub fn foreach(
     comptime var args_type_fields = std.meta.fields(args_types);
 
     const ArgsType = @Type(.{ .Struct = .{
-        .layout = .Auto,
+        .layout = .auto,
         .is_tuple = true,
         .fields = args_type_fields,
         .decls = &[_]std.builtin.Type.Declaration{},

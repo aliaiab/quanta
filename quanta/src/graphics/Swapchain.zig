@@ -293,6 +293,6 @@ pub const PresentState = enum {
 
 const Swapchain = @This();
 const std = @import("std");
-const vk = @import("vk.zig");
+const vk = @import("vulkan");
 const Context = @import("Context.zig");
 const Semaphore = @import("Semaphore.zig");

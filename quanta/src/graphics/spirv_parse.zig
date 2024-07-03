@@ -1,5 +1,5 @@
 const std = @import("std");
-const vk = @import("vk.zig");
+const vk = @import("vulkan");
 const spirv = @import("spirv.zig");
 
 fn getDescriptorType(spirv_op: spirv.SpvOp) ?vk.DescriptorType {

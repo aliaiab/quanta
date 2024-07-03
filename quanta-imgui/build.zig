@@ -13,7 +13,7 @@ pub fn build(builder: *Build) !void {
     });
 
     const quanta_imgui_module = builder.addModule("quanta_imgui", .{
-        .root_source_file = .{ .path = builder.pathFromRoot("src/root.zig") },
+        .root_source_file = builder.path("src/root.zig"),
         .imports = &.{
             .{ .name = "quanta", .module = quanta_dependency.module("quanta") },
         },

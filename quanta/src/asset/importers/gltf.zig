@@ -108,8 +108,12 @@ pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import 
     const file = try std.fs.cwd().openFile(file_path, .{});
     defer file.close();
 
-    const file_data = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+    const file_metadata = try file.metadata();
+
+    const file_data = try allocator.alignedAlloc(u8, 4, file_metadata.size());
     defer allocator.free(file_data);
+
+    _ = try file.readAll(file_data);
 
     var gltf = zgltf.init(allocator);
     defer gltf.deinit();

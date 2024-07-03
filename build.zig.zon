@@ -2,21 +2,29 @@
     .name = "quanta",
     .version = "0.0.0",
     .dependencies = .{
+        .vulkan_zig = .{
+            .url = "https://github.com/Snektron/vulkan-zig/archive/51c5566f92e72fa4a9187c99b61e33f25398f370.tar.gz",
+            .hash = "1220ac3050a262ecf61678144a261d71da9e2bddfecd45d70428669e1215be1b689b",
+        },
+        .vulkan_headers = .{
+            .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/v1.3.283.tar.gz",
+            .hash = "1220a7e73d72a0d56bc2a65f9d8999a7c019e42260a0744c408d1cded111bc205e10",
+        },
         .zigimg = .{
-            .url = "https://github.com/zkburke/zigimg/archive/47898ad3f84ea1362648d08fc0b69ed22d19267c.tar.gz",
-            .hash = "12203952e04fe295f3ec0ff0b6139b26cac83171e82a23cb6b652ba4d10b80e3965b",
+            .url = "https://github.com/zkburke/zigimg/archive/cbb0c64caffd5b02863aadd62bab48cef7f86ceb.tar.gz",
+            .hash = "1220c0980dc05816b12a8188546b4847bcf38e5e99defc0ea79a8d6bd4809049a029",
         },
         .spvine = .{
-            .url = "https://github.com/zkburke/spvine/archive/f78ada57480dfab9aa5491f38f883ffe2ceba7b3.tar.gz",
-            .hash = "1220001e54acda3b0e3b28e57458cf3dd88129678c88e3509f53dbd7887e4c3c13c5",
+            .url = "https://github.com/zkburke/spvine/archive/1c22435b0034d5ea46dee0da14f7ad7ce6a9d2e6.tar.gz",
+            .hash = "1220858951e403f3a8f5644239aa9dd883f9f02c1d608a912b7bd93ae5aadefa3448",
         },
         .zgltf = .{
-            .url = "https://github.com/kooparse/zgltf/archive/79de7be54e57235496fc3277708991fc857ef7e7.tar.gz",
-            .hash = "12205d4f90da23c4d6dc48b94b8327be3e898a23fe528babf0b223674e8977d8f473",
+            .url = "https://github.com/kooparse/zgltf/archive/17fb60b270fa25b3e07b7b3cdb253f86747f9616.tar.gz",
+            .hash = "1220ff2dbebeb83461da67b185d994ae61ebcea747c1bfbfb48b23c8e456cc53ea83",
         },
         .glslang_zig = .{
-            .url = "https://github.com/zkburke/glslang-zig/archive/7e2cc3a48bf6c5f6f79c3453b9407f9f64b8b50b.tar.gz",
-            .hash = "1220c632a719f7719fd0d6cb55279d4029118dfe4b5132712060a489eb430d1a43af",
+            .url = "https://github.com/zkburke/glslang-zig/archive/d9c6d40a27e27827c667d3526cf5b598c17fd2e8.tar.gz",
+            .hash = "122008aae91427cf8740eeb9aed2b0878dcef4ba419313f5b41d82167cc3e9420132",
         },
         .zalgebra = .{
             .url = "https://github.com/kooparse/zalgebra/archive/27013efdea89e6f9b838b088e916fe7e55a828fa.tar.gz",

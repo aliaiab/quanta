@@ -154,13 +154,16 @@ pub const Type = union(enum) {
                     };
                 }
 
+                const decls_const = decls;
+                const fields_const = fields;
+
                 type_data = .{ .Struct = .{
                     .name = @typeName(T),
                     .size = @sizeOf(T),
                     .alignment = @alignOf(T),
                     .layout = struct_info.layout,
-                    .fields = &fields,
-                    .decls = &decls,
+                    .fields = &fields_const,
+                    .decls = &decls_const,
                     .is_tuple = struct_info.is_tuple,
                 } };
             },
@@ -182,6 +185,8 @@ pub const Type = union(enum) {
 
                 data_end = std.mem.alignForwardLog2(data_end, @alignOf(union_info.tag_type.?));
 
+                const fields_const = fields;
+
                 type_data = .{ .Union = .{
                     .name = @typeName(T),
                     .size = @sizeOf(T),
@@ -189,7 +194,7 @@ pub const Type = union(enum) {
                     .layout = union_info.layout,
                     .tag_type = if (union_info.tag_type != null) info(union_info.tag_type.?) else null,
                     .tag_offset = @as(u32, @intCast(data_end)),
-                    .fields = &fields,
+                    .fields = &fields_const,
                     .decls = &.{},
                 } };
             },
@@ -203,12 +208,14 @@ pub const Type = union(enum) {
                     };
                 }
 
+                const fields_const = fields;
+
                 type_data = .{ .Enum = .{
                     .name = @typeName(T),
                     .size = @sizeOf(T),
                     .alignment = @alignOf(T),
                     .tag_type = info(enum_info.tag_type),
-                    .fields = &fields,
+                    .fields = &fields_const,
                     .decls = &.{},
                     .is_exhaustive = enum_info.is_exhaustive,
                 } };

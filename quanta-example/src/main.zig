@@ -155,23 +155,28 @@ pub fn init() !void {
 
     const asset_archive_file_path = "example_assets_archive";
 
-    const asset_archive_fd = try std.os.open(asset_archive_file_path, .{}, std.os.S.IRUSR | std.os.S.IWUSR);
-    defer std.os.close(asset_archive_fd);
+    const asset_archive_fd: i32 = @intCast(std.os.linux.open(asset_archive_file_path, .{}, std.os.linux.S.IRUSR | std.os.linux.S.IWUSR));
+    defer _ = std.os.linux.close(asset_archive_fd);
 
-    const asset_archive_fd_stat = try std.os.fstat(asset_archive_fd);
+    var asset_archive_fd_stat: std.os.linux.Stat = undefined;
+
+    _ = std.os.linux.fstat(asset_archive_fd, &asset_archive_fd_stat);
 
     log.info("assets_archive size = {}", .{asset_archive_fd_stat.size});
 
-    state.asset_archive_blob = try std.os.mmap(
+    const asset_blob_address = std.os.linux.mmap(
         null,
         @as(usize, @intCast(asset_archive_fd_stat.size)),
-        std.os.PROT.READ,
+        std.os.linux.PROT.READ,
         .{
             .TYPE = .PRIVATE,
         },
         asset_archive_fd,
         0,
     );
+    const asset_blob_ptr: [*]align(std.mem.page_size) u8 = @alignCast(@as([*]u8, @ptrFromInt(asset_blob_address)));
+
+    state.asset_archive_blob = asset_blob_ptr[0..@as(usize, @intCast(asset_archive_fd_stat.size))];
 
     state.asset_archive = try asset.Archive.decode(state.allocator, state.asset_archive_blob);
 
@@ -443,7 +448,7 @@ pub fn deinit() void {
     defer state.swapchain.deinit();
     defer imgui.igDestroyContext(imgui.igGetCurrentContext());
     defer quanta_imgui.driver.deinit();
-    defer std.os.munmap(state.asset_archive_blob);
+    // defer std.os.munmap(state.asset_archive_blob);
     defer state.allocator.free(state.test_scene_meshes);
     defer state.allocator.free(state.test_scene_textures);
     defer state.allocator.free(state.test_scene_materials);
@@ -478,7 +483,7 @@ pub fn update() !UpdateResult {
     }
 
     //update
-    {
+    if (false) {
         const x_position: f32 = @floatFromInt(state.window.getCursorPosition()[0]);
         const y_position: f32 = @floatFromInt(state.window.getCursorPosition()[1]);
 
@@ -563,7 +568,7 @@ pub fn update() !UpdateResult {
         .levels = 1,
     };
 
-    const enable_imgui = true;
+    const enable_imgui = false;
 
     //imgui gui
     if (enable_imgui) {
@@ -835,14 +840,15 @@ pub fn update() !UpdateResult {
     }
 
     const Statics = struct {
-        var enable_renderer_3d: bool = true;
+        // var enable_renderer_3d: bool = true;
     };
+    _ = Statics; // autofix
 
     if (state.window.getKey(.F2) == .press) {
-        Statics.enable_renderer_3d = !Statics.enable_renderer_3d;
+        // Statics.enable_renderer_3d = !Statics.enable_renderer_3d;
     }
 
-    if (Statics.enable_renderer_3d) {
+    if (true) {
         state.graph_renderer_scene.point_lights = scene_point_lights.items;
 
         state.graph_renderer_scene.clearInstances();
@@ -947,8 +953,10 @@ pub fn logFn(
         const level_txt = "[" ++ color_begin ++ comptime message_level.asText() ++ color_end ++ "]";
         const prefix2 = if (scope == .default) ": " else "[" ++ @tagName(scope) ++ "]: ";
         const stderr = std.io.getStdErr().writer();
-        std.debug.getStderrMutex().lock();
-        defer std.debug.getStderrMutex().unlock();
+
+        std.debug.lockStdErr();
+        defer std.debug.unlockStdErr();
+
         nosuspend stderr.print(level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
     }
 

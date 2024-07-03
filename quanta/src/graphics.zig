@@ -9,5 +9,3 @@ pub const Sampler = @import("graphics/Sampler.zig");
 pub const Fence = @import("graphics/Fence.zig");
 pub const Event = @import("graphics/Event.zig");
 pub const Semaphore = @import("graphics/Semaphore.zig");
-
-pub const vulkan = @import("graphics/vk.zig");

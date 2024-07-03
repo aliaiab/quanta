@@ -79,7 +79,7 @@ pub fn main() !void {
             },
         }
 
-        std.os.exit(1);
+        return;
     };
 }
 
@@ -180,7 +180,7 @@ pub fn run() !void {
     errdefer {
         const info_log = std.mem.span(@as([*:0]const u8, @ptrCast(glslang_c.glslang_shader_get_info_log(shader))));
 
-        var info_log_lines = std.mem.tokenize(u8, info_log, &.{'\n'});
+        var info_log_lines = std.mem.tokenizeSequence(u8, info_log, &.{'\n'});
 
         while (info_log_lines.next()) |info_log_line| {
             const error_token: []const u8 = "ERROR: ";
@@ -257,7 +257,7 @@ pub fn run() !void {
 
     std.fs.cwd().makeDir(std.fs.path.dirname(arg_output_path).?) catch {};
 
-    try std.fs.cwd().writeFile(arg_output_path, std.mem.sliceAsBytes(spirv_data));
+    try std.fs.cwd().writeFile(.{ .sub_path = arg_output_path, .data = std.mem.sliceAsBytes(spirv_data) });
 }
 
 const std = @import("std");

@@ -1,7 +1,7 @@
 const Buffer = @This();
 
 const std = @import("std");
-const vk = @import("vk.zig");
+const vk = @import("vulkan");
 const Context = @import("Context.zig");
 const CommandBuffer = @import("CommandBuffer.zig");
 

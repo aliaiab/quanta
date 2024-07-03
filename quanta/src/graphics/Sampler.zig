@@ -1,6 +1,6 @@
 const Sampler = @This();
 
-const vk = @import("vk.zig");
+const vk = @import("vulkan");
 const Context = @import("Context.zig");
 
 pub const ReductionMode = enum {

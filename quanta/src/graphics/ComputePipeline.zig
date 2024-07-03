@@ -1,7 +1,7 @@
 const ComputePipeline = @This();
 
 const std = @import("std");
-const vk = @import("vk.zig");
+const vk = @import("vulkan");
 const spirv_parse = @import("spirv_parse.zig");
 const Context = @import("Context.zig");
 const Image = @import("Image.zig");

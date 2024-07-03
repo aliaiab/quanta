@@ -354,7 +354,7 @@ pub fn destroyView(self: Image, view: Image.View) void {
 
 const Image = @This();
 const std = @import("std");
-const vk = @import("vk.zig");
+const vk = @import("vulkan");
 const Context = @import("Context.zig");
 const CommandBuffer = @import("CommandBuffer.zig");
 const Buffer = @import("Buffer.zig");
