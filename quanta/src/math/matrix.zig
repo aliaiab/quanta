@@ -20,15 +20,15 @@ pub const identity: Matrix(4, 4, f32) = .{
 pub fn mul(left: [4][4]f32, right: [4][4]f32) [4][4]f32 {
     var result = identity;
 
-    for (0..result.data.len) |column| {
-        for (0..result.data[column].len) |row| {
+    for (0..result.len) |column| {
+        for (0..result[column].len) |row| {
             var sum: f32 = 0;
 
-            for (0..left.data.len) |left_column| {
-                sum += left.data[left_column][row] * right.data[column][left_column];
+            for (0..left.len) |left_column| {
+                sum += left[left_column][row] * right[column][left_column];
             }
 
-            result.data[column][row] = sum;
+            result[column][row] = sum;
         }
     }
 
@@ -127,3 +127,7 @@ pub fn perspectiveProjectionReversedZ(
 
 const std = @import("std");
 const vector = @import("vector.zig");
+
+test {
+    @import("std").testing.refAllDecls(@This());
+}

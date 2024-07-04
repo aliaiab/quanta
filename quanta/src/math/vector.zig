@@ -57,3 +57,7 @@ pub inline fn unit(
 
     return vector / scale;
 }
+
+test {
+    @import("std").testing.refAllDecls(@This());
+}
