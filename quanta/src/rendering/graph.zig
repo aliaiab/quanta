@@ -2210,6 +2210,18 @@ pub const CompileContext = struct {
         graphics_command_buffer: *const graphics.CommandBuffer,
     };
 
+    ///Submit the compiled graph to the gpu
+    pub fn submit(self: *@This(), compile_result: CompileResult) !void {
+        _ = compile_result; // autofix
+        _ = self; // autofix
+
+        // try compile_result.graphics_command_buffer.submitSemaphore(
+        //     compile_result.graphics_command_buffer.wait_fence,
+        //     image.image_acquired,
+        //     image.render_finished,
+        // );
+    }
+
     const graphics = @import("../graphics.zig");
 };
 

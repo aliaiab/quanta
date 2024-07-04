@@ -92,6 +92,29 @@ pub fn initRecycle(allocator: std.mem.Allocator, surface: vk.SurfaceKHR, old_han
     };
 }
 
+///Obtain the next image for presentation
+pub fn obtainNextImage(self: *Swapchain) Image {
+    const image = self.swap_images[self.image_index];
+
+    const color_image: Image = .{
+        .handle = image.image,
+        .type = .@"2d",
+        .view = image.view,
+        .memory_page = undefined,
+        .size = undefined,
+        .alignment = undefined,
+        .format = self.surface_format.format,
+        .layout = .color_attachment_optimal,
+        .aspect_mask = .{ .color_bit = true },
+        .width = self.extent.width,
+        .height = self.extent.height,
+        .depth = 1,
+        .levels = 1,
+    };
+
+    return color_image;
+}
+
 fn deinitExceptSwapchain(self: *Swapchain) void {
     for (self.swap_images) |*image| {
         image.deinit();
@@ -294,5 +317,6 @@ pub const PresentState = enum {
 const Swapchain = @This();
 const std = @import("std");
 const vk = @import("vulkan");
+const Image = @import("Image.zig");
 const Context = @import("Context.zig");
 const Semaphore = @import("Semaphore.zig");
