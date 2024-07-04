@@ -1883,14 +1883,14 @@ pub const CompileContext = struct {
                 }
             }
 
-            const image_iter = self.images.iterator();
+            var image_iter = self.images.iterator();
 
             //Encode barriers for presentation
             while (image_iter.next()) |image_entry| {
                 if (image_entry.value_ptr.is_presentation_image) {
                     const image = self.images.getPtr(image_entry.key_ptr.*) orelse @panic("Presentation image must have a backing image");
 
-                    self.graphics_command_buffer.imageBarrier(image.*.image, .{
+                    compile_buffer.graphics_command_buffer.?.imageBarrier(image.*.image, .{
                         .source_stage = .{ .color_attachment_output = true },
                         .source_access = .{ .color_attachment_write = true },
                         .destination_stage = .{},

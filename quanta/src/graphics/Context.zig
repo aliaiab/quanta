@@ -162,13 +162,13 @@ fn debugUtilsMessengerCallback(
     _ = p_user_data;
 
     if (message_severity.error_bit_ext) {
-        log.err("{s} {s}", .{ p_callback_data.?.p_message_id_name.? orelse "", p_callback_data.?.p_message.? });
+        log.err("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message.? });
         @panic("");
     } else if (message_severity.warning_bit_ext) {
-        log.warn("{s} {s}", .{ p_callback_data.?.p_message_id_name.? orelse "", p_callback_data.?.p_message.? });
+        log.warn("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message.? });
         @panic("");
     } else {
-        log.debug("{s} {s}", .{ p_callback_data.?.p_message_id_name.? orelse "", p_callback_data.?.p_message.? });
+        log.debug("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message.? });
     }
 
     return vk.FALSE;
