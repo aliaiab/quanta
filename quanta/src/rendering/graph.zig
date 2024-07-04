@@ -1165,6 +1165,7 @@ pub const CompileContext = struct {
         imported: bool = false,
         //TODO: use pointer for external image maybe?
         image: graphics.Image,
+        is_presentation_image: bool = false,
     }) = .{},
     samplers: std.AutoArrayHashMapUnmanaged(u64, graphics.Sampler) = .{},
 
@@ -1233,6 +1234,13 @@ pub const CompileContext = struct {
         builder: *Builder,
         comptime src: std.builtin.SourceLocation,
         image: graphics.Image,
+        ///How is this resource used after being used by the graph
+        usage: enum {
+            ///Use if the image won't be used for anything particular
+            undefined,
+            ///This image will be used in presentation
+            presentation,
+        },
     ) Image {
         const image_pointer = builder.createImage(src, .{
             .format = @enumFromInt(@intFromEnum(image.format)),
@@ -1245,6 +1253,7 @@ pub const CompileContext = struct {
 
         get_or_put_result.value_ptr.image = image;
         get_or_put_result.value_ptr.imported = true;
+        get_or_put_result.value_ptr.is_presentation_image = usage == .presentation;
 
         return image_pointer;
     }
@@ -1592,7 +1601,7 @@ pub const CompileContext = struct {
             const command_buffer = &compile_buffer.graphics_command_buffer.?;
 
             try command_buffer.begin();
-            // defer command_buffer.end();
+            defer command_buffer.end();
 
             var barrier_map: BarrierMap = .{
                 .context = self,
@@ -1743,9 +1752,11 @@ pub const CompileContext = struct {
                         } else null,
                     );
                 }
+
                 defer if (maybe_pass_name) |_| {
                     command_buffer.debugLabelEnd();
                 };
+
                 defer if (pass_data == .raster) {
                     command_buffer.endRenderPass();
                 };
@@ -1869,6 +1880,24 @@ pub const CompileContext = struct {
                             );
                         },
                     }
+                }
+            }
+
+            const image_iter = self.images.iterator();
+
+            //Encode barriers for presentation
+            while (image_iter.next()) |image_entry| {
+                if (image_entry.value_ptr.is_presentation_image) {
+                    const image = self.images.getPtr(image_entry.key_ptr.*) orelse @panic("Presentation image must have a backing image");
+
+                    self.graphics_command_buffer.imageBarrier(image.*.image, .{
+                        .source_stage = .{ .color_attachment_output = true },
+                        .source_access = .{ .color_attachment_write = true },
+                        .destination_stage = .{},
+                        .destination_access = .{},
+                        .source_layout = .attachment_optimal,
+                        .destination_layout = .present_src_khr,
+                    });
                 }
             }
         }
