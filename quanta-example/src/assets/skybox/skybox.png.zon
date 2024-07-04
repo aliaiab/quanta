@@ -1,8 +1,8 @@
 .{
-    .top = "top.png",
+    .top = "bottom.png",
     .bottom = "bottom.png",
-    .left = "left.png",
-    .right = "right.png",
-    .front = "front.png",
-    .back = "back.png",
+    .left = "bottom.png",
+    .right = "bottom.png",
+    .front = "bottom.png",
+    .back = "bottom.png",
 }

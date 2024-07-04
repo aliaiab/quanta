@@ -65,7 +65,7 @@ pub fn main() !void {
     const install_directory = process_args.next().?;
     const archive_name = process_args.next().?;
 
-    var previous_exists: bool = true;
+    var previous_exists: bool = false;
 
     const archive_path = try std.fs.path.join(allocator, &.{ install_directory, archive_name });
     defer allocator.free(archive_path);

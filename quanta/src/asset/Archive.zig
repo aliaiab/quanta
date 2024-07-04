@@ -1,7 +1,7 @@
 ///An asset archive format that allows for parralel streaming and incremental compilation/caching/hot reload.
 image: []u8,
 asset_name_hashes: []u64,
-asset_content_hashes: []u256,
+asset_content_hashes: []align(1) u256,
 assets: []AssetHeader,
 asset_content: []u8,
 
@@ -69,7 +69,7 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
 
     const name_hashes: [*]u64 = @alignCast(@ptrCast(image.ptr + name_hashes_offset));
     const asset_headers: [*]AssetHeader = @alignCast(@ptrCast(image.ptr + asset_headers_offset));
-    const content_hashes: [*]u256 = @alignCast(@ptrCast(image.ptr + asset_content_hashes));
+    const content_hashes: [*]align(1) u256 = @alignCast(@ptrCast(image.ptr + asset_content_hashes));
 
     var image_offset: usize = 0;
 
@@ -129,7 +129,7 @@ pub fn decode(allocator: std.mem.Allocator, image: []u8) !Archive {
     archive.asset_name_hashes = @as([*]u64, @ptrCast(@alignCast(image.ptr + image_offset)))[0..header.asset_count];
     image_offset += @sizeOf(u64) * header.asset_count;
 
-    archive.asset_content_hashes = @as([*]u256, @ptrCast(@alignCast(image.ptr + image_offset)))[0..header.asset_content_hashes_count];
+    archive.asset_content_hashes = @as([*]align(1) u256, @ptrCast(@alignCast(image.ptr + image_offset)))[0..header.asset_content_hashes_count];
     image_offset += @sizeOf(u256) * header.asset_content_hashes_count;
 
     image_offset = std.mem.alignForward(usize, image_offset, @alignOf(AssetHeader));

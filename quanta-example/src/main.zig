@@ -178,7 +178,12 @@ pub fn init() !void {
 
     state.asset_archive_blob = asset_blob_ptr[0..@as(usize, @intCast(asset_archive_fd_stat.size))];
 
-    state.asset_archive = try asset.Archive.decode(state.allocator, state.asset_archive_blob);
+    const blob_file = try std.fs.cwd().openFile("example_assets_archive", .{});
+    defer blob_file.close();
+
+    const blob = try blob_file.readToEndAlloc(state.allocator, std.math.maxInt(usize));
+
+    state.asset_archive = try asset.Archive.decode(state.allocator, blob);
 
     log.info("asset_archive.assets.len = {any}", .{state.asset_archive.assets.len});
 
@@ -483,7 +488,7 @@ pub fn update() !UpdateResult {
     }
 
     //update
-    if (false) {
+    if (true) {
         const x_position: f32 = @floatFromInt(state.window.getCursorPosition()[0]);
         const y_position: f32 = @floatFromInt(state.window.getCursorPosition()[1]);
 
@@ -568,236 +573,236 @@ pub fn update() !UpdateResult {
         .levels = 1,
     };
 
-    const enable_imgui = false;
+    // const enable_imgui = false;
 
-    //imgui gui
-    if (enable_imgui) {
-        //Process UI logic
-        {
-            try quanta_imgui.driver.begin(&state.window);
-            defer quanta_imgui.driver.end();
+    // //imgui gui
+    // if (enable_imgui) {
+    //     //Process UI logic
+    //     {
+    //         try quanta_imgui.driver.begin(&state.window);
+    //         defer quanta_imgui.driver.end();
 
-            const widgets = quanta_imgui.widgets;
+    //         const widgets = quanta_imgui.widgets;
 
-            const io: *imgui.ImGuiIO = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
+    //         const io: *imgui.ImGuiIO = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
-            var pixel_pointer: [*c]u8 = undefined;
-            var width: c_int = 0;
-            var height: c_int = 0;
-            var out_bytes_per_pixel: c_int = 0;
+    //         var pixel_pointer: [*c]u8 = undefined;
+    //         var width: c_int = 0;
+    //         var height: c_int = 0;
+    //         var out_bytes_per_pixel: c_int = 0;
 
-            //TODO: MASSIVE(?) hack: imgui asserts that we've called this function before imgui::NewFrame.
-            //We call this in the render graph build for renderer_gui, which hasn't ran yet.s
-            //We need to solve this as an high level api problem (when do we run grap build?)
-            imgui.ImFontAtlas_GetTexDataAsRGBA32(
-                io.Fonts,
-                &pixel_pointer,
-                &width,
-                &height,
-                &out_bytes_per_pixel,
-            );
+    //         //TODO: MASSIVE(?) hack: imgui asserts that we've called this function before imgui::NewFrame.
+    //         //We call this in the render graph build for renderer_gui, which hasn't ran yet.s
+    //         //We need to solve this as an high level api problem (when do we run grap build?)
+    //         imgui.ImFontAtlas_GetTexDataAsRGBA32(
+    //             io.Fonts,
+    //             &pixel_pointer,
+    //             &width,
+    //             &height,
+    //             &out_bytes_per_pixel,
+    //         );
 
-            imgui.igNewFrame();
-            imguizmo.ImGuizmo_SetOrthographic(false);
-            imguizmo.ImGuizmo_BeginFrame();
+    //         imgui.igNewFrame();
+    //         imguizmo.ImGuizmo_SetOrthographic(false);
+    //         imguizmo.ImGuizmo_BeginFrame();
 
-            imgui.igShowDemoWindow(null);
+    //         imgui.igShowDemoWindow(null);
 
-            if (widgets.begin("Basic properties")) {
-                widgets.textFormat("Frame time {d:.2}ms", .{state.delta_time});
-                widgets.textFormat("Frame rate {d:.2}Hz", .{1 / (state.delta_time / 1000)});
+    //         if (widgets.begin("Basic properties")) {
+    //             widgets.textFormat("Frame time {d:.2}ms", .{state.delta_time});
+    //             widgets.textFormat("Frame rate {d:.2}Hz", .{1 / (state.delta_time / 1000)});
 
-                if (widgets.button("Button test")) {
-                    log.info("Praise be the {s}", .{"BIG BUTTON"});
-                }
+    //             if (widgets.button("Button test")) {
+    //                 log.info("Praise be the {s}", .{"BIG BUTTON"});
+    //             }
 
-                widgets.text("Renderer Statistics:");
+    //             widgets.text("Renderer Statistics:");
 
-                widgets.textFormat("depth_pre_pass_time = {d:.2}ms", .{@as(f64, @floatFromInt(Renderer3D.getStatistics().depth_prepass_time)) / @as(f64, @floatFromInt(std.time.ns_per_ms))});
+    //             widgets.textFormat("depth_pre_pass_time = {d:.2}ms", .{@as(f64, @floatFromInt(Renderer3D.getStatistics().depth_prepass_time)) / @as(f64, @floatFromInt(std.time.ns_per_ms))});
 
-                widgets.textFormat("geometry_pass_time = {d:.2}ms", .{@as(f64, @floatFromInt(Renderer3D.getStatistics().geometry_pass_time)) / @as(f64, @floatFromInt(std.time.ns_per_ms))});
+    //             widgets.textFormat("geometry_pass_time = {d:.2}ms", .{@as(f64, @floatFromInt(Renderer3D.getStatistics().geometry_pass_time)) / @as(f64, @floatFromInt(std.time.ns_per_ms))});
 
-                _ = imgui.igDragFloat("Camera Exposure: ", &state.camera.exposure, 0.1, 0.1, 15, null, 0);
-            }
-            widgets.end();
+    //             _ = imgui.igDragFloat("Camera Exposure: ", &state.camera.exposure, 0.1, 0.1, 15, null, 0);
+    //         }
+    //         widgets.end();
 
-            try entity_editor.entitySelector(
-                &state.ecs_scene,
-                &state.entity_debugger_commands,
-                state.camera,
-                &state.selected_entities,
-                &state.window,
-            );
+    //         try entity_editor.entitySelector(
+    //             &state.ecs_scene,
+    //             &state.entity_debugger_commands,
+    //             state.camera,
+    //             &state.selected_entities,
+    //             &state.window,
+    //         );
 
-            const primary_selected_entity = if (state.selected_entities.items.len != 0) state.selected_entities.items[0] else quanta.ecs.ComponentStore.Entity.nil;
+    //         const primary_selected_entity = if (state.selected_entities.items.len != 0) state.selected_entities.items[0] else quanta.ecs.ComponentStore.Entity.nil;
 
-            if (state.selected_entities.items.len != 0 and state.ecs_scene.entityHasComponent(primary_selected_entity, quanta.components.Position)) {
-                const entity_position = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.Position) orelse unreachable;
-                const entity_rotation = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.Orientation);
-                const entity_scale = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.NonUniformScale);
+    //         if (state.selected_entities.items.len != 0 and state.ecs_scene.entityHasComponent(primary_selected_entity, quanta.components.Position)) {
+    //             const entity_position = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.Position) orelse unreachable;
+    //             const entity_rotation = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.Orientation);
+    //             const entity_scale = state.ecs_scene.entityGetComponent(primary_selected_entity, quanta.components.NonUniformScale);
 
-                imguizmo.ImGuizmo_SetImGuiContext(imgui.igGetCurrentContext());
-                imguizmo.ImGuizmo_Enable(true);
-                imguizmo.ImGuizmo_SetDrawlist(imgui.igGetBackgroundDrawList_Nil());
-                imguizmo.ImGuizmo_AllowAxisFlip(false);
-                imguizmo.ImGuizmo_SetID(0);
-                imguizmo.ImGuizmo_SetRect(0, 0, @as(f32, @floatFromInt(state.window.getWidth())), @as(f32, @floatFromInt(state.window.getHeight())));
+    //             imguizmo.ImGuizmo_SetImGuiContext(imgui.igGetCurrentContext());
+    //             imguizmo.ImGuizmo_Enable(true);
+    //             imguizmo.ImGuizmo_SetDrawlist(imgui.igGetBackgroundDrawList_Nil());
+    //             imguizmo.ImGuizmo_AllowAxisFlip(false);
+    //             imguizmo.ImGuizmo_SetID(0);
+    //             imguizmo.ImGuizmo_SetRect(0, 0, @as(f32, @floatFromInt(state.window.getWidth())), @as(f32, @floatFromInt(state.window.getHeight())));
 
-                const camera_view = state.camera.getView();
-                const camera_projection = state.camera.getProjectionNonInverse(&state.window);
-                const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
+    //             const camera_view = state.camera.getView();
+    //             const camera_projection = state.camera.getProjectionNonInverse(&state.window);
+    //             const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
 
-                var operation = imguizmo.Operation.translate;
+    //             var operation = imguizmo.Operation.translate;
 
-                var manip_matrix = zalgebra.Mat4.identity();
+    //             var manip_matrix = zalgebra.Mat4.identity();
 
-                manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromTranslate(.{ .data = .{ entity_position.x, entity_position.y, entity_position.z } }));
+    //             manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromTranslate(.{ .data = .{ entity_position.x, entity_position.y, entity_position.z } }));
 
-                if (entity_rotation != null) {
-                    manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromEulerAngles(.{ .data = .{ entity_rotation.?.x, entity_rotation.?.y, entity_rotation.?.z } }));
+    //             if (entity_rotation != null) {
+    //                 manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromEulerAngles(.{ .data = .{ entity_rotation.?.x, entity_rotation.?.y, entity_rotation.?.z } }));
 
-                    operation.rotate_x = true;
-                    operation.rotate_y = true;
-                    operation.rotate_z = true;
-                    operation.rotate_screen = true;
-                }
+    //                 operation.rotate_x = true;
+    //                 operation.rotate_y = true;
+    //                 operation.rotate_z = true;
+    //                 operation.rotate_screen = true;
+    //             }
 
-                if (entity_scale != null) {
-                    manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromScale(.{ .data = .{ entity_scale.?.x, entity_scale.?.y, entity_scale.?.z } }));
+    //             if (entity_scale != null) {
+    //                 manip_matrix = manip_matrix.mul(zalgebra.Mat4.fromScale(.{ .data = .{ entity_scale.?.x, entity_scale.?.y, entity_scale.?.z } }));
 
-                    operation.scale_x = true;
-                    operation.scale_y = true;
-                    operation.scale_z = true;
-                }
+    //                 operation.scale_x = true;
+    //                 operation.scale_y = true;
+    //                 operation.scale_z = true;
+    //             }
 
-                _ = imguizmo.ImGuizmo_Manipulate(
-                    @as([*]const f32, @ptrCast(&camera_view)),
-                    @as([*]const f32, @ptrCast(&camera_projection)),
-                    operation,
-                    imguizmo.Mode.world,
-                    @as([*]f32, @ptrCast(&manip_matrix.data)),
-                    null,
-                    null,
-                    null,
-                    null,
-                );
+    //             _ = imguizmo.ImGuizmo_Manipulate(
+    //                 @as([*]const f32, @ptrCast(&camera_view)),
+    //                 @as([*]const f32, @ptrCast(&camera_projection)),
+    //                 operation,
+    //                 imguizmo.Mode.world,
+    //                 @as([*]f32, @ptrCast(&manip_matrix.data)),
+    //                 null,
+    //                 null,
+    //                 null,
+    //                 null,
+    //             );
 
-                const decomposed = manip_matrix.decompose();
+    //             const decomposed = manip_matrix.decompose();
 
-                const position = decomposed.t.data;
-                const scale = decomposed.s.data;
+    //             const position = decomposed.t.data;
+    //             const scale = decomposed.s.data;
 
-                var rotation: @Vector(3, f32) = undefined;
+    //             var rotation: @Vector(3, f32) = undefined;
 
-                {
-                    const quaternion = decomposed.r;
+    //             {
+    //                 const quaternion = decomposed.r;
 
-                    const yaw = std.math.atan2(
-                        2 * (quaternion.y * quaternion.z + quaternion.w * quaternion.x),
-                        quaternion.w * quaternion.w - quaternion.x * quaternion.x - quaternion.y * quaternion.y + quaternion.z * quaternion.z,
-                    );
-                    const pitch = std.math.asin(
-                        -2 * (quaternion.x * quaternion.z - quaternion.w * quaternion.y),
-                    );
-                    const roll = std.math.atan2(
-                        2 * (quaternion.x * quaternion.y + quaternion.w * quaternion.z),
-                        quaternion.w * quaternion.w + quaternion.x * quaternion.x - quaternion.y * quaternion.y - quaternion.z * quaternion.z,
-                    );
+    //                 const yaw = std.math.atan2(
+    //                     2 * (quaternion.y * quaternion.z + quaternion.w * quaternion.x),
+    //                     quaternion.w * quaternion.w - quaternion.x * quaternion.x - quaternion.y * quaternion.y + quaternion.z * quaternion.z,
+    //                 );
+    //                 const pitch = std.math.asin(
+    //                     -2 * (quaternion.x * quaternion.z - quaternion.w * quaternion.y),
+    //                 );
+    //                 const roll = std.math.atan2(
+    //                     2 * (quaternion.x * quaternion.y + quaternion.w * quaternion.z),
+    //                     quaternion.w * quaternion.w + quaternion.x * quaternion.x - quaternion.y * quaternion.y - quaternion.z * quaternion.z,
+    //                 );
 
-                    rotation = .{ zalgebra.toDegrees(yaw), zalgebra.toDegrees(pitch), zalgebra.toDegrees(roll) };
-                }
+    //                 rotation = .{ zalgebra.toDegrees(yaw), zalgebra.toDegrees(pitch), zalgebra.toDegrees(roll) };
+    //             }
 
-                const position_change = position - @Vector(3, f32){ entity_position.x, entity_position.y, entity_position.z };
-                const scale_change = if (entity_scale != null) scale - @Vector(3, f32){ entity_scale.?.x, entity_scale.?.y, entity_scale.?.z } else @Vector(3, f32){ 0, 0, 0 };
-                const rotation_change = if (entity_rotation != null) rotation - @Vector(3, f32){ entity_rotation.?.x, entity_rotation.?.y, entity_rotation.?.z } else @Vector(3, f32){ 0, 0, 0 };
+    //             const position_change = position - @Vector(3, f32){ entity_position.x, entity_position.y, entity_position.z };
+    //             const scale_change = if (entity_scale != null) scale - @Vector(3, f32){ entity_scale.?.x, entity_scale.?.y, entity_scale.?.z } else @Vector(3, f32){ 0, 0, 0 };
+    //             const rotation_change = if (entity_rotation != null) rotation - @Vector(3, f32){ entity_rotation.?.x, entity_rotation.?.y, entity_rotation.?.z } else @Vector(3, f32){ 0, 0, 0 };
 
-                for (state.selected_entities.items) |selected_entity| {
-                    const selected_position = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.Position);
-                    const selected_rotation = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.Orientation);
-                    const selected_scale = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.NonUniformScale);
+    //             for (state.selected_entities.items) |selected_entity| {
+    //                 const selected_position = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.Position);
+    //                 const selected_rotation = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.Orientation);
+    //                 const selected_scale = state.ecs_scene.entityGetComponent(selected_entity, quanta_components.NonUniformScale);
 
-                    if (selected_position != null) {
-                        selected_position.?.* = .{
-                            .x = selected_position.?.x + position_change[0],
-                            .y = selected_position.?.y + position_change[1],
-                            .z = selected_position.?.z + position_change[2],
-                        };
-                    }
+    //                 if (selected_position != null) {
+    //                     selected_position.?.* = .{
+    //                         .x = selected_position.?.x + position_change[0],
+    //                         .y = selected_position.?.y + position_change[1],
+    //                         .z = selected_position.?.z + position_change[2],
+    //                     };
+    //                 }
 
-                    if (selected_rotation != null) {
-                        selected_rotation.?.* = .{
-                            .x = selected_rotation.?.x + rotation_change[0],
-                            .y = selected_rotation.?.y + rotation_change[1],
-                            .z = selected_rotation.?.z + rotation_change[2],
-                        };
-                    }
+    //                 if (selected_rotation != null) {
+    //                     selected_rotation.?.* = .{
+    //                         .x = selected_rotation.?.x + rotation_change[0],
+    //                         .y = selected_rotation.?.y + rotation_change[1],
+    //                         .z = selected_rotation.?.z + rotation_change[2],
+    //                     };
+    //                 }
 
-                    if (selected_scale != null) {
-                        selected_scale.?.* = .{
-                            .x = selected_scale.?.x + scale_change[0],
-                            .y = selected_scale.?.y + scale_change[1],
-                            .z = selected_scale.?.z + scale_change[2],
-                        };
-                    }
+    //                 if (selected_scale != null) {
+    //                     selected_scale.?.* = .{
+    //                         .x = selected_scale.?.x + scale_change[0],
+    //                         .y = selected_scale.?.y + scale_change[1],
+    //                         .z = selected_scale.?.z + scale_change[2],
+    //                     };
+    //                 }
 
-                    if (state.ecs_scene.entityGetComponent(selected_entity, quanta_components.RendererMesh)) |mesh| {
-                        const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
+    //                 if (state.ecs_scene.entityGetComponent(selected_entity, quanta_components.RendererMesh)) |mesh| {
+    //                     const mesh_box = Renderer3D.getMeshBox(mesh.mesh);
 
-                        const bounding_min = mesh_box.min;
-                        const bounding_max = mesh_box.max;
+    //                     const bounding_min = mesh_box.min;
+    //                     const bounding_max = mesh_box.max;
 
-                        var matrix = zalgebra.Mat4.identity();
+    //                     var matrix = zalgebra.Mat4.identity();
 
-                        matrix = matrix.mul(zalgebra.Mat4.fromTranslate(.{ .data = .{ selected_position.?.x, selected_position.?.y, selected_position.?.z } }));
+    //                     matrix = matrix.mul(zalgebra.Mat4.fromTranslate(.{ .data = .{ selected_position.?.x, selected_position.?.y, selected_position.?.z } }));
 
-                        if (selected_rotation != null) {
-                            matrix = matrix.mul(zalgebra.Mat4.fromEulerAngles(.{ .data = .{ selected_rotation.?.x, selected_rotation.?.y, selected_rotation.?.z } }));
+    //                     if (selected_rotation != null) {
+    //                         matrix = matrix.mul(zalgebra.Mat4.fromEulerAngles(.{ .data = .{ selected_rotation.?.x, selected_rotation.?.y, selected_rotation.?.z } }));
 
-                            operation.rotate_x = true;
-                            operation.rotate_y = true;
-                            operation.rotate_z = true;
-                            operation.rotate_screen = true;
-                        }
+    //                         operation.rotate_x = true;
+    //                         operation.rotate_y = true;
+    //                         operation.rotate_z = true;
+    //                         operation.rotate_screen = true;
+    //                     }
 
-                        if (selected_scale != null) {
-                            matrix = matrix.mul(zalgebra.Mat4.fromScale(.{ .data = .{ selected_scale.?.x, selected_scale.?.y, selected_scale.?.z } }));
+    //                     if (selected_scale != null) {
+    //                         matrix = matrix.mul(zalgebra.Mat4.fromScale(.{ .data = .{ selected_scale.?.x, selected_scale.?.y, selected_scale.?.z } }));
 
-                            operation.scale_x = true;
-                            operation.scale_y = true;
-                            operation.scale_z = true;
-                        }
+    //                         operation.scale_x = true;
+    //                         operation.scale_y = true;
+    //                         operation.scale_z = true;
+    //                     }
 
-                        widgets.drawBoundingBox(camera_view_projection, matrix, bounding_min, bounding_max);
-                    }
-                }
-            }
+    //                     widgets.drawBoundingBox(camera_view_projection, matrix, bounding_min, bounding_max);
+    //                 }
+    //             }
+    //         }
 
-            entity_editor.entityViewer(&state.ecs_scene, &state.entity_debugger_commands, &state.selected_entities);
-            entity_editor.chunkViewer(&state.ecs_scene);
-            quanta_imgui.log.viewer("Log");
+    //         entity_editor.entityViewer(&state.ecs_scene, &state.entity_debugger_commands, &state.selected_entities);
+    //         entity_editor.chunkViewer(&state.ecs_scene);
+    //         quanta_imgui.log.viewer("Log");
 
-            try state.entity_debugger_commands.execute(&state.ecs_scene);
-        }
+    //         try state.entity_debugger_commands.execute(&state.ecs_scene);
+    //     }
 
-        //Draw point light gizmos
-        {
-            const camera_view = state.camera.getView();
-            const camera_projection = state.camera.getProjectionNonInverse(&state.window);
-            const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
+    //     //Draw point light gizmos
+    //     {
+    //         const camera_view = state.camera.getView();
+    //         const camera_projection = state.camera.getProjectionNonInverse(&state.window);
+    //         const camera_view_projection = zalgebra.Mat4.mul(.{ .data = camera_projection }, .{ .data = camera_view });
 
-            var query = state.ecs_scene.query(.{quanta_components.Position}, .{});
+    //         var query = state.ecs_scene.query(.{quanta_components.Position}, .{});
 
-            while (query.nextBlock()) |block| {
-                for (block.Position) |position| {
-                    quanta_imgui.widgets.drawBillboard(camera_view_projection, .{ position.x, position.y, position.z }, 10);
-                }
-            }
-        }
+    //         while (query.nextBlock()) |block| {
+    //             for (block.Position) |position| {
+    //                 quanta_imgui.widgets.drawBillboard(camera_view_projection, .{ position.x, position.y, position.z }, 10);
+    //             }
+    //         }
+    //     }
 
-        quanta_imgui.render_graph_debug.renderGraphDebug(&state.render_graph);
+    //     quanta_imgui.render_graph_debug.renderGraphDebug(&state.render_graph);
 
-        imgui.igRender();
-    }
+    //     imgui.igRender();
+    // }
 
     for (state.ecs_scene.changes.added_chunks.items) |added_chunk| {
         std.log.info("added chunk to scene: {any}", .{added_chunk});
@@ -807,7 +812,7 @@ pub fn update() !UpdateResult {
 
     state.render_graph.clear();
 
-    var graph_swap_image = state.render_graph_compile_context.importExternalImage(
+    const graph_swap_image = state.render_graph_compile_context.importExternalImage(
         &state.render_graph,
         @src(),
         color_image,
@@ -816,89 +821,80 @@ pub fn update() !UpdateResult {
     var scene_point_lights: std.ArrayListUnmanaged(renderer_3d_graph.PointLight) = .{};
     defer scene_point_lights.deinit(state.allocator);
 
-    {
-        const without = quanta.ecs.ComponentStore.filterWithout;
-        const filterOr = quanta.ecs.ComponentStore.filterOr;
-        _ = filterOr;
+    // if (false) {
+    //     const without = quanta.ecs.ComponentStore.filterWithout;
+    //     const filterOr = quanta.ecs.ComponentStore.filterOr;
+    //     _ = filterOr;
 
-        var query = state.ecs_scene.query(.{
-            quanta.components.Position,
-            quanta.components.PointLight,
-        }, .{
-            without(quanta.components.Visibility), // !Visibility
-        });
+    //     var query = state.ecs_scene.query(.{
+    //         quanta.components.Position,
+    //         quanta.components.PointLight,
+    //     }, .{
+    //         without(quanta.components.Visibility), // !Visibility
+    //     });
 
-        while (query.nextBlock()) |block| {
-            for (block.Position, block.PointLight) |position, point_light| {
-                try scene_point_lights.append(state.allocator, .{
-                    .position = .{ position.x, position.y, position.z },
-                    .intensity = point_light.intensity,
-                    .diffuse = packUnorm4x8(.{ point_light.diffuse[0], point_light.diffuse[1], point_light.diffuse[2], 1 }),
-                });
-            }
-        }
-    }
+    //     while (query.nextBlock()) |block| {
+    //         for (block.Position, block.PointLight) |position, point_light| {
+    //             try scene_point_lights.append(state.allocator, .{
+    //                 .position = .{ position.x, position.y, position.z },
+    //                 .intensity = point_light.intensity,
+    //                 .diffuse = packUnorm4x8(.{ point_light.diffuse[0], point_light.diffuse[1], point_light.diffuse[2], 1 }),
+    //             });
+    //         }
+    //     }
+    // }
 
-    const Statics = struct {
-        // var enable_renderer_3d: bool = true;
-    };
-    _ = Statics; // autofix
+    // if (false) {
+    //     state.graph_renderer_scene.point_lights = scene_point_lights.items;
 
-    if (state.window.getKey(.F2) == .press) {
-        // Statics.enable_renderer_3d = !Statics.enable_renderer_3d;
-    }
+    //     state.graph_renderer_scene.clearInstances();
 
-    if (true) {
-        state.graph_renderer_scene.point_lights = scene_point_lights.items;
+    //     quanta.systems.mesh_instance_system.run(
+    //         &state.ecs_scene,
+    //         &state.graph_renderer_scene,
+    //         state.allocator,
+    //     );
 
-        state.graph_renderer_scene.clearInstances();
+    //     renderer_3d_graph.buildGraph(
+    //         &state.render_graph,
+    //         &state.graph_renderer_scene,
+    //         .{
+    //             .camera = state.camera,
+    //         },
+    //         &graph_swap_image,
+    //     );
+    // }
 
-        quanta.systems.mesh_instance_system.run(
-            &state.ecs_scene,
-            &state.graph_renderer_scene,
-            state.allocator,
-        );
-
-        renderer_3d_graph.buildGraph(
-            &state.render_graph,
-            &state.graph_renderer_scene,
-            .{
-                .camera = state.camera,
-            },
-            &graph_swap_image,
-        );
-    }
-
-    if (imgui.igGetDrawData() != null) {
-        RendererGui.renderToGraph(
-            &state.render_graph,
-            imgui.igGetDrawData(),
-            &graph_swap_image,
-        );
-    }
+    // if (imgui.igGetDrawData() != null) {
+    //     RendererGui.renderToGraph(
+    //         &state.render_graph,
+    //         imgui.igGetDrawData(),
+    //         &graph_swap_image,
+    //     );
+    // }
 
     state.render_graph.export_resource = .{ .image = graph_swap_image };
 
-    const render_graph_compiled = try state.render_graph_compile_context.compile(
-        &state.render_graph,
-    );
+    // const render_graph_compiled = try state.render_graph_compile_context.compile(
+    //     &state.render_graph,
+    // );
 
-    render_graph_compiled.graphics_command_buffer.imageBarrier(color_image, .{
-        .source_stage = .{ .color_attachment_output = true },
-        .source_access = .{ .color_attachment_write = true },
-        .destination_stage = .{},
-        .destination_access = .{},
-        .source_layout = .attachment_optimal,
-        .destination_layout = .present_src_khr,
-    });
+    // render_graph_compiled.graphics_command_buffer.imageBarrier(color_image, .{
+    //     .source_stage = .{ .color_attachment_output = true },
+    //     .source_access = .{ .color_attachment_write = true },
+    //     .destination_stage = .{},
+    //     .destination_access = .{},
+    //     .source_layout = .attachment_optimal,
+    //     .destination_layout = .present_src_khr,
+    // });
 
-    render_graph_compiled.graphics_command_buffer.end();
+    // render_graph_compiled.graphics_command_buffer.end();
 
-    try render_graph_compiled.graphics_command_buffer.submitSemaphore(
-        render_graph_compiled.graphics_command_buffer.wait_fence,
-        image.image_acquired,
-        image.render_finished,
-    );
+    // try render_graph_compiled.graphics_command_buffer.submitSemaphore(
+    //     render_graph_compiled.graphics_command_buffer.wait_fence,
+    //     image.image_acquired,
+    //     image.render_finished,
+    // );
 
     try state.swapchain.present();
     try state.swapchain.swap();
@@ -919,7 +915,7 @@ pub fn main() !void {
     try init();
     defer deinit();
 
-    while (true) {
+    while (false) {
         switch (try update()) {
             .pass => continue,
             .exit => break,

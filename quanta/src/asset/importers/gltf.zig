@@ -67,6 +67,7 @@ pub const Import = struct {
         optimize: std.builtin.OptimizeMode = .ReleaseFast,
         lod_count: u32 = 1,
         scale: f32 = 1,
+        disabled: bool = false,
     };
 
     pub fn assetCompile(
@@ -75,6 +76,7 @@ pub const Import = struct {
         data: []const u8,
         meta_data: ?MetaData,
     ) ![]const u8 {
+        if (meta_data.?.disabled) return &.{};
         _ = data;
 
         std.log.info("gltf compiler input: meta: {any}", .{meta_data.?});
@@ -439,7 +441,7 @@ pub fn importFree(gltf_import: Import, allocator: std.mem.Allocator) void {
 }
 
 ///Header for the binary format
-pub const ImportBinHeader = packed struct {
+pub const ImportBinHeader = extern struct {
     vertex_count: u32,
     index_count: u32,
     sub_mesh_count: u32,
@@ -448,7 +450,11 @@ pub const ImportBinHeader = packed struct {
     point_light_count: u32,
 };
 
-pub const ImportBinTexture = packed struct {
+comptime {
+    // @compileLog(@alignOf(ImportBinHeader));
+}
+
+pub const ImportBinTexture = extern struct {
     data_size: u32,
     width: u32,
     height: u32,
@@ -460,7 +466,7 @@ pub const ImportBinTexture = packed struct {
 pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8 {
     var size: usize = 0;
 
-    // size = std.mem.alignForward(size, @alignOf(ImportBinHeader));
+    size = std.mem.alignForward(usize, size, @alignOf(ImportBinHeader));
     size += @sizeOf(ImportBinHeader);
 
     size = std.mem.alignForward(usize, size, @alignOf(Renderer3D.VertexPosition));
@@ -505,7 +511,8 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8 {
     header.sub_mesh_count = @as(u32, @intCast(import_data.sub_meshes.len));
     header.material_count = @as(u32, @intCast(import_data.materials.len));
     header.texture_count = @as(u32, @intCast(import_data.textures.len));
-    header.point_light_count = @as(u32, @intCast(import_data.point_lights.len));
+    // header.point_light_count = @as(u32, @intCast(import_data.point_lights.len));
+    header.point_light_count = 0;
 
     _ = try fba.dupe(Renderer3D.VertexPosition, import_data.vertex_positions);
     _ = try fba.dupe(Renderer3D.Vertex, import_data.vertices);
@@ -527,7 +534,7 @@ pub fn encode(allocator: std.mem.Allocator, import_data: Import) ![]u8 {
 
     std.log.info("point_light_offset: {}", .{data_fba.end_index});
 
-    _ = try fba.dupe(Renderer3D.PointLight, import_data.point_lights);
+    // _ = try fba.dupe(Renderer3D.PointLight, import_data.point_lights);
 
     return data_fba.buffer[0..data_fba.end_index];
 }
@@ -544,17 +551,19 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import {
         .point_lights = &.{},
     };
 
-    var offset: usize = 0;
+    var offset: usize = @alignOf(ImportBinHeader);
 
     const header = @as(*const ImportBinHeader, @ptrCast(@alignCast(data.ptr + offset)));
 
     std.log.info("header: {}", .{header});
 
     offset += @sizeOf(ImportBinHeader);
+    offset = std.mem.alignForward(usize, offset, @alignOf(Renderer3D.VertexPosition));
 
     const vertex_positions_offset = offset;
 
     offset = std.mem.alignForward(usize, offset, @alignOf(Renderer3D.VertexPosition));
+    std.log.err("vertex_count: {}", .{header.vertex_count});
     offset += @sizeOf(Renderer3D.VertexPosition) * header.vertex_count;
 
     const vertices_offset = offset;
@@ -609,7 +618,7 @@ pub fn decode(allocator: std.mem.Allocator, data: []u8) !Import {
 
     const point_light_offset = offset;
 
-    offset += @sizeOf(Renderer3D.PointLight) * header.point_light_count;
+    // offset += @sizeOf(Renderer3D.PointLight) * header.point_light_count;
 
     import_data.vertex_positions = @as([*]Renderer3D.VertexPosition, @ptrCast(@alignCast(data.ptr + vertex_positions_offset)))[0..header.vertex_count];
     import_data.vertices = @as([*]Renderer3D.Vertex, @ptrCast(@alignCast(data.ptr + vertices_offset)))[0..header.vertex_count];
