@@ -1188,6 +1188,9 @@ pub const CompileContext = struct {
     }
 
     pub fn deinit(self: *@This()) void {
+        //Maybe wait for specific resources? This will work for now
+        graphics.Context.waitIdle();
+
         for (self.raster_pipelines.values()) |*raster_pipeline| {
             raster_pipeline.deinit(self.allocator);
         }
@@ -1299,7 +1302,11 @@ pub const CompileContext = struct {
         {
             //The first pass to evaluate. Evaluation goes bottom up (from last executed to first)
             const root_pass_index: u32 = switch (builder.export_resource.?) {
-                .image => |image| image.pass_index.?,
+                .image => |image| image.pass_index orelse {
+                    return .{
+                        .graphics_command_buffer = &compile_buffer.graphics_command_buffer.?,
+                    };
+                },
                 .buffer => |buffer| buffer.pass_index.?,
             };
 
