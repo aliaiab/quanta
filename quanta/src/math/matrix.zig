@@ -40,9 +40,9 @@ pub fn fromTranslation(
 ) Matrix(4, 4, f32) {
     var result = identity;
 
-    result.data[3][0] = translation[0];
-    result.data[3][1] = translation[1];
-    result.data[3][2] = translation[2];
+    result[3][0] = translation[0];
+    result[3][1] = translation[1];
+    result[3][2] = translation[2];
 
     return result;
 }
@@ -60,9 +60,9 @@ pub fn fromScale(
 ) Matrix(4, 4, f32) {
     var result = identity;
 
-    result.data[0][0] = scale_vector[0];
-    result.data[1][1] = scale_vector[1];
-    result.data[2][2] = scale_vector[2];
+    result[0][0] = scale_vector[0];
+    result[1][1] = scale_vector[1];
+    result[2][2] = scale_vector[2];
 
     return result;
 }
@@ -85,25 +85,25 @@ pub fn lookAt(
 
     var result: [4][4]f32 = undefined;
 
-    result.data[0][0] = s[0];
-    result.data[0][1] = u[0];
-    result.data[0][2] = -f[0];
-    result.data[0][3] = 0;
+    result[0][0] = s[0];
+    result[0][1] = u[0];
+    result[0][2] = -f[0];
+    result[0][3] = 0;
 
-    result.data[1][0] = s[1];
-    result.data[1][1] = u[1];
-    result.data[1][2] = -f[1];
-    result.data[1][3] = 0;
+    result[1][0] = s[1];
+    result[1][1] = u[1];
+    result[1][2] = -f[1];
+    result[1][3] = 0;
 
-    result.data[2][0] = s[2];
-    result.data[2][1] = u[2];
-    result.data[2][2] = -f[2];
-    result.data[2][3] = 0;
+    result[2][0] = s[2];
+    result[2][1] = u[2];
+    result[2][2] = -f[2];
+    result[2][3] = 0;
 
-    result.data[3][0] = -vector.dot(f32, 3, s, eye);
-    result.data[3][1] = -vector.dot(f32, 3, u, eye);
-    result.data[3][2] = vector.dot(f32, 3, f, eye);
-    result.data[3][3] = 1;
+    result[3][0] = -vector.dot(f32, 3, s, eye);
+    result[3][1] = -vector.dot(f32, 3, u, eye);
+    result[3][2] = vector.dot(f32, 3, f, eye);
+    result[3][3] = 1;
 
     return result;
 }
@@ -118,12 +118,10 @@ pub fn perspectiveProjectionReversedZ(
     const f = 1 / std.math.tan(field_of_view / 2);
 
     return .{
-        .data = .{
-            .{ f / aspect_ratio, 0, 0, 0 },
-            .{ 0, f, 0, 0 },
-            .{ 0, 0, 0, -1 },
-            .{ 0, 0, znear, 0 },
-        },
+        .{ f / aspect_ratio, 0, 0, 0 },
+        .{ 0, f, 0, 0 },
+        .{ 0, 0, 0, -1 },
+        .{ 0, 0, znear, 0 },
     };
 }
 
