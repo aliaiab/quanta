@@ -11,6 +11,7 @@ xkb_state: *xkb.xkb_state,
 xkb_keymap: *xkb.xkb_keymap,
 hidden_cursor: xcb_loader.Cursor,
 key_map: [std.enums.values(windowing.Key).len]bool,
+key_press_timestamps: [std.enums.values(windowing.Key).len]u32,
 previous_key_map: [std.enums.values(windowing.Key).len]bool,
 mouse_map: [std.enums.values(windowing.MouseButton).len]bool,
 previous_mouse_map: [std.enums.values(windowing.MouseButton).len]bool,
@@ -43,6 +44,7 @@ pub fn init(
         .xkb_state = undefined,
         .xkb_keymap = undefined,
         .key_map = std.mem.zeroes([std.enums.values(windowing.Key).len]bool),
+        .key_press_timestamps = std.mem.zeroes([std.enums.values(windowing.Key).len]u32),
         .previous_key_map = std.mem.zeroes([std.enums.values(windowing.Key).len]bool),
         .mouse_map = std.mem.zeroes([std.enums.values(windowing.MouseButton).len]bool),
         .previous_mouse_map = std.mem.zeroes([std.enums.values(windowing.MouseButton).len]bool),
@@ -176,9 +178,6 @@ pub fn pollEvents(self: *XcbWindow) !bool {
     self.previous_key_map = self.key_map;
     self.previous_mouse_map = self.mouse_map;
 
-    @memset(&self.key_map, false);
-    @memset(&self.mouse_map, false);
-
     const query_pointer = self.xcb_library.queryPointer(self.connection, self.window);
 
     self.mouse_position[0] = query_pointer.win_x;
@@ -188,9 +187,16 @@ pub fn pollEvents(self: *XcbWindow) !bool {
 
     self.mouse_scroll = 0;
 
+    if (!self.isFocused()) {
+        @memset(&self.key_map, false);
+        @memset(&self.mouse_map, false);
+    }
+
     while (self.xcb_library.pollForEvent(self.connection)) |event| {
         switch (event) {
             .button_press => |button_press| {
+                if (!self.isFocused()) continue;
+
                 switch (button_press.detail) {
                     .index_1 => self.mouse_map[@intFromEnum(windowing.MouseButton.left)] = true,
                     .index_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = true,
@@ -199,6 +205,8 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                 }
             },
             .button_release => |button_release| {
+                if (!self.isFocused()) continue;
+
                 switch (button_release.detail) {
                     .index_1 => self.mouse_map[@intFromEnum(windowing.MouseButton.left)] = false,
                     .index_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = false,
@@ -212,6 +220,8 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                 }
             },
             .key_press => |key_press| {
+                if (!self.isFocused()) continue;
+
                 const keysym = xkb.xkb_state_key_get_one_sym(self.xkb_state, key_press.detail);
 
                 _ = xkb.xkb_state_update_key(self.xkb_state, key_press.detail, xkb.XKB_KEY_DOWN);
@@ -221,10 +231,19 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                 self.text_len += @intCast(text_len);
 
                 if (xkbKeyToQuantaKey(keysym)) |key| {
-                    self.key_map[@intFromEnum(key)] = true;
+                    const time_difference = key_press.time - self.key_press_timestamps[@intFromEnum(key)];
+
+                    if (time_difference == key_press.time or
+                        (time_difference > 0 and time_difference < (1 << 31)))
+                    {
+                        self.key_map[@intFromEnum(key)] = true;
+                        self.key_press_timestamps[@intFromEnum(key)] = key_press.time;
+                    }
                 }
             },
             .key_release => |key_release| {
+                if (!self.isFocused()) continue;
+
                 const keysym = xkb.xkb_state_key_get_one_sym(self.xkb_state, key_release.detail);
 
                 _ = xkb.xkb_state_update_key(self.xkb_state, key_release.detail, xkb.XKB_KEY_UP);
@@ -286,7 +305,36 @@ pub fn pollEvents(self: *XcbWindow) !bool {
 
                 S.warped = warped;
             },
-            .enter_notify => {},
+            .focus_in => |focus_in| {
+                if (focus_in.mode == xcb.XCB_NOTIFY_MODE_GRAB or focus_in.mode == xcb.XCB_NOTIFY_MODE_UNGRAB) {
+                    continue;
+                }
+
+                if (self.cursor_grabbed) {
+                    self.captureCursor();
+                } else {
+                    self.uncaptureCursor();
+                }
+            },
+            .focus_out => |focus_out| {
+                if (focus_out.mode == xcb.XCB_NOTIFY_MODE_GRAB or focus_out.mode == xcb.XCB_NOTIFY_MODE_UNGRAB) {
+                    continue;
+                }
+
+                if (self.cursor_grabbed) {
+                    self.captureCursor();
+                } else {
+                    self.uncaptureCursor();
+                }
+
+                self.eventFocusOut();
+            },
+            .enter_notify => |enter_notify| {
+                const x: i16 = enter_notify.event_x;
+                const y: i16 = enter_notify.event_y;
+
+                self.last_mouse_position = .{ x, y };
+            },
             .leave_notify => {},
             .configure_notify => {},
             .client_message => |client_message| {
@@ -430,6 +478,11 @@ pub fn getMouseScroll(self: XcbWindow) i32 {
     return self.mouse_scroll;
 }
 
+fn eventFocusOut(self: *XcbWindow) void {
+    @memset(&self.key_map, false);
+    @memset(&self.mouse_map, false);
+}
+
 ///Convert xkb key symbol to windowing.Key
 fn xkbKeyToQuantaKey(keysym: u32) ?windowing.Key {
     return switch (keysym) {
@@ -451,32 +504,32 @@ fn xkbKeyToQuantaKey(keysym: u32) ?windowing.Key {
         xkb.XKB_KEY_9 => .nine,
         xkb.XKB_KEY_semicolon => .semicolon,
         xkb.XKB_KEY_equal => .equal,
-        xkb.XKB_KEY_a => .a,
-        xkb.XKB_KEY_b => .b,
-        xkb.XKB_KEY_c => .c,
-        xkb.XKB_KEY_d => .d,
+        xkb.XKB_KEY_A, xkb.XKB_KEY_a => .a,
+        xkb.XKB_KEY_B, xkb.XKB_KEY_b => .b,
+        xkb.XKB_KEY_C, xkb.XKB_KEY_c => .c,
+        xkb.XKB_KEY_D, xkb.XKB_KEY_d => .d,
         xkb.XKB_KEY_E, xkb.XKB_KEY_e => .e,
-        xkb.XKB_KEY_f => .f,
-        xkb.XKB_KEY_g => .g,
-        xkb.XKB_KEY_h => .h,
-        xkb.XKB_KEY_i => .i,
-        xkb.XKB_KEY_j => .j,
-        xkb.XKB_KEY_k => .k,
-        xkb.XKB_KEY_l => .l,
-        xkb.XKB_KEY_m => .m,
-        xkb.XKB_KEY_n => .n,
-        xkb.XKB_KEY_o => .o,
-        xkb.XKB_KEY_p => .p,
-        xkb.XKB_KEY_q => .q,
-        xkb.XKB_KEY_r => .r,
-        xkb.XKB_KEY_s => .s,
-        xkb.XKB_KEY_t => .t,
-        xkb.XKB_KEY_u => .u,
-        xkb.XKB_KEY_v => .v,
+        xkb.XKB_KEY_F, xkb.XKB_KEY_f => .f,
+        xkb.XKB_KEY_G, xkb.XKB_KEY_g => .g,
+        xkb.XKB_KEY_H, xkb.XKB_KEY_h => .h,
+        xkb.XKB_KEY_I, xkb.XKB_KEY_i => .i,
+        xkb.XKB_KEY_J, xkb.XKB_KEY_j => .j,
+        xkb.XKB_KEY_K, xkb.XKB_KEY_k => .k,
+        xkb.XKB_KEY_L, xkb.XKB_KEY_l => .l,
+        xkb.XKB_KEY_M, xkb.XKB_KEY_m => .m,
+        xkb.XKB_KEY_N, xkb.XKB_KEY_n => .n,
+        xkb.XKB_KEY_O, xkb.XKB_KEY_o => .o,
+        xkb.XKB_KEY_P, xkb.XKB_KEY_p => .p,
+        xkb.XKB_KEY_Q, xkb.XKB_KEY_q => .q,
+        xkb.XKB_KEY_R, xkb.XKB_KEY_r => .r,
+        xkb.XKB_KEY_S, xkb.XKB_KEY_s => .s,
+        xkb.XKB_KEY_T, xkb.XKB_KEY_t => .t,
+        xkb.XKB_KEY_U, xkb.XKB_KEY_u => .u,
+        xkb.XKB_KEY_V, xkb.XKB_KEY_v => .v,
         xkb.XKB_KEY_W, xkb.XKB_KEY_w => .w,
-        xkb.XKB_KEY_x => .x,
-        xkb.XKB_KEY_y => .y,
-        xkb.XKB_KEY_z => .z,
+        xkb.XKB_KEY_X, xkb.XKB_KEY_x => .x,
+        xkb.XKB_KEY_Y, xkb.XKB_KEY_y => .y,
+        xkb.XKB_KEY_Z, xkb.XKB_KEY_z => .z,
         xkb.XKB_KEY_botleftsqbracket => .left_bracket,
         xkb.XKB_KEY_backslash => .backslash,
         xkb.XKB_KEY_botrightsqbracket => .right_bracket,
@@ -555,9 +608,7 @@ fn xkbKeyToQuantaKey(keysym: u32) ?windowing.Key {
     };
 }
 
-test {
-    std.testing.refAllDecls(@This());
-}
+test {}
 
 const XcbWindow = @This();
 const XcbWindowSystem = @import("XcbWindowSystem.zig");

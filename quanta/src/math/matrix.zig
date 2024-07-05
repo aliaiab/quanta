@@ -80,7 +80,7 @@ pub fn lookAt(
     up: @Vector(3, f32),
 ) [4][4]f32 {
     const f = vector.unit(f32, 3, target - eye);
-    const s = vector.cross(f32, f, up);
+    const s = vector.unit(f32, 3, vector.cross(f32, f, up));
     const u = vector.cross(f32, s, f);
 
     var result: [4][4]f32 = undefined;
@@ -108,12 +108,33 @@ pub fn lookAt(
     return result;
 }
 
+pub fn perspectiveNonReversedZ(
+    ///Field of view in radians
+    field_of_view: f32,
+    aspect_ratio: f32,
+    z_near: f32,
+    z_far: f32,
+) Matrix(4, 4, f32) {
+    var result = identity;
+
+    const f = 1 / @tan(field_of_view * 0.5);
+
+    result[0][0] = f / aspect_ratio;
+    result[1][1] = f;
+    result[2][2] = (z_near + z_far) / (z_near - z_far);
+    result[2][3] = -1;
+    result[3][2] = 2 * z_far * z_near / (z_near - z_far);
+    result[3][3] = 0;
+
+    return result;
+}
+
 ///Reverse-z perspective
 pub fn perspectiveProjectionReversedZ(
     ///Field of view in radians
     field_of_view: f32,
     aspect_ratio: f32,
-    znear: f32,
+    z_near: f32,
 ) [4][4]f32 {
     const f = 1 / @tan(field_of_view / 2);
 
@@ -121,8 +142,74 @@ pub fn perspectiveProjectionReversedZ(
         .{ f / aspect_ratio, 0, 0, 0 },
         .{ 0, f, 0, 0 },
         .{ 0, 0, 0, -1 },
-        .{ 0, 0, znear, 0 },
+        .{ 0, 0, z_near, 0 },
     };
+}
+
+fn detsubs(self: Matrix(4, 4, f32)) [12]f32 {
+    return .{
+        self[0][0] * self[1][1] - self[1][0] * self[0][1],
+        self[0][0] * self[1][2] - self[1][0] * self[0][2],
+        self[0][0] * self[1][3] - self[1][0] * self[0][3],
+        self[0][1] * self[1][2] - self[1][1] * self[0][2],
+        self[0][1] * self[1][3] - self[1][1] * self[0][3],
+        self[0][2] * self[1][3] - self[1][2] * self[0][3],
+
+        self[2][0] * self[3][1] - self[3][0] * self[2][1],
+        self[2][0] * self[3][2] - self[3][0] * self[2][2],
+        self[2][0] * self[3][3] - self[3][0] * self[2][3],
+        self[2][1] * self[3][2] - self[3][1] * self[2][2],
+        self[2][1] * self[3][3] - self[3][1] * self[2][3],
+        self[2][2] * self[3][3] - self[3][2] * self[2][3],
+    };
+}
+
+/// Calculate determinant of the given 4x4 matrix.
+pub fn det(self: Matrix(4, 4, f32)) f32 {
+    const s = detsubs(self);
+    return s[0] * s[11] - s[1] * s[10] + s[2] * s[9] + s[3] * s[8] - s[4] * s[7] + s[5] * s[6];
+}
+
+/// Construct inverse 4x4 from given matrix.
+/// Note: This is not the most efficient way to do this.
+/// TODO: Make it more efficient.
+pub fn inv(self: Matrix(4, 4, f32)) Matrix(4, 4, f32) {
+    var inv_mat: Matrix(4, 4, f32) = undefined;
+
+    const s = detsubs(self);
+
+    const determ = 1 / (s[0] * s[11] - s[1] * s[10] + s[2] * s[9] + s[3] * s[8] - s[4] * s[7] + s[5] * s[6]);
+
+    inv_mat[0][0] = determ * (self[1][1] * s[11] - self[1][2] * s[10] + self[1][3] * s[9]);
+    inv_mat[0][1] = determ * -(self[0][1] * s[11] - self[0][2] * s[10] + self[0][3] * s[9]);
+    inv_mat[0][2] = determ * (self[3][1] * s[5] - self[3][2] * s[4] + self[3][3] * s[3]);
+    inv_mat[0][3] = determ * -(self[2][1] * s[5] - self[2][2] * s[4] + self[2][3] * s[3]);
+
+    inv_mat[1][0] = determ * -(self[1][0] * s[11] - self[1][2] * s[8] + self[1][3] * s[7]);
+    inv_mat[1][1] = determ * (self[0][0] * s[11] - self[0][2] * s[8] + self[0][3] * s[7]);
+    inv_mat[1][2] = determ * -(self[3][0] * s[5] - self[3][2] * s[2] + self[3][3] * s[1]);
+    inv_mat[1][3] = determ * (self[2][0] * s[5] - self[2][2] * s[2] + self[2][3] * s[1]);
+
+    inv_mat[2][0] = determ * (self[1][0] * s[10] - self[1][1] * s[8] + self[1][3] * s[6]);
+    inv_mat[2][1] = determ * -(self[0][0] * s[10] - self[0][1] * s[8] + self[0][3] * s[6]);
+    inv_mat[2][2] = determ * (self[3][0] * s[4] - self[3][1] * s[2] + self[3][3] * s[0]);
+    inv_mat[2][3] = determ * -(self[2][0] * s[4] - self[2][1] * s[2] + self[2][3] * s[0]);
+
+    inv_mat[3][0] = determ * -(self[1][0] * s[9] - self[1][1] * s[7] + self[1][2] * s[6]);
+    inv_mat[3][1] = determ * (self[0][0] * s[9] - self[0][1] * s[7] + self[0][2] * s[6]);
+    inv_mat[3][2] = determ * -(self[3][0] * s[3] - self[3][1] * s[1] + self[3][2] * s[0]);
+    inv_mat[3][3] = determ * (self[2][0] * s[3] - self[2][1] * s[1] + self[2][2] * s[0]);
+
+    return inv_mat;
+}
+
+pub fn mulByVec4(self: Matrix(4, 4, f32), v: @Vector(4, f32)) @Vector(4, f32) {
+    const x = (self[0][0] * v[0]) + (self[1][0] * v[1]) + (self[2][0] * v[2]) + (self[3][0] * v[3]);
+    const y = (self[0][1] * v[0]) + (self[1][1] * v[1]) + (self[2][1] * v[2]) + (self[3][1] * v[3]);
+    const z = (self[0][2] * v[0]) + (self[1][2] * v[1]) + (self[2][2] * v[2]) + (self[3][2] * v[3]);
+    const w = (self[0][3] * v[0]) + (self[1][3] * v[1]) + (self[2][3] * v[2]) + (self[3][3] * v[3]);
+
+    return .{ x, y, z, w };
 }
 
 const std = @import("std");

@@ -309,4 +309,8 @@ const Value = union(enum) {
     }
 };
 
+test {
+    std.testing.refAllDecls(@This());
+}
+
 const std = @import("std");

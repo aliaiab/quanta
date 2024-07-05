@@ -630,6 +630,8 @@ pub const Event = union(enum) {
     motion_notify: MotionNotify,
     enter_notify: EnterNotify,
     leave_notify: void,
+    focus_in: FocusIn,
+    focus_out: FocusOut,
     configure_notify: void,
     client_message: ClientMessage,
     xinput_raw_mouse_motion: XInputRawMouseMotion,
@@ -764,6 +766,24 @@ pub const Event = union(enum) {
         pad0: [4]u8,
         full_sequence: u32,
     };
+
+    pub const FocusIn = extern struct {
+        response_type: u8,
+        detail: u8,
+        sequence: u16,
+        event: Window,
+        mode: u8,
+        pad0: [3]u8,
+    };
+
+    pub const FocusOut = extern struct {
+        response_type: u8,
+        detail: u8,
+        sequence: u16,
+        event: Window,
+        mode: u8,
+        pad0: [3]u8,
+    };
 };
 
 pub const XInputDeviceId = u16;
@@ -822,6 +842,18 @@ fn eventFromGenericEvent(generic_event: *GenericEvent) Event {
         },
         xcb_c.XCB_LEAVE_NOTIFY => {},
         xcb_c.XCB_CONFIGURE_NOTIFY => {},
+        xcb_c.XCB_FOCUS_IN => {
+            const event: *Event.FocusIn = @ptrCast(generic_event);
+            return .{
+                .focus_in = event.*,
+            };
+        },
+        xcb_c.XCB_FOCUS_OUT => {
+            const event: *Event.FocusOut = @ptrCast(generic_event);
+            return .{
+                .focus_out = event.*,
+            };
+        },
         xcb_c.XCB_CLIENT_MESSAGE => {
             const event: *Event.ClientMessage = @ptrCast(generic_event);
 

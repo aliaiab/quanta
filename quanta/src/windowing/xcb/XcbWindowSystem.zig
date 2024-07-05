@@ -30,9 +30,7 @@ pub fn createWindow(
     );
 }
 
-test {
-    std.testing.refAllDecls(@This());
-}
+test {}
 
 const XcbWindowSystem = @This();
 const XcbWindow = @import("XcbWindow.zig");

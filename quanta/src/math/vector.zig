@@ -8,6 +8,17 @@ pub inline fn dot(
     return @reduce(.Add, left * right);
 }
 
+///Populates each elements of a SIMD vector with the scalar product
+///Useful for making use of simd
+pub inline fn dotSplat(
+    comptime T: type,
+    comptime dimension: comptime_int,
+    left: @Vector(dimension, T),
+    right: @Vector(dimension, T),
+) @Vector(dimension, T) {
+    return @splat(dot(T, dimension, left, right));
+}
+
 ///The cross product, defined in 3 dimensions only
 pub inline fn cross(
     comptime T: type,
