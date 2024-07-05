@@ -58,6 +58,14 @@ pub inline fn unit(
     return vector / scale;
 }
 
+test "unit length" {
+    const test_vector: @Vector(3, f32) = .{ 0, 5, 0 };
+
+    try std.testing.expect(unit(f32, 3, test_vector)[1] == 1);
+}
+
 test {
     @import("std").testing.refAllDecls(@This());
 }
+
+const std = @import("std");

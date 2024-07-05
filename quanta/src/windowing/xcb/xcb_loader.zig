@@ -842,6 +842,10 @@ fn eventFromGenericEvent(generic_event: *GenericEvent) Event {
     return .none;
 }
 
+test {
+    std.testing.refAllDecls(@This());
+}
+
 const std = @import("std");
 const xcb_c = @import("xcb.zig");
 const xcb_input = @import("xinput.zig");

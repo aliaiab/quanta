@@ -153,3 +153,7 @@ pub const Action = enum {
 
 pub const Window = @import("windowing/Window.zig");
 pub const WindowSystem = @import("windowing/WindowSystem.zig");
+
+test {
+    @import("std").testing.refAllDecls(@This());
+}

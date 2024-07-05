@@ -86,11 +86,14 @@ pub fn build(builder: *std.Build) !void {
     {
         const test_step = builder.step("test", "Run the tests");
 
-        const quanta_test = builder.addTest(.{
+        var quanta_test = builder.addTest(.{
             .name = "test",
             .root_source_file = builder.path("quanta/src/root.zig"),
             .optimize = .Debug,
+            .link_libc = true,
         });
+
+        quanta_test.linker_allow_shlib_undefined = true;
 
         const run_quanta_tests = builder.addRunArtifact(quanta_test);
 

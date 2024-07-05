@@ -115,7 +115,7 @@ pub fn perspectiveProjectionReversedZ(
     aspect_ratio: f32,
     znear: f32,
 ) [4][4]f32 {
-    const f = 1 / std.math.tan(field_of_view / 2);
+    const f = 1 / @tan(field_of_view / 2);
 
     return .{
         .{ f / aspect_ratio, 0, 0, 0 },

@@ -589,7 +589,7 @@ pub fn entityRemoveComponent(
     comptime Component: type,
 ) !void {
     if (isComponentSet(Component)) {
-        @compileError("We don't yet support component sets");
+        // @compileError("We don't yet support component sets");
     }
 
     //Doesn't seem to work when using componentId(Component) instead of this, why?
@@ -1096,18 +1096,16 @@ pub fn query(
 pub const IsComponentSet = struct {};
 
 pub fn isComponentSet(comptime T: type) bool {
-    comptime {
-        switch (@typeInfo(T)) {
-            .Struct => for (std.meta.fields(T)) |field| {
-                if (field.type == IsComponentSet) {
-                    return true;
-                }
-            },
-            else => return false,
-        }
-
-        return false;
+    switch (@typeInfo(T)) {
+        .Struct => inline for (std.meta.fields(T)) |field| {
+            if (field.type == IsComponentSet) {
+                return true;
+            }
+        },
+        else => return false,
     }
+
+    return false;
 }
 
 pub fn foreach(

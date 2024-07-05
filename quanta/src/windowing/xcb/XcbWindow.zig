@@ -13,6 +13,7 @@ hidden_cursor: xcb_loader.Cursor,
 key_map: [std.enums.values(windowing.Key).len]bool,
 previous_key_map: [std.enums.values(windowing.Key).len]bool,
 mouse_map: [std.enums.values(windowing.MouseButton).len]bool,
+previous_mouse_map: [std.enums.values(windowing.MouseButton).len]bool,
 mouse_position: @Vector(2, i16) = .{ 0, 0 },
 last_mouse_position: @Vector(2, i16) = .{ 0, 0 },
 cursor_grabbed: bool = false,
@@ -44,6 +45,7 @@ pub fn init(
         .key_map = std.mem.zeroes([std.enums.values(windowing.Key).len]bool),
         .previous_key_map = std.mem.zeroes([std.enums.values(windowing.Key).len]bool),
         .mouse_map = std.mem.zeroes([std.enums.values(windowing.MouseButton).len]bool),
+        .previous_mouse_map = std.mem.zeroes([std.enums.values(windowing.MouseButton).len]bool),
         .hidden_cursor = undefined,
         .xcb_library = &window_system.xcb_library,
     };
@@ -172,6 +174,10 @@ pub fn deinit(self: *XcbWindow, allocator: std.mem.Allocator) void {
 ///return false if we need to close
 pub fn pollEvents(self: *XcbWindow) !bool {
     self.previous_key_map = self.key_map;
+    self.previous_mouse_map = self.mouse_map;
+
+    @memset(&self.key_map, false);
+    @memset(&self.mouse_map, false);
 
     const query_pointer = self.xcb_library.queryPointer(self.connection, self.window);
 
@@ -187,16 +193,16 @@ pub fn pollEvents(self: *XcbWindow) !bool {
             .button_press => |button_press| {
                 switch (button_press.detail) {
                     .index_1 => self.mouse_map[@intFromEnum(windowing.MouseButton.left)] = true,
-                    .index_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.right)] = true,
-                    .index_3 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = true,
+                    .index_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = true,
+                    .index_3 => self.mouse_map[@intFromEnum(windowing.MouseButton.right)] = true,
                     else => {},
                 }
             },
             .button_release => |button_release| {
                 switch (button_release.detail) {
                     .index_1 => self.mouse_map[@intFromEnum(windowing.MouseButton.left)] = false,
-                    .index_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.right)] = false,
-                    .index_3 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = false,
+                    .index_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = false,
+                    .index_3 => self.mouse_map[@intFromEnum(windowing.MouseButton.right)] = false,
                     .index_4 => {
                         self.mouse_scroll += 1;
                     },
@@ -318,6 +324,10 @@ pub fn captureCursor(self: *XcbWindow) void {
     if (self.cursor_grabbed) return;
 
     self.key_map = std.mem.zeroes(@TypeOf(self.key_map));
+    self.mouse_map = std.mem.zeroes(@TypeOf(self.mouse_map));
+
+    @memset(&self.previous_key_map, false);
+    @memset(&self.previous_mouse_map, false);
 
     self.hideCursor();
 
@@ -390,6 +400,10 @@ pub fn getKey(self: XcbWindow, key: windowing.Key) windowing.Action {
 
 pub fn getMouseButton(self: XcbWindow, key: windowing.MouseButton) windowing.Action {
     const index = @intFromEnum(key);
+
+    if (!self.mouse_map[index] and self.previous_mouse_map[index]) {
+        return .press;
+    }
 
     if (self.mouse_map[index]) {
         return .down;
@@ -539,6 +553,10 @@ fn xkbKeyToQuantaKey(keysym: u32) ?windowing.Key {
         xkb.XKB_KEY_Menu => .menu,
         else => null,
     };
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }
 
 const XcbWindow = @This();
