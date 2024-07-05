@@ -26,10 +26,6 @@
             .url = "https://github.com/zkburke/glslang-zig/archive/d9c6d40a27e27827c667d3526cf5b598c17fd2e8.tar.gz",
             .hash = "122008aae91427cf8740eeb9aed2b0878dcef4ba419313f5b41d82167cc3e9420132",
         },
-        .zalgebra = .{
-            .url = "https://github.com/kooparse/zalgebra/archive/27013efdea89e6f9b838b088e916fe7e55a828fa.tar.gz",
-            .hash = "1220f4d39ae8a024b01bc4a141ccff9a410140a6f3630475b28f8ade34058eb1edb3",
-        },
     },
     .paths = .{
         "",

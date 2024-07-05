@@ -1,6 +1,5 @@
 const std = @import("std");
 const Renderer3D = @import("quanta").renderer_3d.Renderer3D;
-const zalgebra = @import("zalgebra");
 const png = @import("png.zig");
 const zgltf = @import("zgltf");
 const AssetStorage = @import("../AssetStorage.zig");

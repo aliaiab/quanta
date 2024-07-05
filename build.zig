@@ -48,7 +48,6 @@ pub fn build(builder: *std.Build) !void {
         .imports = &.{
             .{ .name = "options", .module = options.createModule() },
             .{ .name = "zgltf", .module = builder.dependency("zgltf", .{}).module("zgltf") },
-            .{ .name = "zalgebra", .module = builder.createModule(.{ .root_source_file = builder.dependency("zalgebra", .{}).path("src/main.zig") }) },
             .{ .name = "spvine", .module = builder.dependency("spvine", .{}).module("spvine") },
             .{ .name = "zigimg", .module = builder.dependency("zigimg", .{}).module("zigimg") },
         },
