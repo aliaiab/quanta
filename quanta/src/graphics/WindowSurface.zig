@@ -7,7 +7,7 @@ pub fn init(window: *windowing.Window) !WindowSurface {
         .window = window,
     };
 
-    switch (windowing.backend) {
+    switch (quanta_options.windowing.preferred_backend) {
         .xcb => {
             self.surface = try Context.self.vki.createXcbSurfaceKHR(Context.self.instance, &vk.XcbSurfaceCreateInfoKHR{
                 .connection = @ptrCast(window.impl.connection),
@@ -30,3 +30,4 @@ const std = @import("std");
 const windowing = @import("../windowing.zig");
 const Context = @import("Context.zig");
 const vk = @import("vulkan");
+const quanta_options = @import("../root.zig").quanta_options;

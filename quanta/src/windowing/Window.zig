@@ -93,7 +93,7 @@ pub inline fn getUtf8Input(self: Window) []const u8 {
 }
 
 ///Implementation structure
-const Impl = switch (windowing.backend) {
+const Impl = switch (quanta_options.windowing.preferred_backend) {
     .wayland => @compileError("Wayland not supported"),
     .xcb => @import("xcb/XcbWindow.zig"),
     .win32 => @compileError("Win32 not supported"),
@@ -106,3 +106,4 @@ test {
 const Window = @This();
 const windowing = @import("../windowing.zig");
 const std = @import("std");
+const quanta_options = @import("../root.zig").quanta_options;

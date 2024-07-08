@@ -12,6 +12,18 @@ pub const systems = @import("systems.zig");
 pub const components = @import("components.zig");
 pub const zon = @import("zon.zig");
 
+///Sets global project level options at compile time that can be overriden in project root
+///Analogous to std.Options
+pub const Options = struct {
+    graphics: graphics.Options = .{},
+    windowing: windowing.Options = .{},
+};
+
+///The options set by the root file
+pub const quanta_options: Options = if (@hasDecl(root, "quanta_options")) root.std_options else .{};
+
+const root = @import("root");
+
 test {
     const std = @import("std");
 

@@ -1,6 +1,4 @@
 ///The backend used to implement windowing, known at compile time
-pub const backend: Backend = .xcb;
-
 pub const Backend = enum {
     wayland,
     win32,
@@ -153,6 +151,12 @@ pub const Action = enum {
 
 pub const Window = @import("windowing/Window.zig");
 pub const WindowSystem = @import("windowing/WindowSystem.zig");
+
+///Module level options
+pub const Options = struct {
+    ///The window system backend to be used
+    preferred_backend: Backend = .xcb,
+};
 
 test {
     @import("std").testing.refAllDecls(@This());

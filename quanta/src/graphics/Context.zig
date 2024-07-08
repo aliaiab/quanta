@@ -1,12 +1,10 @@
-pub const enable_khronos_validation = builtin.mode == .Debug;
+pub const enable_khronos_validation = quanta_options.graphics.api_validation;
 pub const enable_debug_messenger = enable_khronos_validation;
 pub const vulkan_version = std.SemanticVersion{
     .major = 1,
     .minor = 3,
     .patch = 0,
 };
-
-const use_custom_allocator: bool = builtin.mode == .Debug;
 
 pub const vk_apis: []const vk.ApiInfo = &.{
     .{
@@ -323,7 +321,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
         .pfn_internal_allocation = null,
         .pfn_internal_free = null,
     };
-    self.allocation_callbacks = if (use_custom_allocator) &self.allocation_callbacks_data else null;
+    self.allocation_callbacks = if (quanta_options.graphics.use_custom_allocator) &self.allocation_callbacks_data else null;
 
     self.vkb = try BaseDispatch.load(getInstanceProcAddress);
 
@@ -335,7 +333,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
     instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extensions.khr_surface.name};
 
-    switch (windowing.backend) {
+    switch (quanta_options.windowing.preferred_backend) {
         .xcb => {
             instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extensions.khr_xcb_surface.name};
         },
@@ -940,27 +938,6 @@ pub fn getMemoryType(requirements: vk.MemoryRequirements, properties: vk.MemoryP
     return error.MemoryTypeNotFound;
 }
 
-pub fn getMemoryTypeIndexHostPointer(host_pointer: [*]const u8, properties: vk.MemoryPropertyFlags) !u32 {
-    var host_pointer_properties: vk.MemoryHostPointerPropertiesEXT = .{ .memory_type_bits = 0 };
-
-    try self.vkd.getMemoryHostPointerPropertiesEXT(self.device, .{ .host_allocation_bit_ext = true }, @as(*anyopaque, @ptrFromInt(@intFromPtr(host_pointer))), &host_pointer_properties);
-
-    var memory_type_index: u32 = 0;
-
-    while (memory_type_index < self.physical_device_memory_properties.memory_type_count) : (memory_type_index += 1) {
-        const memory_type = self.physical_device_memory_properties.memory_types[memory_type_index];
-        const has_properties = memory_type.property_flags.contains(properties);
-
-        if (has_properties and
-            ((@as(u32, 1) << @as(u5, @intCast(@as(u32, @bitCast(memory_type_index))))) & @as(u32, @bitCast(host_pointer_properties.memory_type_bits))) != 0)
-        {
-            return memory_type_index;
-        }
-    }
-
-    return error.MemoryTypeNotFound;
-}
-
 pub fn deviceAllocateWithMemoryType(size: usize, memory_type: MemoryType, dedicated_info: ?vk.MemoryDedicatedAllocateInfo) !vk.DeviceMemory {
     var device_memory_budget_properties: vk.PhysicalDeviceMemoryBudgetPropertiesEXT = .{
         .heap_budget = undefined,
@@ -1004,27 +981,15 @@ pub fn deviceAllocateWithMemoryType(size: usize, memory_type: MemoryType, dedica
 }
 
 pub fn deviceAllocate(requirements: vk.MemoryRequirements, properties: vk.MemoryPropertyFlags) !vk.DeviceMemory {
-    return try deviceAllocateWithMemoryType(requirements.size, try getMemoryType(requirements, properties));
+    return try deviceAllocateWithMemoryType(
+        requirements.size,
+        try getMemoryType(requirements, properties),
+        null,
+    );
 }
 
 pub fn deviceFree(memory: vk.DeviceMemory) void {
     self.vkd.freeMemory(self.device, memory, self.allocation_callbacks);
-}
-
-pub fn deviceAllocateHostMemory(
-    properties: vk.MemoryPropertyFlags,
-    host_memory: []const u8,
-) !vk.DeviceMemory {
-    const host_pointer = @as(*anyopaque, @ptrFromInt(@intFromPtr(host_memory.ptr)));
-
-    return try self.vkd.allocateMemory(self.device, &.{
-        .p_next = &vk.ImportMemoryHostPointerInfoEXT{
-            .handle_type = .{ .host_allocation_bit_ext = true },
-            .p_host_pointer = host_pointer,
-        },
-        .allocation_size = host_memory.len,
-        .memory_type_index = try getMemoryTypeIndexHostPointer(host_memory.ptr, properties),
-    }, self.allocation_callbacks);
 }
 
 pub const DeviceMemory = struct {
@@ -1104,8 +1069,6 @@ pub fn devicePageAllocate(
 
     //If there is no suitable memory, allocate a new one
     if (page_memory_index == null) {
-        log.info("NEW ALLOC", .{});
-
         // const budget = self.initial_memory_budgets[memory_type.heap_index];
         // const budget = getMemoryHeapBudget(memory_type.heap_index);
 
@@ -1118,6 +1081,10 @@ pub fn devicePageAllocate(
 
         const page_memory = try deviceAllocateWithMemoryType(initial_memory_size, memory_type, dedicated_info);
         errdefer deviceFree(page_memory);
+
+        if (quanta_options.graphics.debug_logging) {
+            log.info("Allocated a page of device memory: size = {}, alignment = {}", .{ size, alignment });
+        }
 
         try memories.append(self.allocator, .{
             .handle = page_memory,
@@ -1281,6 +1248,10 @@ pub fn waitIdle() void {
     self.vkd.deviceWaitIdle(self.device) catch unreachable;
 }
 
+test {
+    _ = std.testing.refAllDecls(@This());
+}
+
 const Context = @This();
 const builtin = @import("builtin");
 const std = @import("std");
@@ -1289,3 +1260,4 @@ const windowing = @import("../windowing.zig");
 const Window = windowing.Window;
 const log = @import("../log.zig").log;
 const WindowSurface = @import("WindowSurface.zig");
+const quanta_options = @import("../root.zig").quanta_options;

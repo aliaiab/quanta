@@ -55,8 +55,10 @@ pub fn build(builder: *std.Build) !void {
         .target = target,
     });
 
+    const vk_zig_file = vk_generate_cmd.addOutputFileArg("vk.zig");
+
     quanta_module.addAnonymousImport("vulkan", .{
-        .root_source_file = vk_generate_cmd.addOutputFileArg("vk.zig"),
+        .root_source_file = vk_zig_file,
     });
 
     quanta_module.addImport("quanta", quanta_module);
@@ -85,14 +87,16 @@ pub fn build(builder: *std.Build) !void {
     {
         const test_step = builder.step("test", "Run the tests");
 
-        var quanta_test = builder.addTest(.{
+        const quanta_test = builder.addTest(.{
             .name = "test",
             .root_source_file = builder.path("quanta/src/root.zig"),
             .optimize = .Debug,
             .link_libc = true,
         });
 
-        quanta_test.linker_allow_shlib_undefined = true;
+        quanta_test.root_module.addAnonymousImport("vulkan", .{
+            .root_source_file = vk_zig_file,
+        });
 
         const run_quanta_tests = builder.addRunArtifact(quanta_test);
 
