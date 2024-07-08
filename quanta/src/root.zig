@@ -20,7 +20,7 @@ pub const Options = struct {
 };
 
 ///The options set by the root file
-pub const quanta_options: Options = if (@hasDecl(root, "quanta_options")) root.std_options else .{};
+pub const quanta_options: Options = if (@hasDecl(root, "quanta_options")) root.quanta_options else .{};
 
 const root = @import("root");
 
