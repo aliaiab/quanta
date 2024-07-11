@@ -66,7 +66,7 @@ pub fn wait(self: Semaphore, value: u64) void {
         .p_semaphores = @ptrCast(&self.handle),
         .semaphore_count = 1,
         .p_values = @ptrCast(&value),
-    }, std.math.maxInt(u64)) catch unreachable;
+    }, std.math.maxInt(u64)) catch @panic("Wait failed");
 }
 
 const std = @import("std");

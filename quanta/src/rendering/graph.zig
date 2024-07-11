@@ -25,6 +25,15 @@ pub const SampleAddressMode = enum {
     mirror_clamp_to_edge,
 };
 
+///Must be kept in sync with the underlying representation of commands for the graphics api
+pub const DrawIndexedIndirectCommand = extern struct {
+    index_count: u32,
+    instance_count: u32,
+    first_index: u32,
+    vertex_offset: i32,
+    first_instance: u32,
+};
+
 pub const Command = union(enum) {
     update_buffer: struct {
         buffer: BufferHandle,
@@ -88,6 +97,20 @@ pub const Command = union(enum) {
         vertex_offset: i32,
         first_instance: u32,
     },
+    draw: struct {
+        vertex_count: u32,
+        instance_count: u32,
+        first_vertex: u32,
+        first_instance: u32,
+    },
+    draw_indexed_indirect_count: struct {
+        draw_buffer: BufferHandle,
+        draw_buffer_offset: usize,
+        draw_buffer_stride: usize,
+        count_buffer: BufferHandle,
+        count_buffer_offset: usize,
+        max_draw_count: usize,
+    },
 };
 
 ///List of all commands in a graph
@@ -115,14 +138,14 @@ pub const Commands = struct {
         allocator: std.mem.Allocator,
         command: Command,
     ) void {
-        self.tags.append(allocator, command) catch unreachable;
+        self.tags.append(allocator, command) catch @panic("oom");
 
         switch (command) {
             inline else => |command_data| {
                 self.data.appendSlice(
                     allocator,
                     std.mem.asBytes(&command_data),
-                ) catch unreachable;
+                ) catch @panic("oom");
             },
         }
     }
@@ -355,11 +378,11 @@ pub const Builder = struct {
     }
 
     pub fn scratchAlloc(self: *@This(), comptime T: type, count: usize) []T {
-        return self.scratch_allocator.allocator().alloc(T, count) catch unreachable;
+        return self.scratch_allocator.allocator().alloc(T, count) catch @panic("oom");
     }
 
     pub fn scratchDupe(self: *@This(), comptime T: type, values: []const T) []T {
-        return self.scratch_allocator.allocator().dupe(T, values) catch unreachable;
+        return self.scratch_allocator.allocator().dupe(T, values) catch @panic("oom");
     }
 
     const CreateRasterPipelineOptions = struct {
@@ -390,12 +413,12 @@ pub const Builder = struct {
             .fragment_module = fragment_module,
             .reference_count = 0,
             .push_constant_size = @intCast(push_constant_size),
-            .attachment_formats = self.scratch_allocator.allocator().dupe(ImageFormat, options.attachment_formats) catch unreachable,
+            .attachment_formats = self.scratch_allocator.allocator().dupe(ImageFormat, options.attachment_formats) catch @panic("oom"),
             .depth_attachment_format = options.depth_attachment_format,
             .depth_state = options.depth_state,
             .rasterisation_state = options.rasterisation_state,
             .blend_state = options.blend_state,
-        }) catch unreachable;
+        }) catch @panic("oom");
 
         return handle;
     }
@@ -417,7 +440,7 @@ pub const Builder = struct {
             .module = module,
             .reference_count = 0,
             .push_constant_size = @intCast(push_constant_size),
-        }) catch unreachable;
+        }) catch @panic("oom");
 
         return handle;
     }
@@ -441,7 +464,7 @@ pub const Builder = struct {
             .handle = handle,
             .size = options.size,
             .reference_count = 0,
-        }) catch unreachable;
+        }) catch @panic("oom");
 
         self.debug_info.addBuffer(
             self.*,
@@ -464,7 +487,7 @@ pub const Builder = struct {
     ) BufferHandle {
         const handle = self.buffers.items(.handle)[buffer.index];
 
-        const maybe_buffer = self.persistant_buffers.getOrPut(self.allocator, handle) catch unreachable;
+        const maybe_buffer = self.persistant_buffers.getOrPut(self.allocator, handle) catch @panic("oom");
 
         if (!maybe_buffer.found_existing) {
             maybe_buffer.value_ptr.* = .{
@@ -499,7 +522,7 @@ pub const Builder = struct {
                 .handle = buffer_handle,
                 .size = maybe_buffer.?.size,
                 .reference_count = 0,
-            }) catch unreachable;
+            }) catch @panic("oom");
 
             return .{
                 .index = index,
@@ -513,7 +536,7 @@ pub const Builder = struct {
         self: @This(),
         buffer_handle: BufferHandle,
     ) usize {
-        const buffer_info = self.persistant_buffers.get(buffer_handle) orelse unreachable;
+        const buffer_info = self.persistant_buffers.get(buffer_handle) orelse @panic("oom");
 
         return buffer_info.size;
     }
@@ -543,7 +566,7 @@ pub const Builder = struct {
             .width = options.width,
             .height = options.height,
             .depth = options.depth,
-        }) catch unreachable;
+        }) catch @panic("oom");
 
         return .{
             .index = index,
@@ -628,7 +651,7 @@ pub const Builder = struct {
             .address_mode_v = options.address_mode_v,
             .address_mode_w = options.address_mode_w,
             .reduction_mode = options.reduction_mode,
-        }) catch unreachable;
+        }) catch @panic("oom");
 
         return handle;
     }
@@ -654,7 +677,9 @@ pub const Builder = struct {
 
     pub fn updateBuffer(
         self: *@This(),
+        ///The destination buffer to be updated
         buffer: *Buffer,
+        ///Offset into the destination buffer
         buffer_offset: usize,
         comptime T: type,
         contents: []const T,
@@ -681,7 +706,7 @@ pub const Builder = struct {
         comptime T: type,
         value: T,
     ) void {
-        const contents = self.scratch_allocator.allocator().alloc(T, 1) catch unreachable;
+        const contents = self.scratch_allocator.allocator().alloc(T, 1) catch @panic("oom");
 
         contents[0] = value;
 
@@ -753,7 +778,7 @@ pub const Builder = struct {
     ) void {
         const pass_id = comptime idFromSourceLocation(src);
 
-        const attachments_allocated = self.scratch_allocator.allocator().alloc(ColorAttachment, color_attachments.len) catch unreachable;
+        const attachments_allocated = self.scratch_allocator.allocator().alloc(ColorAttachment, color_attachments.len) catch @panic("oom");
 
         for (attachments_allocated, color_attachments) |*attachment_allocated, attachment| {
             attachment_allocated.* = .{
@@ -849,7 +874,7 @@ pub const Builder = struct {
             .data = data,
             .input_offset = @intCast(self.pass_inputs.len),
             .input_count = 0,
-        }) catch unreachable;
+        }) catch @panic("oom");
     }
 
     fn endPassGeneric(
@@ -883,7 +908,7 @@ pub const Builder = struct {
     ) void {
         self.commands.add(self.allocator, .{
             .set_push_data = .{
-                .contents = self.scratch_allocator.allocator().dupe(u8, std.mem.asBytes(&data)) catch unreachable,
+                .contents = self.scratch_allocator.allocator().dupe(u8, std.mem.asBytes(&data)) catch @panic("oom"),
             },
         });
     }
@@ -1002,6 +1027,47 @@ pub const Builder = struct {
         });
     }
 
+    pub fn drawIndexedIndirectCount(
+        self: *@This(),
+        draw_buffer: Buffer,
+        draw_buffer_offset: usize,
+        draw_buffer_stride: usize,
+        count_buffer: Buffer,
+        count_buffer_offset: usize,
+        max_draw_count: usize,
+    ) void {
+        self.referenceBufferAsInput(draw_buffer);
+        self.referenceBufferAsInput(count_buffer);
+
+        self.commands.add(self.allocator, .{
+            .draw_indexed_indirect_count = .{
+                .draw_buffer = self.buffers.items(.handle)[draw_buffer.index],
+                .draw_buffer_offset = draw_buffer_offset,
+                .draw_buffer_stride = draw_buffer_stride,
+                .count_buffer = self.buffers.items(.handle)[count_buffer.index],
+                .count_buffer_offset = count_buffer_offset,
+                .max_draw_count = max_draw_count,
+            },
+        });
+    }
+
+    pub fn draw(
+        self: *@This(),
+        vertex_count: u32,
+        instance_count: u32,
+        first_vertex: u32,
+        first_instance: u32,
+    ) void {
+        self.commands.add(self.allocator, .{
+            .draw = .{
+                .vertex_count = vertex_count,
+                .instance_count = instance_count,
+                .first_vertex = first_vertex,
+                .first_instance = first_instance,
+            },
+        });
+    }
+
     pub fn setComputePipeline(
         self: *@This(),
         pipeline: ComputePipeline,
@@ -1045,7 +1111,7 @@ pub const Builder = struct {
             .pass_index = buffer.pass_index.?,
             .resource_type = .buffer,
             .resource_handle = .{ .id = @intFromEnum(self.buffers.items(.handle)[buffer.index]) },
-        }) catch unreachable;
+        }) catch @panic("oom");
     }
 
     ///Incrementes the refence count for buffer and resolves the buffer index
@@ -1071,7 +1137,7 @@ pub const Builder = struct {
             .pass_index = image.pass_index.?,
             .resource_type = .image,
             .resource_handle = .{ .id = @intFromEnum(self.images.items(.handle)[image.index]) },
-        }) catch unreachable;
+        }) catch @panic("oom");
     }
 
     ///Incrementes the refence count for buffer and resolves the buffer index
@@ -1252,7 +1318,7 @@ pub const CompileContext = struct {
             .depth = 1,
         });
 
-        const get_or_put_result = self.images.getOrPut(self.allocator, builder.images.items(.handle)[image_pointer.index]) catch unreachable;
+        const get_or_put_result = self.images.getOrPut(self.allocator, builder.images.items(.handle)[image_pointer.index]) catch @panic("oom");
 
         get_or_put_result.value_ptr.image = image;
         get_or_put_result.value_ptr.imported = true;
@@ -1396,6 +1462,7 @@ pub const CompileContext = struct {
                         );
 
                         result.value_ptr.*.usage.index_buffer_bit = true;
+                        result.value_ptr.*.usage.transfer_dst_bit = true;
                     },
                     .set_raster_pipeline_resource_buffer => |command_data| {
                         const result = try buffer_usages.getOrPutValue(
@@ -1407,6 +1474,7 @@ pub const CompileContext = struct {
                         );
 
                         result.value_ptr.*.usage.storage_buffer_bit = true;
+                        result.value_ptr.*.usage.transfer_dst_bit = true;
                     },
                     .set_raster_pipeline_image_sampler => |command_data| {
                         const result = try image_usages.getOrPutValue(
@@ -1418,6 +1486,29 @@ pub const CompileContext = struct {
                         );
 
                         result.value_ptr.usage.sampled_bit = true;
+                    },
+                    .draw_indexed_indirect_count => |command_data| {
+                        const draw_buffer = try buffer_usages.getOrPutValue(
+                            self.scratch_allocator.allocator(),
+                            command_data.draw_buffer,
+                            .{
+                                .usage = .{},
+                            },
+                        );
+
+                        draw_buffer.value_ptr.*.usage.indirect_buffer_bit = true;
+                        draw_buffer.value_ptr.*.usage.transfer_dst_bit = true;
+
+                        const count_buffer = try buffer_usages.getOrPutValue(
+                            self.scratch_allocator.allocator(),
+                            command_data.count_buffer,
+                            .{
+                                .usage = .{},
+                            },
+                        );
+
+                        count_buffer.value_ptr.*.usage.indirect_buffer_bit = true;
+                        count_buffer.value_ptr.*.usage.transfer_dst_bit = true;
                     },
                     else => {},
                 }
@@ -1700,12 +1791,27 @@ pub const CompileContext = struct {
                         },
                         .set_index_buffer => |command_data| {
                             current_index_buffer = self.buffers.getPtr(command_data.index_buffer).?;
-                        },
-                        .draw_indexed => {
                             barrier_map.readBuffer(
                                 current_index_buffer.?,
                                 .{ .index_input = true },
                                 .{ .index_read = true },
+                            );
+                        },
+                        .draw_indexed => {},
+                        .draw_indexed_indirect_count => |command_data| {
+                            const draw_buffer = self.buffers.getPtr(command_data.draw_buffer).?;
+                            const count_buffer = self.buffers.getPtr(command_data.count_buffer).?;
+
+                            barrier_map.readBuffer(
+                                draw_buffer,
+                                .{ .draw_indirect = true, .vertex_shader = true },
+                                .{ .indirect_command_read = true, .shader_read = true },
+                            );
+
+                            barrier_map.readBuffer(
+                                count_buffer,
+                                .{ .draw_indirect = true },
+                                .{ .indirect_command_read = true },
                             );
                         },
                         else => {},
@@ -1874,6 +1980,24 @@ pub const CompileContext = struct {
                                 command_data.first_instance,
                             );
                         },
+                        .draw => |command_data| {
+                            command_buffer.draw(
+                                command_data.vertex_count,
+                                command_data.instance_count,
+                                command_data.first_vertex,
+                                command_data.first_instance,
+                            );
+                        },
+                        .draw_indexed_indirect_count => |command_data| {
+                            command_buffer.drawIndexedIndirectCount(
+                                self.buffers.getPtr(command_data.draw_buffer).?.*,
+                                command_data.draw_buffer_offset,
+                                command_data.draw_buffer_stride,
+                                self.buffers.getPtr(command_data.count_buffer).?.*,
+                                command_data.count_buffer_offset,
+                                command_data.max_draw_count,
+                            );
+                        },
                         .set_compute_pipeline => |command_data| {
                             const pipeline = self.compute_pipelines.getPtr(command_data.pipeline).?;
 
@@ -1932,6 +2056,8 @@ pub const CompileContext = struct {
         const pass_dependencies = try self.scratch_allocator.allocator().alloc(Dependency, input_count);
         defer self.scratch_allocator.allocator().free(pass_dependencies);
 
+        @memset(pass_dependencies, .{ .pass_index = std.math.maxInt(u32) });
+
         var dependency_count: u32 = 0;
 
         for (0..input_count) |input_index| {
@@ -1983,7 +2109,7 @@ pub const CompileContext = struct {
         mapped_region: []u8,
     };
 
-    ///Allocate staging memory immediately to from a pool
+    ///Allocate staging memory immediately to form a pool
     ///Will get returned to the pool when the command buffer is done
     fn allocateStagingBuffer(
         self: *@This(),
@@ -2102,7 +2228,7 @@ pub const CompileContext = struct {
                 self.buffer_barriers.append(self.context.scratch_allocator.allocator(), .{
                     .buffer = buffer,
                     .barrier = out_barrier.*,
-                }) catch unreachable;
+                }) catch @panic("oom");
             }
         }
 
@@ -2182,7 +2308,7 @@ pub const CompileContext = struct {
                 self.image_barriers.append(self.context.scratch_allocator.allocator(), .{
                     .image = image,
                     .barrier = out_barrier.*,
-                }) catch unreachable;
+                }) catch @panic("oom");
             }
         }
 

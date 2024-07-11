@@ -284,36 +284,42 @@ pub fn init(
         .descriptor_pool = .null_handle,
     };
 
-    self.descriptor_set_layouts = try allocator.alloc(vk.DescriptorSetLayout, 1);
-    errdefer allocator.free(self.descriptor_set_layouts);
+    if (descriptor_pool_sizes.len != 0) {
+        self.descriptor_set_layouts = try allocator.alloc(vk.DescriptorSetLayout, 1);
+        errdefer allocator.free(self.descriptor_set_layouts);
 
-    self.descriptor_sets = try allocator.alloc(vk.DescriptorSet, 1);
-    errdefer allocator.free(self.descriptor_sets);
+        self.descriptor_sets = try allocator.alloc(vk.DescriptorSet, 1);
+        errdefer allocator.free(self.descriptor_sets);
 
-    self.descriptor_pool = try Context.self.vkd.createDescriptorPool(Context.self.device, &.{
-        .flags = .{
-            .update_after_bind_bit = true,
-        },
-        .max_sets = 1,
-        .pool_size_count = @as(u32, @intCast(descriptor_pool_sizes.len)),
-        .p_pool_sizes = descriptor_pool_sizes.ptr,
-    }, Context.self.allocation_callbacks);
-    errdefer Context.self.vkd.destroyDescriptorPool(Context.self.device, self.descriptor_pool, Context.self.allocation_callbacks);
+        self.descriptor_pool = try Context.self.vkd.createDescriptorPool(Context.self.device, &.{
+            .flags = .{
+                .update_after_bind_bit = true,
+            },
+            .max_sets = 1,
+            //TODO: handle descriptor-less pipelines better
+            .pool_size_count = @as(u32, @intCast(descriptor_pool_sizes.len)),
+            .p_pool_sizes = descriptor_pool_sizes.ptr,
+        }, Context.self.allocation_callbacks);
+        errdefer Context.self.vkd.destroyDescriptorPool(Context.self.device, self.descriptor_pool, Context.self.allocation_callbacks);
 
-    for (self.descriptor_set_layouts, 0..) |*descriptor_set_layout, i| {
-        descriptor_set_layout.* = try Context.self.vkd.createDescriptorSetLayout(Context.self.device, &descriptor_set_layout_infos[i], Context.self.allocation_callbacks);
+        for (self.descriptor_set_layouts, 0..) |*descriptor_set_layout, i| {
+            descriptor_set_layout.* = try Context.self.vkd.createDescriptorSetLayout(Context.self.device, &descriptor_set_layout_infos[i], Context.self.allocation_callbacks);
+        }
+
+        errdefer for (self.descriptor_set_layouts) |descriptor_set_layout| {
+            Context.self.vkd.destroyDescriptorSetLayout(Context.self.device, descriptor_set_layout, Context.self.allocation_callbacks);
+        };
+
+        try Context.self.vkd.allocateDescriptorSets(Context.self.device, &.{
+            .descriptor_pool = self.descriptor_pool,
+            .descriptor_set_count = @as(u32, @intCast(self.descriptor_set_layouts.len)),
+            .p_set_layouts = self.descriptor_set_layouts.ptr,
+        }, self.descriptor_sets.ptr);
+        errdefer Context.self.vkd.freeDescriptorSets(Context.self.device, self.descriptor_pool, @as(u32, @intCast(self.descriptor_sets.len)), self.descriptor_sets.ptr) catch unreachable;
+    } else {
+        self.descriptor_pool = .null_handle;
+        self.descriptor_set_layouts = &.{};
     }
-
-    errdefer for (self.descriptor_set_layouts) |descriptor_set_layout| {
-        Context.self.vkd.destroyDescriptorSetLayout(Context.self.device, descriptor_set_layout, Context.self.allocation_callbacks);
-    };
-
-    try Context.self.vkd.allocateDescriptorSets(Context.self.device, &.{
-        .descriptor_pool = self.descriptor_pool,
-        .descriptor_set_count = @as(u32, @intCast(self.descriptor_set_layouts.len)),
-        .p_set_layouts = self.descriptor_set_layouts.ptr,
-    }, self.descriptor_sets.ptr);
-    errdefer Context.self.vkd.freeDescriptorSets(Context.self.device, self.descriptor_pool, @as(u32, @intCast(self.descriptor_sets.len)), self.descriptor_sets.ptr) catch unreachable;
 
     self.layout = try Context.self.vkd.createPipelineLayout(Context.self.device, &.{
         .flags = .{},
@@ -504,7 +510,7 @@ pub fn init(
 pub fn deinit(self: *GraphicsPipeline, allocator: std.mem.Allocator) void {
     defer self.* = undefined;
 
-    defer Context.self.vkd.destroyDescriptorPool(Context.self.device, self.descriptor_pool, Context.self.allocation_callbacks);
+    defer if (self.descriptor_pool != .null_handle) Context.self.vkd.destroyDescriptorPool(Context.self.device, self.descriptor_pool, Context.self.allocation_callbacks);
     defer Context.self.vkd.destroyPipelineLayout(Context.self.device, self.layout, Context.self.allocation_callbacks);
 
     defer allocator.free(self.descriptor_set_layouts);

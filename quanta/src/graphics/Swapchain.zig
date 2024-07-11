@@ -237,10 +237,20 @@ pub const SwapImage = struct {
         self.image_acquired.deinit();
         self.render_finished.deinit();
         Context.self.vkd.destroyFence(Context.self.device, self.frame_fence, null);
+
+        self.frame_fence = .null_handle;
     }
 
     pub fn waitForFence(self: SwapImage) !void {
-        _ = try Context.self.vkd.waitForFences(Context.self.device, 1, @as([*]const vk.Fence, @ptrCast(&self.frame_fence)), vk.TRUE, std.math.maxInt(u64));
+        if (self.frame_fence == .null_handle) return;
+
+        _ = try Context.self.vkd.waitForFences(
+            Context.self.device,
+            1,
+            @as([*]const vk.Fence, @ptrCast(&self.frame_fence)),
+            vk.TRUE,
+            std.math.maxInt(u64),
+        );
     }
 };
 

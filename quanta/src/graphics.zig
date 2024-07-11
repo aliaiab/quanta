@@ -17,7 +17,7 @@ pub const Options = struct {
     debug_logging: bool = false,
     ///Api validation, turn off at your own risk
     ///Disabled by default in ReleaseFast
-    api_validation: bool = @import("builtin").mode != .ReleaseFast,
+    api_validation: bool = @import("builtin").mode != .ReleaseFast and @import("builtin").mode != .ReleaseSafe,
     ///If true, the underlying graphics API will use the zig allocators passed in to Context.init
     ///This allows for use of debug allocators like std.heap.GeneralPurposeAllocator
     ///Disabled by default in ReleaseFast

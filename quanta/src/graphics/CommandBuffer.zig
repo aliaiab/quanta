@@ -32,7 +32,9 @@ pub fn init(queue: Queue) !CommandBuffer {
         .handle = .null_handle,
         .queue = queue,
         .pipeline_layout = .null_handle,
-        .wait_fence = undefined,
+        .wait_fence = .{
+            .handle = .null_handle,
+        },
         .local_size_x = 0,
         .local_size_y = 0,
         .local_size_z = 0,
@@ -339,10 +341,10 @@ pub fn bufferBarriers(
 ) void {
     std.debug.assert(buffers.len == barriers.len);
 
-    //TODO: better allocation strategy for batched barrier calls
-    var memory_barriers: [64]vk.BufferMemoryBarrier2 = undefined;
+    if (barriers.len == 0) return;
 
-    std.debug.assert(barriers.len <= memory_barriers.len);
+    //TODO: better allocation strategy for batched barrier calls
+    var memory_barriers: [512]vk.BufferMemoryBarrier2 = undefined;
 
     for (buffers, barriers, 0..) |buffer, barrier, i| {
         memory_barriers[i] = .{
@@ -544,7 +546,9 @@ pub fn setGraphicsPipeline(self: *CommandBuffer, pipeline: GraphicsPipeline) voi
 
     self.pipeline_layout = pipeline.layout;
 
-    Context.self.vkd.cmdBindDescriptorSets(self.handle, .graphics, pipeline.layout, 0, @as(u32, @intCast(pipeline.descriptor_sets.len)), pipeline.descriptor_sets.ptr, 0, undefined);
+    if (pipeline.descriptor_pool != .null_handle) {
+        Context.self.vkd.cmdBindDescriptorSets(self.handle, .graphics, pipeline.layout, 0, @as(u32, @intCast(pipeline.descriptor_sets.len)), pipeline.descriptor_sets.ptr, 0, undefined);
+    }
 
     self.is_graphics_pipeline = true;
 }
@@ -630,7 +634,13 @@ pub fn copyBuffer(
         .size = @min(source_size, destination_size),
     };
 
-    Context.self.vkd.cmdCopyBuffer(self.handle, source.handle, destination.handle, 1, @as([*]const vk.BufferCopy, @ptrCast(&copy_region)));
+    Context.self.vkd.cmdCopyBuffer(
+        self.handle,
+        source.handle,
+        destination.handle,
+        1,
+        @as([*]const vk.BufferCopy, @ptrCast(&copy_region)),
+    );
 }
 
 pub fn copyEntireBuffer(

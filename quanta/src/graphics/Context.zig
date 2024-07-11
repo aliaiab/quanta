@@ -395,9 +395,8 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
     }
 
     const validation_features = [_]vk.ValidationFeatureEnableEXT{
-        // .best_practices_ext,
         .synchronization_validation_ext,
-        //.gpu_assisted_ext,
+        // .gpu_assisted_ext,
     };
 
     self.instance = try self.vkb.createInstance(&.{
@@ -1169,8 +1168,12 @@ pub fn devicePageBindToImage(image: vk.Image, page: DevicePageHandle, offset: us
     try self.vkd.bindImageMemory(self.device, image, memory_handle.handle, memory.offset + offset);
 }
 
+pub const BufferMemory = struct {
+    memory: vk.DeviceMemory,
+};
+
 ///Allocates a page dedicated to the specified buffer resource
-pub fn devicePageAllocateBuffer(buffer: vk.Buffer, properties: vk.MemoryPropertyFlags) !DevicePageHandle {
+pub fn deviceAllocateBuffer(buffer: vk.Buffer, properties: vk.MemoryPropertyFlags) !BufferMemory {
     var dedicated_requirements: vk.MemoryDedicatedRequirements = .{
         .prefers_dedicated_allocation = vk.FALSE,
         .requires_dedicated_allocation = vk.FALSE,
@@ -1185,19 +1188,26 @@ pub fn devicePageAllocateBuffer(buffer: vk.Buffer, properties: vk.MemoryProperty
         .buffer = buffer,
     }, &memory_requirements);
 
-    const page = try Context.devicePageAllocate(memory_requirements.memory_requirements.size, memory_requirements.memory_requirements.alignment, memory_requirements.memory_requirements.memory_type_bits, properties, if (dedicated_requirements.prefers_dedicated_allocation == vk.TRUE or
-        dedicated_requirements.requires_dedicated_allocation == vk.TRUE)
-        .{
-            .image = .null_handle,
-            .buffer = buffer,
-        }
-    else
-        null);
-    errdefer Context.devicePageFree(page);
+    const memory_type = try getMemoryType(memory_requirements.memory_requirements, properties);
 
-    try devicePageBindToBuffer(buffer, page, 0);
+    const memory = try deviceAllocateWithMemoryType(
+        memory_requirements.memory_requirements.size,
+        memory_type,
+        null,
+    );
+    errdefer deviceFree(memory);
 
-    return page;
+    try self.vkd.bindBufferMemory(self.device, buffer, memory, 0);
+
+    return .{
+        .memory = memory,
+    };
+}
+
+pub fn deviceMapBuffer(page: BufferMemory, comptime T: type, length: usize) ![]T {
+    const data = @as(?[*]T, @ptrCast(@alignCast(try Context.self.vkd.mapMemory(Context.self.device, page.memory, 0, length * @sizeOf(T), .{}))));
+
+    return data.?[0..length];
 }
 
 ///Allocates a page dedicated to the specified image resource

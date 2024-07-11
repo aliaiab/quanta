@@ -17,6 +17,7 @@ pub const zon = @import("zon.zig");
 pub const Options = struct {
     graphics: graphics.Options = .{},
     windowing: windowing.Options = .{},
+    rendering: rendering.Options = .{},
 };
 
 ///The options set by the root file

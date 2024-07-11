@@ -6,7 +6,7 @@ const Context = @import("Context.zig");
 const CommandBuffer = @import("CommandBuffer.zig");
 
 handle: vk.Buffer,
-memory_page: Context.DevicePageHandle,
+memory: Context.BufferMemory,
 size: usize,
 alignment: usize,
 usage: Usage,
@@ -70,13 +70,17 @@ pub fn initData(comptime T: type, data: []const T, usage: Usage) !Buffer {
 pub fn init(size: usize, usage: Usage) !Buffer {
     var self = Buffer{
         .handle = .null_handle,
-        .memory_page = undefined,
+        .memory = undefined,
         .size = size,
         .alignment = 0,
         .usage = usage,
         .device_address = undefined,
         .descriptor = 0,
     };
+
+    const log = std.log.scoped(.quanta);
+
+    log.info("Initing buffer!! {}", .{size});
 
     const create_info = vk.BufferCreateInfo{
         .flags = .{},
@@ -133,7 +137,7 @@ pub fn init(size: usize, usage: Usage) !Buffer {
 
     self.alignment = memory_requirements.memory_requirements.alignment;
 
-    self.memory_page = try Context.devicePageAllocateBuffer(self.handle, switch (usage) {
+    self.memory = try Context.deviceAllocateBuffer(self.handle, switch (usage) {
         .staging => .{
             .host_visible_bit = true,
             .host_coherent_bit = true,
@@ -153,7 +157,7 @@ pub fn init(size: usize, usage: Usage) !Buffer {
             .device_local_bit = true,
         },
     });
-    errdefer Context.devicePageFree(self.memory_page);
+    errdefer Context.deviceFree(self.memory.memory);
 
     self.device_address = Context.self.vkd.getBufferDeviceAddress(
         Context.self.device,
@@ -189,7 +193,7 @@ pub fn init(size: usize, usage: Usage) !Buffer {
 pub fn initUsageFlags(size: usize, usage: vk.BufferUsageFlags) !Buffer {
     var self = Buffer{
         .handle = .null_handle,
-        .memory_page = undefined,
+        .memory = undefined,
         .size = size,
         .alignment = 0,
         .usage = .storage,
@@ -223,10 +227,10 @@ pub fn initUsageFlags(size: usize, usage: vk.BufferUsageFlags) !Buffer {
 
     self.alignment = memory_requirements.memory_requirements.alignment;
 
-    self.memory_page = try Context.devicePageAllocateBuffer(self.handle, .{
+    self.memory = try Context.deviceAllocateBuffer(self.handle, .{
         .device_local_bit = true,
     });
-    errdefer Context.devicePageFree(self.memory_page);
+    errdefer Context.deviceFree(self.memory);
 
     if (false) {
         self.device_address = Context.self.vkd.getBufferDeviceAddress(
@@ -313,15 +317,15 @@ pub fn deinit(self: *Buffer) void {
     defer self.* = undefined;
 
     defer Context.self.vkd.destroyBuffer(Context.self.device, self.handle, Context.self.allocation_callbacks);
-    defer Context.devicePageFree(self.memory_page);
+    defer Context.deviceFree(self.memory.memory);
 }
 
 pub fn map(self: Buffer, comptime T: type) ![]T {
-    return Context.devicePageMap(self.memory_page, T, self.size / @sizeOf(T));
+    return Context.deviceMapBuffer(self.memory, T, self.size / @sizeOf(T));
 }
 
 pub fn unmap(self: Buffer) void {
-    Context.devicePageUnmap(self.memory_page);
+    _ = self; // autofix
 }
 
 pub fn update(self: Buffer, comptime T: type, offset: usize, data: []const T) !void {
@@ -355,3 +359,5 @@ pub fn debugSetName(self: Buffer, name: []const u8) void {
         .p_object_name = name_z,
     }) catch unreachable;
 }
+
+test {}

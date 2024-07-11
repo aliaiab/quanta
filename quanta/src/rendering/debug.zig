@@ -1,13 +1,10 @@
-//!Optional debugging code for tracking and introspecting the various parts of a render graph
-
-///TODO: allow root source file to specify this like in std.Options
-pub const debug_info_enabled = @import("builtin").mode == .Debug;
+//!Optional debugging code for tracking and introspecting the various parts of a render graph at runtime
 
 ///Debug information about the source code that generated a graph
 ///This type is equal to the empty struct when debugging is disabled
 ///Functions returning void can be safely relied upon without need for upfront checking on the consuming code side
 ///Functions returning a value will return null if debug info is disabled
-pub const DebugInfo = if (debug_info_enabled) struct {
+pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
     passes: std.AutoArrayHashMapUnmanaged(graph.PassHandle, struct {
         source_location: std.builtin.SourceLocation,
         pass_name: ?[]const u8 = null,
@@ -275,3 +272,4 @@ test {
 const std = @import("std");
 const graph = @import("graph.zig");
 const Builder = graph.Builder;
+const quanta_options = @import("../root.zig").quanta_options;
