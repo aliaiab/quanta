@@ -21,25 +21,25 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
         for (self.buffers.values()) |pass| {
             if (pass.name == null) continue;
 
-            builder.allocator.free(pass.name.?);
+            builder.gpa.free(pass.name.?);
         }
 
         for (self.passes.values()) |pass| {
             if (pass.pass_name == null) continue;
 
-            builder.allocator.free(pass.pass_name.?);
+            builder.gpa.free(pass.pass_name.?);
         }
 
-        self.passes.deinit(builder.allocator);
-        self.buffers.deinit(builder.allocator);
+        self.passes.deinit(builder.gpa);
+        self.buffers.deinit(builder.gpa);
 
         var file_map_values = self.file_map.valueIterator();
 
         while (file_map_values.next()) |file_data| {
-            builder.allocator.free(file_data.source_code);
+            builder.gpa.free(file_data.source_code);
         }
 
-        self.file_map.deinit(builder.allocator);
+        self.file_map.deinit(builder.gpa);
 
         self.* = undefined;
     }
@@ -55,9 +55,9 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
         comptime src: std.builtin.SourceLocation,
         pass: graph.PassHandle,
     ) void {
-        _ = self.passes.getOrPutValue(builder.allocator, pass, .{
+        _ = self.passes.getOrPutValue(builder.gpa, pass, .{
             .source_location = src,
-        }) catch unreachable;
+        }) catch return;
     }
 
     pub fn addBuffer(
@@ -66,9 +66,9 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
         comptime src: std.builtin.SourceLocation,
         buffer: graph.BufferHandle,
     ) void {
-        _ = self.buffers.getOrPutValue(builder.allocator, buffer, .{
+        _ = self.buffers.getOrPutValue(builder.gpa, buffer, .{
             .source_location = src,
-        }) catch unreachable;
+        }) catch return;
     }
 
     ///Parses the zig files associated with passes and resources to find their names
@@ -79,10 +79,16 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
         if (pass_info.pass_name == null) {
             const pass_source: std.builtin.SourceLocation = pass_info.source_location;
 
-            const file_data = self.file_map.getOrPut(builder.allocator, pass_source.file) catch unreachable;
+            const file_data = self.file_map.getOrPut(builder.gpa, pass_source.file) catch return null;
 
             if (!file_data.found_existing) {
-                const file_source = std.fs.cwd().readFileAlloc(builder.allocator, pass_source.file, std.math.maxInt(usize)) catch unreachable;
+                std.log.debug("pass_source.file {s}", .{pass_source.file});
+
+                const file_source = std.fs.cwd().readFileAlloc(builder.gpa, pass_source.file, std.math.maxInt(usize)) catch return {
+                    _ = self.file_map.remove(pass_source.file);
+
+                    return null;
+                };
 
                 file_data.value_ptr.* = .{
                     .source_code = file_source,
@@ -149,14 +155,14 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
                 }
             }
 
-            const name = std.mem.concat(builder.allocator, u8, &.{
+            const name = std.mem.concat(builder.gpa, u8, &.{
                 std.fs.path.stem(std.fs.path.basename(pass_source.file)),
                 ".",
                 pass_source.fn_name,
                 "(...)",
                 ": ",
                 pass_line_comment orelse "",
-            }) catch unreachable;
+            }) catch return null;
 
             pass_info.pass_name = name;
         }
@@ -170,10 +176,14 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
         if (buffer_info.name == null) {
             const pass_source: std.builtin.SourceLocation = buffer_info.source_location;
 
-            const file_data = self.file_map.getOrPut(builder.allocator, pass_source.file) catch unreachable;
+            const file_data = self.file_map.getOrPut(builder.gpa, pass_source.file) catch return null;
 
             if (!file_data.found_existing) {
-                const file_source = std.fs.cwd().readFileAlloc(builder.allocator, pass_source.file, std.math.maxInt(usize)) catch unreachable;
+                const file_source = std.fs.cwd().readFileAlloc(builder.gpa, pass_source.file, std.math.maxInt(usize)) catch return {
+                    _ = self.file_map.remove(pass_source.file);
+
+                    return null;
+                };
 
                 file_data.value_ptr.* = .{
                     .source_code = file_source,
@@ -222,16 +232,16 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
 
             var tokenizer_buffer: [1024]u8 = undefined;
 
-            const tokenizer_string = std.fmt.bufPrintZ(&tokenizer_buffer, "{s}", .{pass_line}) catch unreachable;
+            const tokenizer_string = std.fmt.bufPrintZ(&tokenizer_buffer, "{s}", .{pass_line}) catch return null;
 
             var tokenizer = std.zig.Tokenizer.init(tokenizer_string);
 
             _ = tokenizer.next();
             const identifier_token = tokenizer.next();
 
-            const name = std.mem.concat(builder.allocator, u8, &.{
+            const name = std.mem.concat(builder.gpa, u8, &.{
                 tokenizer_string[identifier_token.loc.start..identifier_token.loc.end],
-            }) catch unreachable;
+            }) catch return null;
 
             buffer_info.name = name;
         }
