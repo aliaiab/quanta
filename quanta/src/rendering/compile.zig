@@ -243,6 +243,17 @@ pub const Context = struct {
 
                         result.value_ptr.*.usage.transfer_dst_bit = true;
                     },
+                    .blit_image => |command_data| {
+                        const source_usage = try image_usages.getOrPutValue(self.scratch_allocator.allocator(), command_data.src_image, .{
+                            .usage = .{},
+                        });
+                        const dest_usage = try image_usages.getOrPutValue(self.scratch_allocator.allocator(), command_data.dst_image, .{
+                            .usage = .{},
+                        });
+
+                        source_usage.value_ptr.usage.transfer_src_bit = true;
+                        dest_usage.value_ptr.usage.transfer_dst_bit = true;
+                    },
                     .set_index_buffer => |command_data| {
                         const result = try buffer_usages.getOrPutValue(
                             self.scratch_allocator.allocator(),
@@ -399,6 +410,7 @@ pub const Context = struct {
                 const image_height = builder.images.items(.height)[image_index];
                 const image_depth = builder.images.items(.depth)[image_index];
                 const image_format = builder.images.items(.format)[image_index];
+                const image_levels = builder.images.items(.levels)[image_index];
 
                 const get_or_put_res = try self.images.getOrPut(self.gpa, handle);
 
@@ -426,7 +438,7 @@ pub const Context = struct {
                     image_width,
                     image_height,
                     image_depth,
-                    1,
+                    image_levels,
                     @enumFromInt(@intFromEnum(image_format)),
                     .shader_read_only_optimal,
                     image_usage.usage,
@@ -518,6 +530,8 @@ pub const Context = struct {
 
                         try barrier_map.readWriteImage(
                             image,
+                            0,
+                            1,
                             .{ .color_attachment_output = true },
                             .{ .color_attachment_write = true },
                             .color_attachment_optimal,
@@ -529,6 +543,8 @@ pub const Context = struct {
 
                         try barrier_map.readWriteImage(
                             image,
+                            0,
+                            1,
                             .{
                                 .early_fragment_tests = true,
                             },
@@ -544,6 +560,7 @@ pub const Context = struct {
                 var command_iter = builder.passCommandIterator(pass_index);
 
                 //barrier prepass
+                //Places barriers before the entire pass
                 while (command_iter.next()) |command| {
                     switch (command) {
                         .update_buffer => |update_buffer| {
@@ -560,6 +577,8 @@ pub const Context = struct {
 
                             try barrier_map.writeImage(
                                 image,
+                                0,
+                                1,
                                 .{ .copy = true },
                                 .{ .transfer_write = true },
                                 .transfer_dst_optimal,
@@ -579,6 +598,8 @@ pub const Context = struct {
 
                             barrier_map.readImage(
                                 image,
+                                0,
+                                graphics.vulkan.REMAINING_MIP_LEVELS,
                                 .{ .fragment_shader = true },
                                 .{ .shader_read = true },
                                 .shader_read_only_optimal,
@@ -677,6 +698,35 @@ pub const Context = struct {
                 //encode final commands
                 while (command_iter.next()) |command| {
                     switch (command) {
+                        .blit_image => |blit_image| {
+                            const source_image = &self.images.getPtr(blit_image.src_image).?.image;
+
+                            barrier_map.readImage(
+                                source_image,
+                                blit_image.region.src_subresource.mip_level,
+                                1,
+                                .{ .copy = true },
+                                .{ .transfer_read = true },
+                                .transfer_src_optimal,
+                            );
+                        },
+                        else => {},
+                    }
+
+                    //Place command level barriers
+                    command_buffer.bufferBarriers(
+                        barrier_map.buffer_barriers.items(.buffer),
+                        barrier_map.buffer_barriers.items(.barrier),
+                    );
+                    barrier_map.buffer_barriers.shrinkRetainingCapacity(0);
+
+                    command_buffer.imageBarriers(
+                        barrier_map.image_barriers.items(.image),
+                        barrier_map.image_barriers.items(.barrier),
+                    );
+                    barrier_map.image_barriers.shrinkRetainingCapacity(0);
+
+                    switch (command) {
                         .update_buffer => |update_buffer| {
                             const buffer = self.buffers.getPtr(update_buffer.buffer).?;
 
@@ -705,6 +755,69 @@ pub const Context = struct {
                                 staging_contents.offset,
                                 staging_contents.mapped_region.len,
                                 image,
+                            );
+                        },
+                        .blit_image => |blit_image| {
+                            const source_image = &self.images.getPtr(blit_image.src_image).?.image;
+                            const destination_image = &self.images.getPtr(blit_image.dst_image).?.image;
+
+                            //Allow for batched blits with multiple regions
+                            const regions = try self.scratch_allocator.allocator().alloc(graphics.vulkan.ImageBlit2, 1);
+
+                            regions[0] = std.mem.zeroInit(graphics.vulkan.ImageBlit2, .{});
+
+                            regions[0].src_offsets[0] = .{
+                                .x = blit_image.region.src_offset[0],
+                                .y = blit_image.region.src_offset[1],
+                                .z = blit_image.region.src_offset[2],
+                            };
+                            regions[0].src_offsets[1] = .{
+                                .x = blit_image.region.src_extent[0],
+                                .y = blit_image.region.src_extent[1],
+                                .z = blit_image.region.src_extent[2],
+                            };
+
+                            regions[0].src_subresource = .{
+                                .aspect_mask = .{ .color_bit = true },
+                                .mip_level = blit_image.region.src_subresource.mip_level,
+                                .base_array_layer = blit_image.region.src_subresource.base_array_layer,
+                                .layer_count = blit_image.region.src_subresource.layer_count,
+                            };
+
+                            regions[0].dst_subresource = .{
+                                .aspect_mask = .{ .color_bit = true },
+                                .mip_level = blit_image.region.dst_subresource.mip_level,
+                                .base_array_layer = blit_image.region.dst_subresource.base_array_layer,
+                                .layer_count = blit_image.region.dst_subresource.layer_count,
+                            };
+
+                            regions[0].dst_offsets[0] = .{
+                                .x = blit_image.region.dst_offset[0],
+                                .y = blit_image.region.dst_offset[1],
+                                .z = blit_image.region.dst_offset[2],
+                            };
+                            regions[0].dst_offsets[1] = .{
+                                .x = blit_image.region.dst_extent[0],
+                                .y = blit_image.region.dst_extent[1],
+                                .z = blit_image.region.dst_extent[2],
+                            };
+
+                            command_buffer.imageBlit(
+                                source_image,
+                                .transfer_src_optimal,
+                                destination_image,
+                                .transfer_dst_optimal,
+                                regions,
+                                .linear,
+                            );
+
+                            try barrier_map.writeImage(
+                                destination_image,
+                                blit_image.region.dst_subresource.mip_level,
+                                blit_image.region.dst_subresource.layer_count,
+                                .{ .copy = true },
+                                .{ .transfer_write = true },
+                                .transfer_dst_optimal,
                             );
                         },
                         .set_raster_pipeline => |set_raster_pipeline| {
@@ -1031,18 +1144,24 @@ pub const Context = struct {
         pub fn readWriteImage(
             self: *@This(),
             image: *const graphics.Image,
+            mip_level: u32,
+            level_count: u32,
             stage: graphics.CommandBuffer.PipelineStage,
             access: graphics.CommandBuffer.ResourceAccess,
             expected_layout: graphics.vulkan.ImageLayout,
         ) !void {
             try self.writeImage(
                 image,
+                mip_level,
+                level_count,
                 stage,
                 access,
                 expected_layout,
             );
             self.readImage(
                 image,
+                mip_level,
+                level_count,
                 stage,
                 access,
                 expected_layout,
@@ -1052,6 +1171,8 @@ pub const Context = struct {
         pub fn writeImage(
             self: *@This(),
             image: *const graphics.Image,
+            mip_level: u32,
+            level_count: u32,
             stage: graphics.CommandBuffer.PipelineStage,
             access: graphics.CommandBuffer.ResourceAccess,
             expected_layout: graphics.vulkan.ImageLayout,
@@ -1068,6 +1189,8 @@ pub const Context = struct {
                     .destination_stage = .{},
                     .destination_access = .{},
                     .destination_layout = expected_layout,
+                    .base_mip_level = mip_level,
+                    .level_count = level_count,
                 };
             } else {
                 updateBarrierMask(
@@ -1077,13 +1200,17 @@ pub const Context = struct {
                     access,
                 );
 
-                barrier_result.value_ptr.source_layout = expected_layout;
+                barrier_result.value_ptr.base_mip_level = mip_level;
+                barrier_result.value_ptr.level_count = level_count;
+                barrier_result.value_ptr.destination_layout = expected_layout;
             }
         }
 
         pub fn readImage(
             self: *@This(),
             image: *const graphics.Image,
+            base_mip_level: u32,
+            level_count: u32,
             stage: graphics.CommandBuffer.PipelineStage,
             access: graphics.CommandBuffer.ResourceAccess,
             expected_layout: graphics.vulkan.ImageLayout,
@@ -1099,7 +1226,8 @@ pub const Context = struct {
                 );
 
                 out_barrier.destination_layout = expected_layout;
-
+                out_barrier.base_mip_level = base_mip_level;
+                out_barrier.level_count = level_count;
                 self.image_barriers.append(self.context.scratch_allocator.allocator(), .{
                     .image = image,
                     .barrier = out_barrier.*,

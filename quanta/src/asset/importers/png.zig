@@ -88,8 +88,7 @@ pub fn importCubeFile(allocator: std.mem.Allocator, paths: [6][]const u8) !Impor
 }
 
 pub fn free(self: *Import, allocator: std.mem.Allocator) void {
-    self.* = undefined;
+    allocator.free(self.data);
 
-    _ = allocator;
-    // allocator.free(self.data);
+    self.* = undefined;
 }

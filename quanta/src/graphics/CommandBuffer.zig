@@ -139,6 +139,7 @@ inline fn getVkPipelineStage(pipeline_stage: PipelineStage) vk.PipelineStageFlag
         .fragment_shader_bit = pipeline_stage.fragment_shader,
         .compute_shader_bit = pipeline_stage.compute_shader,
         .copy_bit = pipeline_stage.copy,
+        .all_transfer_bit = pipeline_stage.copy,
         .top_of_pipe_bit = pipeline_stage.top_of_pipe,
         .bottom_of_pipe_bit = pipeline_stage.bottom_of_pipe,
     };
@@ -212,6 +213,8 @@ pub fn memoryBarrier(self: CommandBuffer, barrier: MemoryBarrier) void {
 
 pub const ImageBarrier = struct {
     layer: u32 = 0,
+    base_mip_level: u32 = 0,
+    level_count: u32 = vk.REMAINING_MIP_LEVELS,
     source_stage: PipelineStage,
     source_access: ResourceAccess,
     source_layout: vk.ImageLayout = .undefined,
@@ -246,8 +249,8 @@ pub fn imageBarrier(
             .image = image.handle,
             .subresource_range = .{
                 .aspect_mask = image.aspect_mask,
-                .base_mip_level = barrier.layer,
-                .level_count = vk.REMAINING_MIP_LEVELS,
+                .base_mip_level = barrier.base_mip_level,
+                .level_count = barrier.level_count,
                 .base_array_layer = 0,
                 .layer_count = vk.REMAINING_ARRAY_LAYERS,
             },
@@ -264,6 +267,8 @@ pub fn imageBarriers(
 
     var image_barriers: [64]vk.ImageMemoryBarrier2 = undefined;
 
+    if (barriers.len == 0) return;
+
     std.debug.assert(barriers.len <= image_barriers.len);
 
     for (images, barriers, image_barriers[0..barriers.len]) |image, barrier, *image_barrier| {
@@ -279,8 +284,8 @@ pub fn imageBarriers(
             .image = image.handle,
             .subresource_range = .{
                 .aspect_mask = image.aspect_mask,
-                .base_mip_level = barrier.layer,
-                .level_count = vk.REMAINING_MIP_LEVELS,
+                .base_mip_level = barrier.base_mip_level,
+                .level_count = barrier.level_count,
                 .base_array_layer = 0,
                 .layer_count = vk.REMAINING_ARRAY_LAYERS,
             },
@@ -741,6 +746,28 @@ pub fn copyBufferToImageOffset(
             },
         }},
     });
+}
+
+pub fn imageBlit(
+    self: *CommandBuffer,
+    source: *Image,
+    source_layout: vk.ImageLayout,
+    destination: *Image,
+    destination_layout: vk.ImageLayout,
+    regions: []vk.ImageBlit2,
+    filter: vk.Filter,
+) void {
+    const blit_image_2 = vk.BlitImageInfo2{
+        .src_image = source.handle,
+        .src_image_layout = source_layout,
+        .dst_image = destination.handle,
+        .dst_image_layout = destination_layout,
+        .region_count = @intCast(regions.len),
+        .p_regions = regions.ptr,
+        .filter = filter,
+    };
+
+    Context.self.vkd.cmdBlitImage2(self.handle, &blit_image_2);
 }
 
 pub fn draw(

@@ -46,6 +46,12 @@ pub const Command = union(enum) {
         image_offset: usize,
         contents: []const u8,
     },
+    blit_image: struct {
+        src_image: ImageHandle,
+        dst_image: ImageHandle,
+        region: BlitRegion,
+        filter: SampleFilterMode,
+    },
     set_raster_pipeline: struct {
         pipeline: RasterPipeline,
     },
@@ -261,6 +267,7 @@ pub const Builder = struct {
         width: u32,
         height: u32,
         depth: u32,
+        levels: u32,
     }) = .{},
     samplers: std.MultiArrayList(struct {
         handle: Sampler,
@@ -552,6 +559,7 @@ pub const Builder = struct {
             width: u32,
             height: u32,
             depth: u32,
+            levels: u32 = 1,
         },
     ) Image {
         //TODO: store a identifier base to allow for looped calls with the same src location to produce different handles
@@ -568,6 +576,7 @@ pub const Builder = struct {
             .width = options.width,
             .height = options.height,
             .depth = options.depth,
+            .levels = options.levels,
         }) catch @panic("oom");
 
         return .{
@@ -738,6 +747,27 @@ pub const Builder = struct {
         });
 
         image.pass_index = @intCast(self.current_pass_index);
+    }
+
+    pub fn blitImage(
+        self: *@This(),
+        src_image: Image,
+        dst_image: *Image,
+        region: BlitRegion,
+        filter: SampleFilterMode,
+    ) void {
+        self.referenceImageAsInput(src_image);
+
+        self.commands.add(self.gpa, .{
+            .blit_image = .{
+                .src_image = self.images.items(.handle)[src_image.index],
+                .dst_image = self.images.items(.handle)[dst_image.index],
+                .region = region,
+                .filter = filter,
+            },
+        });
+
+        dst_image.pass_index = @intCast(self.current_pass_index);
     }
 
     pub const ColorAttachment = struct {
@@ -1261,6 +1291,21 @@ pub const ResourceHandle = packed struct(u64) {
 
 pub const PassHandle = packed struct(u64) {
     id: u64,
+};
+
+pub const ImageSubresource = struct {
+    mip_level: u32,
+    base_array_layer: u32,
+    layer_count: u32,
+};
+
+pub const BlitRegion = struct {
+    src_subresource: ImageSubresource,
+    src_offset: @Vector(3, i32) = .{ 0, 0, 0 },
+    src_extent: @Vector(3, i32),
+    dst_subresource: ImageSubresource,
+    dst_offset: @Vector(3, i32) = .{ 0, 0, 0 },
+    dst_extent: @Vector(3, i32),
 };
 
 pub const ImageFormat = enum(u32) {

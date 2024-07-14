@@ -1,6 +1,7 @@
 pub const graph = @import("rendering/graph.zig");
 pub const compile = @import("rendering/compile.zig");
 pub const debug = @import("rendering/debug.zig");
+pub const std = @import("rendering/std.zig");
 
 pub const Options = struct {
     ///Enables the use of debug info for graphics debuggers like renderdoc
