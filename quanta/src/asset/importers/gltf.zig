@@ -88,6 +88,7 @@ pub const Import = struct {
     }
 
     pub const file_extension = ".gltf";
+    pub const base_hash = "1";
 };
 
 pub fn importZgltf(allocator: std.mem.Allocator, file_path: []const u8) !Import {

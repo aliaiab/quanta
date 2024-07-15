@@ -5,6 +5,8 @@ pub const CompilerContext = struct {
     file_paths: [][]const u8,
     assets: std.ArrayListUnmanaged(Archive.AssetDescription),
     compiled_asset_count: usize,
+    ///TODO: storing the previous archive is potentially very memory intensive;
+    ///Only store the previous headers as the content isn't needed until archive re-encoding
     previous_archive: Archive,
     hasher: Hasher,
 
@@ -19,7 +21,11 @@ pub const CompilerContext = struct {
         self.* = undefined;
     }
 
-    pub fn compile(self: *CompilerContext, path: []const u8) !void {
+    pub fn compile(
+        self: *CompilerContext,
+        path: []const u8,
+        meta_data_raw: ?[:0]const u8,
+    ) !void {
         const extension = std.fs.path.extension(path);
 
         const source_file = try std.fs.cwd().openFile(path, .{});
@@ -31,26 +37,17 @@ pub const CompilerContext = struct {
         const metadata_file_path = try std.mem.concat(self.allocator, u8, &.{ path, ".zon" });
         defer self.allocator.free(metadata_file_path);
 
-        const metadata_file = try std.fs.cwd().openFile(metadata_file_path, .{});
-        defer metadata_file.close();
-
-        const metadata = try metadata_file.readToEndAllocOptions(
-            self.allocator,
-            std.math.maxInt(usize),
-            null,
-            @alignOf(u8),
-            0,
-        );
-        defer self.allocator.free(metadata);
-
-        std.log.info("metadata: {s}", .{metadata});
+        std.log.info("metadata: {any}", .{meta_data_raw});
 
         for (self.compilers) |compiler| {
             if (std.mem.eql(u8, compiler.file_extension, extension)) {
                 self.hasher = std.Build.Cache.Hasher.init("ASSET" ++ [_]u8{0} ** 11);
 
-                //TODO: use parsed metadata representation instead of text
-                self.hasher.update(metadata);
+                self.hasher.update(compiler.base_hash);
+
+                //TODO: use parsed metadata representation instead of text to avoid trivial changes causing invalidation
+                if (meta_data_raw != null) self.hasher.update(meta_data_raw.?);
+
                 self.hasher.update(source_data);
 
                 const hash = self.hasher.finalInt();
@@ -85,12 +82,12 @@ pub const CompilerContext = struct {
                     return;
                 }
 
-                const compiled_data = try compiler.compile(self, path, source_data, metadata);
+                const compiled_data = try compiler.compile(self, path, source_data, meta_data_raw);
 
                 try self.assets.append(self.allocator, .{
                     .name = name,
                     .source_data = compiled_data,
-                    //Specify alignment from Asset.compile() functions
+                    //TODO: Specify alignment from Asset.compile() functions
                     .source_data_alignment = @alignOf(u32),
                     .mapped_data_size = compiled_data.len,
                     .content_hash = hash,
@@ -121,11 +118,13 @@ pub const AssetCompilerInfo = struct {
 
     compile: *const CompileFn,
     file_extension: []const u8,
+    base_hash: []const u8,
 
     pub fn fromType(comptime T: type) AssetCompilerInfo {
         return .{
             .compile = compileFn(T),
             .file_extension = T.file_extension,
+            .base_hash = T.base_hash,
         };
     }
 
@@ -138,8 +137,11 @@ pub const AssetCompilerInfo = struct {
 
                 const MetaDataType = std.meta.Child(args[3].type.?);
 
-                const meta_data_parsed = if (meta_data != null) try zon.parse.parse(MetaDataType, context.allocator, meta_data.?) else null;
-                defer if (meta_data_parsed != null) zon.parse.parseFree(MetaDataType, context.allocator, meta_data_parsed.?);
+                const meta_data_parsed = if (meta_data != null) try zon.parse.parse(MetaDataType, context.allocator, meta_data.?) else @as(
+                    MetaDataType,
+                    .{},
+                );
+                defer if (meta_data != null) zon.parse.parseFree(MetaDataType, context.allocator, meta_data_parsed);
 
                 return @call(.always_inline, compile_fn, .{
                     context,
@@ -152,6 +154,30 @@ pub const AssetCompilerInfo = struct {
 
         return static.function;
     }
+};
+
+///Hashes the source of a file, providing a reliable and bug-free approach to computing the base hash
+///So that when the source of an asset compiler changes, the hash for that asset type can be invalidated
+///This catches a lot of bugs, so is worth paying the price for when compiling the compiler
+pub fn getBaseHashFromSource(src: std.builtin.SourceLocation) []const u8 {
+    //Hacky but very bug free approach to changing the base hash
+    var source_hash = std.Build.Cache.Hasher.init("ASSET" ++ [_]u8{0} ** 11);
+
+    @setEvalBranchQuota(100000);
+
+    source_hash.update(@embedFile(src.file));
+
+    return &source_hash.finalResult();
+}
+
+///Specifies how/if compression should be done on the asset/module level
+pub const CompressionMode = enum {
+    ///Optimize for minimum size at the potential cost of performance
+    small,
+    ///Optimize for decompression speed at the potential cost of size
+    fast,
+    ///Do not comppress the data if the asset type supports uncompressed data at all
+    none,
 };
 
 const std = @import("std");

@@ -40,7 +40,11 @@ pub fn initRecycle(allocator: std.mem.Allocator, surface: vk.SurfaceKHR, old_han
         .min_image_count = image_count,
         .image_format = surface_format.format,
         .image_color_space = surface_format.color_space,
-        .image_extent = actual_extent,
+        .image_extent = .{
+            //I'm not even sure how this is even possible but x11 certainly found a way to do this, so thanks for that X.
+            .width = std.math.clamp(actual_extent.width, caps.min_image_extent.width, caps.max_image_extent.width),
+            .height = std.math.clamp(actual_extent.height, caps.min_image_extent.height, caps.max_image_extent.height),
+        },
         .image_array_layers = 1,
         .image_usage = .{ .color_attachment_bit = true, .transfer_dst_bit = true, .storage_bit = true },
         .image_sharing_mode = sharing_mode,
@@ -175,7 +179,9 @@ pub fn present(self: *Swapchain) !void {
 
                 try self.recreate();
             },
-            else => return e,
+            else => {
+                return e;
+            },
         }
     };
 }
@@ -256,20 +262,21 @@ pub const SwapImage = struct {
 
 fn initSwapchainImages(swapchain: vk.SwapchainKHR, format: vk.Format, allocator: std.mem.Allocator) ![]SwapImage {
     var count: u32 = undefined;
+
     _ = try Context.self.vkd.getSwapchainImagesKHR(Context.self.device, swapchain, &count, null);
+
     const images = try allocator.alloc(vk.Image, count);
     defer allocator.free(images);
+
     _ = try Context.self.vkd.getSwapchainImagesKHR(Context.self.device, swapchain, &count, images.ptr);
 
     const swap_images = try allocator.alloc(SwapImage, count);
     errdefer allocator.free(swap_images);
 
-    var i: usize = 0;
-    errdefer for (swap_images[0..i]) |*si| si.deinit();
+    errdefer for (swap_images) |*si| si.deinit();
 
-    for (images) |image| {
-        swap_images[i] = try SwapImage.init(image, format);
-        i += 1;
+    for (swap_images, images) |*swap_image, image| {
+        swap_image.* = try SwapImage.init(image, format);
     }
 
     return swap_images;

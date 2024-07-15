@@ -228,5 +228,12 @@ pub fn hashAssetName(name: []const u8) u64 {
     return std.hash_map.hashString(name);
 }
 
+pub const base_hash = compiler.getBaseHashFromSource(struct {
+    pub fn src() std.builtin.SourceLocation {
+        return @src();
+    }
+}.src());
+
 const Archive = @This();
 const std = @import("std");
+const compiler = @import("compiler.zig");

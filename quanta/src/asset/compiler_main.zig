@@ -29,15 +29,25 @@ pub fn iterateDirectory(
                 const metadata_file = directory.openFile(metadata_path, .{}) catch null;
                 defer if (metadata_file != null) metadata_file.?.close();
 
+                const path = try std.fs.path.join(context.allocator, &[_][]const u8{ directory_path, entry.name });
+                defer context.allocator.free(path);
+
+                std.log.info("metadata file: {s}", .{metadata_path});
+                std.log.info("path: {s}", .{path});
+
                 if (metadata_file != null) {
-                    std.log.info("metadata file: {s}", .{metadata_path});
+                    const metadata = try metadata_file.?.readToEndAllocOptions(
+                        context.allocator,
+                        std.math.maxInt(usize),
+                        null,
+                        @alignOf(u8),
+                        0,
+                    );
+                    defer context.allocator.free(metadata);
 
-                    const path = try std.fs.path.join(context.allocator, &[_][]const u8{ directory_path, entry.name });
-                    defer context.allocator.free(path);
-
-                    std.log.info("path: {s}", .{path});
-
-                    try context.compile(path);
+                    try context.compile(path, metadata);
+                } else {
+                    try context.compile(path, null);
                 }
             },
             else => {},
@@ -46,6 +56,8 @@ pub fn iterateDirectory(
 }
 
 pub fn main() !void {
+    //TODO: We don't actually have to necessarily free most data
+    //as this is usually a short lived program---apart from source and archive data, which will result in a large rss
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (false) std.debug.assert(gpa.deinit() != .leak);
 
@@ -65,10 +77,12 @@ pub fn main() !void {
     const install_directory = process_args.next().?;
     const archive_name = process_args.next().?;
 
-    var previous_exists: bool = false;
+    var previous_exists: bool = true;
 
     const archive_path = try std.fs.path.join(allocator, &.{ install_directory, archive_name });
     defer allocator.free(archive_path);
+
+    std.log.info("Archive path: {s}", .{archive_path});
 
     const asset_archive_file = std.fs.cwd().openFile(
         archive_path,
@@ -93,6 +107,8 @@ pub fn main() !void {
         // var previous_archive = try Archive.decodeHeaderOnlyFromFile(allocator, asset_archive_file);
         const archive_all = try asset_archive_file.readToEndAlloc(allocator, std.math.maxInt(usize));
         previous_archive = try Archive.decode(allocator, archive_all);
+
+        std.log.info("Previous archive exists: count: {}", .{previous_archive.assets.len});
     }
 
     defer if (previous_exists) previous_archive.decodeFree(allocator);
@@ -100,6 +116,7 @@ pub fn main() !void {
     const asset_compilers = [_]compiler.AssetCompilerInfo{
         compiler.AssetCompilerInfo.fromType(importers.gltf.Import),
         compiler.AssetCompilerInfo.fromType(CubeMap),
+        compiler.AssetCompilerInfo.fromType(importers.png.Import),
     };
 
     var context = compiler.CompilerContext{

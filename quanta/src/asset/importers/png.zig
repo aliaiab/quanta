@@ -1,11 +1,38 @@
 const std = @import("std");
 const img = @import("zigimg");
 const png = img.png;
+const compiler = @import("../compiler.zig");
 
 pub const Import = struct {
     data: []u8,
     width: u32,
     height: u32,
+
+    pub const MetaData = struct {
+        optimize: std.builtin.OptimizeMode = .ReleaseFast,
+    };
+
+    pub fn assetCompile(
+        context: *compiler.CompilerContext,
+        file_path: []const u8,
+        data: []const u8,
+        meta_data: ?MetaData,
+    ) ![]const u8 {
+        _ = meta_data; // autofix
+        _ = file_path; // autofix
+
+        const imported = try import(context.allocator, data);
+
+        return imported.data;
+    }
+
+    pub const file_extension = ".png";
+    ///Change this when the format changes
+    pub const base_hash: []const u8 = compiler.getBaseHashFromSource(struct {
+        pub fn src() std.builtin.SourceLocation {
+            return @src();
+        }
+    }.src());
 };
 
 ///Also supports png because I'm lazy atm...
@@ -42,6 +69,7 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !Import {
 
     return self;
 }
+
 pub fn importFile(allocator: std.mem.Allocator, path: []const u8) !Import {
     const file = try std.fs.cwd().openFile(path, .{});
     defer file.close();

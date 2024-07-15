@@ -212,13 +212,27 @@ pub const AssetCompileOptions = struct {
     ///The directory containing source assets
     source_directory: []const u8,
     ///The directory to install the compiled archives
-    install_directory: []const u8,
+    ///Defaults to the builder.install_path
+    install_directory: ?[]const u8 = null,
+    ///The sub path within the install directory to put compiled archives
+    install_sub_directory: []const u8 = "bin/",
     ///The name of the compiled archive
     artifact_name: []const u8,
     ///The target platform that the assets will be built for
     target: ?std.Build.ResolvedTarget = null,
     ///The optimization level that the assets will be built with
+    ///This level can be overiden at the sub directory and asset level in metadata files
     optimize: ?std.builtin.OptimizeMode = null,
+    ///The compression level that the assets will be built with
+    ///This level can be overiden at the sub directory and asset level in metadata files
+    ///Defaults to:
+    /// none in OptimizeMode.Debug,
+    /// small in OptimizeMode.ReleaseSmall,
+    /// fast in OptimizeMode.ReleaseSafe and OptimizeMode.ReleaseFast
+    compression: ?quanta.asset.compiler.CompressionMode = null,
+    ///Strip debug information and content hashes from the compiled archive
+    ///Defaults to true in Optimize.ReleaseFast and Optimize.ReleaseSafe
+    strip: ?bool = null,
 };
 
 const AssetCompileStep = struct {
@@ -226,6 +240,8 @@ const AssetCompileStep = struct {
     run_step: *std.Build.Step.Run,
 };
 
+///Adds the asset module for compilation
+///Use the returned run step to actually run the compiler
 pub fn addAssetCompileStep(
     builder: *std.Build,
     quanta_dependency: *std.Build.Dependency,
@@ -242,7 +258,10 @@ pub fn addAssetCompileStep(
     run_asset_compiler.addArg(@tagName(optimize));
 
     run_asset_compiler.addArg(config.source_directory);
-    run_asset_compiler.addArg(config.install_directory);
+    run_asset_compiler.addArg(builder.pathJoin(&.{
+        config.install_directory orelse builder.install_path,
+        config.install_sub_directory,
+    }));
     run_asset_compiler.addArg(config.artifact_name);
 
     return .{

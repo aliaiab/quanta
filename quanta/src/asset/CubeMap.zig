@@ -33,13 +33,13 @@ pub fn assetUnload(
     _ = handle;
 }
 
-const Metadata = struct {
-    top: []const u8,
-    bottom: []const u8,
-    left: []const u8,
-    right: []const u8,
-    front: []const u8,
-    back: []const u8,
+pub const Metadata = struct {
+    top: []const u8 = "",
+    bottom: []const u8 = "",
+    left: []const u8 = "",
+    right: []const u8 = "",
+    front: []const u8 = "",
+    back: []const u8 = "",
 };
 
 pub fn assetCompile(
@@ -69,7 +69,8 @@ pub fn assetCompile(
     return imported.data;
 }
 
-pub const file_extension = ".png";
+pub const file_extension = ".cubemap.zon";
+pub const base_hash = "1";
 
 const compiler = @import("compiler.zig");
 const importers = @import("importers.zig");
