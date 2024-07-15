@@ -117,6 +117,7 @@ pub fn main() !void {
         compiler.AssetCompilerInfo.fromType(importers.gltf.Import),
         compiler.AssetCompilerInfo.fromType(CubeMap),
         compiler.AssetCompilerInfo.fromType(importers.png.Import),
+        compiler.AssetCompilerInfo.fromType(importers.aseprite.Import),
     };
 
     var context = compiler.CompilerContext{
