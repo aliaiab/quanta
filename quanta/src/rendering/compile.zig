@@ -42,7 +42,9 @@ pub const Context = struct {
             .gpa = gpa,
             .scratch_allocator = std.heap.ArenaAllocator.init(gpa),
             .cpu_buffer = undefined,
-            .barrier_map = undefined,
+            //TODO: I have no idea why I can't make use of the arena for this, it just crashes
+            //This is not a lifetime issue, even if I init at the callsite it just breaks
+            .barrier_map = .{ .scratch_allocator = gpa },
         };
 
         for (0..cpu_buffer_count) |i| {

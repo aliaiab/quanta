@@ -1,5 +1,6 @@
 pub fn parse(comptime T: type, allocator: std.mem.Allocator, source: [:0]const u8) !T {
-    const root_value = try Value.parse(allocator, source);
+    var root_value = try Value.parse(allocator, source);
+    defer root_value.free(allocator);
 
     const data = try structLiteralAsType(T, allocator, root_value.struct_literal);
 
@@ -192,6 +193,19 @@ const Value = union(enum) {
         const root_value = try structLiteralValue(allocator, ast, root.data.lhs);
 
         return root_value;
+    }
+
+    pub fn free(self: *Value, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .struct_literal => {
+                for (self.struct_literal.values()) |*sub_field| {
+                    sub_field.free(allocator);
+                }
+
+                self.struct_literal.deinit(allocator);
+            },
+            else => {},
+        }
     }
 
     fn anyValue(allocator: std.mem.Allocator, ast: std.zig.Ast, node_index: std.zig.Ast.Node.Index) anyerror!Value {
