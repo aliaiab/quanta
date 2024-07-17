@@ -87,29 +87,6 @@ pub fn end(self: CommandBuffer) void {
     Context.self.vkd.endCommandBuffer(self.handle) catch unreachable;
 }
 
-//Mabye not good idea to do all this work automatically, but ehh it's convenient and may improve driver/gpu
-//performance enough that it's well worth it
-fn placePendingBarriers(self: CommandBuffer) void {
-    if (self.consecutive_memory_barrier_count == 0 or
-        self.consecutive_image_barrier_count == 0)
-    {
-        return;
-    }
-
-    //the whole point of this function is to eventually batch all calls to vkImage/Buffer/Memory barrier to
-    //reduce dispatch overhead and allow the driver to optimise the barrier itself
-    for (self.consecutive_memory_barriers[0..self.consecutive_memory_barrier_count]) |memory_barrier| {
-        self.memoryBarrier(memory_barrier);
-    }
-
-    for (self.consecutive_image_barrier_images[0..self.consecutive_image_barrier_count], 0..) |image_barrier, i| {
-        self.imageBarrier(self.consecutive_image_barrier_images[i].*, image_barrier);
-    }
-
-    defer self.consecutive_memory_barrier_count = 0;
-    defer self.consecutive_image_barrier_count = 0;
-}
-
 pub const PipelineStage = packed struct(u16) {
     all_commands: bool = false,
     all_graphics: bool = false,
@@ -124,7 +101,8 @@ pub const PipelineStage = packed struct(u16) {
     copy: bool = false,
     top_of_pipe: bool = false,
     bottom_of_pipe: bool = false,
-    padding: u3 = 0,
+    pre_rasterization_shaders: bool = false,
+    padding: u2 = 0,
 };
 
 inline fn getVkPipelineStage(pipeline_stage: PipelineStage) vk.PipelineStageFlags2 {
@@ -142,6 +120,7 @@ inline fn getVkPipelineStage(pipeline_stage: PipelineStage) vk.PipelineStageFlag
         .all_transfer_bit = pipeline_stage.copy,
         .top_of_pipe_bit = pipeline_stage.top_of_pipe,
         .bottom_of_pipe_bit = pipeline_stage.bottom_of_pipe,
+        .pre_rasterization_shaders_bit = pipeline_stage.pre_rasterization_shaders,
     };
 }
 
@@ -223,41 +202,6 @@ pub const ImageBarrier = struct {
     destination_layout: vk.ImageLayout = .undefined,
 };
 
-pub fn imageBarrier(
-    self: CommandBuffer,
-    image: Image,
-    barrier: ImageBarrier,
-) void {
-    Context.self.vkd.cmdPipelineBarrier2(self.handle, &.{
-        .dependency_flags = .{
-            .by_region_bit = true,
-        },
-        .memory_barrier_count = 0,
-        .p_memory_barriers = undefined,
-        .buffer_memory_barrier_count = 0,
-        .p_buffer_memory_barriers = undefined,
-        .image_memory_barrier_count = 1,
-        .p_image_memory_barriers = @as([*]const vk.ImageMemoryBarrier2, @ptrCast(&vk.ImageMemoryBarrier2{
-            .src_stage_mask = getVkPipelineStage(barrier.source_stage),
-            .src_access_mask = getVkResourceAccess(barrier.source_access),
-            .dst_stage_mask = getVkPipelineStage(barrier.destination_stage),
-            .dst_access_mask = getVkResourceAccess(barrier.destination_access),
-            .old_layout = barrier.source_layout,
-            .new_layout = barrier.destination_layout,
-            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .image = image.handle,
-            .subresource_range = .{
-                .aspect_mask = image.aspect_mask,
-                .base_mip_level = barrier.base_mip_level,
-                .level_count = barrier.level_count,
-                .base_array_layer = 0,
-                .layer_count = vk.REMAINING_ARRAY_LAYERS,
-            },
-        })),
-    });
-}
-
 pub fn imageBarriers(
     self: CommandBuffer,
     images: []const *const Image,
@@ -267,6 +211,7 @@ pub fn imageBarriers(
 
     var image_barriers: [64]vk.ImageMemoryBarrier2 = undefined;
 
+    if (images.len == 0) return;
     if (barriers.len == 0) return;
 
     std.debug.assert(barriers.len <= image_barriers.len);
@@ -292,7 +237,7 @@ pub fn imageBarriers(
         };
     }
 
-    Context.self.vkd.cmdPipelineBarrier2(self.handle, &.{
+    const dep_info: vk.DependencyInfo = .{
         .dependency_flags = .{
             .by_region_bit = true,
         },
@@ -302,7 +247,9 @@ pub fn imageBarriers(
         .p_buffer_memory_barriers = undefined,
         .image_memory_barrier_count = @intCast(barriers.len),
         .p_image_memory_barriers = &image_barriers,
-    });
+    };
+
+    Context.self.vkd.cmdPipelineBarrier2(self.handle, &dep_info);
 }
 
 pub const BufferBarrier = struct {
@@ -311,33 +258,6 @@ pub const BufferBarrier = struct {
     destination_stage: PipelineStage = .{},
     destination_access: ResourceAccess = .{},
 };
-
-pub fn bufferBarrier(self: CommandBuffer, buffer: Buffer, barrier: BufferBarrier) void {
-    Context.self.vkd.cmdPipelineBarrier2(self.handle, &.{
-        .dependency_flags = .{
-            .by_region_bit = true,
-            .view_local_bit = self.is_render_pass_instance,
-        },
-        .memory_barrier_count = 0,
-        .p_memory_barriers = undefined,
-        .buffer_memory_barrier_count = 1,
-        .p_buffer_memory_barriers = &[_]vk.BufferMemoryBarrier2{
-            .{
-                .src_stage_mask = getVkPipelineStage(barrier.source_stage),
-                .src_access_mask = getVkResourceAccess(barrier.source_access),
-                .dst_stage_mask = getVkPipelineStage(barrier.destination_stage),
-                .dst_access_mask = getVkResourceAccess(barrier.destination_access),
-                .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-                .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-                .buffer = buffer.handle,
-                .offset = 0,
-                .size = buffer.size,
-            },
-        },
-        .image_memory_barrier_count = 0,
-        .p_image_memory_barriers = undefined,
-    });
-}
 
 pub fn bufferBarriers(
     self: CommandBuffer,
@@ -379,6 +299,24 @@ pub fn bufferBarriers(
     });
 }
 
+fn debugPrintResourceAccess(
+    resource_access: vk.AccessFlags2,
+) void {
+    inline for (std.meta.fields(vk.AccessFlags2)) |field| {
+        if (@field(resource_access, field.name))
+            std.debug.print("{s}\n", .{field.name});
+    }
+}
+
+fn debugPrintPipelineStage(
+    stage: vk.PipelineStageFlags2,
+) void {
+    inline for (std.meta.fields(vk.PipelineStageFlags2)) |field| {
+        if (@field(stage, field.name))
+            std.debug.print("{s}\n", .{field.name});
+    }
+}
+
 ///Places an event which signals when the previous commands are finished executing
 pub fn setEvent(self: CommandBuffer, event: Event) void {
     Context.self.vkd.cmdSetEvent(self.handle, event.handle, .{ .top_of_pipe_bit = true });
@@ -394,27 +332,6 @@ pub fn submitAndWaitSemaphore(self: CommandBuffer, semaphore: Semaphore) !void {
     try self.submitSemaphore(self.wait_fence, semaphore);
     self.wait_fence.wait();
     self.wait_fence.reset();
-}
-
-pub fn submit(self: CommandBuffer, fence: Fence) !void {
-    const queue = switch (self.queue) {
-        .graphics => Context.self.graphics_queue,
-        .compute => Context.self.compute_queue,
-        .transfer => Context.self.transfer_queue,
-    };
-
-    try Context.self.vkd.queueSubmit2(queue, 1, &[_]vk.SubmitInfo2{.{
-        .flags = .{},
-        .wait_semaphore_info_count = 0,
-        .p_wait_semaphore_infos = undefined,
-        .command_buffer_info_count = 1,
-        .p_command_buffer_infos = &[_]vk.CommandBufferSubmitInfo{.{
-            .command_buffer = self.handle,
-            .device_mask = 0,
-        }},
-        .signal_semaphore_info_count = 0,
-        .p_signal_semaphore_infos = undefined,
-    }}, fence.handle);
 }
 
 pub fn submitSemaphore(self: CommandBuffer, fence: Fence, wait_semaphore: Semaphore, signal_semaphore: Semaphore) !void {
@@ -446,6 +363,10 @@ pub fn submitSemaphore(self: CommandBuffer, fence: Fence, wait_semaphore: Semaph
             .value = 1,
             .stage_mask = .{
                 .color_attachment_output_bit = true,
+
+                //TODO: TEMPORARY: don't use this, I just need to set the right stage masks...
+                //This proves my semaphore signalling is correct otherwise
+                .all_commands_bit = true,
             },
             .device_index = 0,
         }},
@@ -456,6 +377,7 @@ pub const Attachment = struct {
     image: *const Image,
     clear: ?Clear = null,
     store: bool = true,
+    load: bool = true,
 
     pub const Clear = union(enum) {
         color: [4]f32,
@@ -484,7 +406,7 @@ pub fn beginRenderPass(
             .resolve_mode = .{},
             .resolve_image_view = .null_handle,
             .resolve_image_layout = .undefined,
-            .load_op = if (color_attachment.clear != null) .clear else .load,
+            .load_op = if (color_attachment.clear != null) .clear else if (color_attachment.load) .load else .dont_care,
             .store_op = if (color_attachment.store) .store else .dont_care,
             .clear_value = if (color_attachment.clear != null) switch (color_attachment.clear.?) {
                 .color => .{ .color = .{ .float_32 = color_attachment.clear.?.color } },
@@ -913,4 +835,19 @@ pub fn debugLabelEnd(self: CommandBuffer) void {
     if (@import("builtin").mode != .Debug) return;
 
     Context.self.vkd.cmdEndDebugUtilsLabelEXT(self.handle);
+}
+
+///Does nothing in OptimizeMode.Debug
+pub fn debugSetName(self: CommandBuffer, name: []const u8) void {
+    if (@import("builtin").mode != .Debug) return;
+
+    var name_buffer: [1024]u8 = undefined;
+
+    const name_z = std.fmt.bufPrintZ(&name_buffer, "{s}", .{name}) catch unreachable;
+
+    Context.self.vkd.setDebugUtilsObjectNameEXT(Context.self.device, &.{
+        .object_type = .command_buffer,
+        .object_handle = @intFromEnum(self.handle),
+        .p_object_name = name_z,
+    }) catch unreachable;
 }

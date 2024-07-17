@@ -69,7 +69,6 @@ pub fn init(
     depth: u32,
     levels: u32,
     format: vk.Format,
-    layout: vk.ImageLayout,
     usage: vk.ImageUsageFlags,
 ) !Image {
     var self = Image{
@@ -78,7 +77,7 @@ pub fn init(
         .view = .null_handle,
         .memory_page = undefined,
         .format = format,
-        .layout = layout,
+        .layout = .undefined,
         .width = width,
         .height = height,
         .depth = depth,
@@ -156,53 +155,6 @@ pub fn init(
         },
     }, Context.self.allocation_callbacks);
     errdefer Context.self.vkd.destroyImageView(Context.self.device, self.view, Context.self.allocation_callbacks);
-
-    if (layout == .transfer_dst_optimal or usage.transfer_dst_bit) {
-        var command_buffer = try CommandBuffer.init(.graphics);
-        defer command_buffer.deinit();
-
-        {
-            try command_buffer.begin();
-
-            Context.self.vkd.cmdPipelineBarrier2(command_buffer.handle, &.{
-                .dependency_flags = .{
-                    .by_region_bit = true,
-                },
-                .memory_barrier_count = 0,
-                .p_memory_barriers = undefined,
-                .buffer_memory_barrier_count = 0,
-                .p_buffer_memory_barriers = undefined,
-                .image_memory_barrier_count = 1,
-                .p_image_memory_barriers = @as([*]const vk.ImageMemoryBarrier2, @ptrCast(&vk.ImageMemoryBarrier2{
-                    .src_stage_mask = .{
-                        .top_of_pipe_bit = true,
-                    },
-                    .dst_stage_mask = .{
-                        .copy_bit = true,
-                    },
-                    .src_access_mask = .{},
-                    .dst_access_mask = .{
-                        .transfer_write_bit = true,
-                    },
-                    .old_layout = .undefined,
-                    .new_layout = .transfer_dst_optimal,
-                    .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-                    .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-                    .image = self.handle,
-                    .subresource_range = .{
-                        .aspect_mask = self.aspect_mask,
-                        .base_mip_level = 0,
-                        .level_count = vk.REMAINING_MIP_LEVELS,
-                        .base_array_layer = 0,
-                        .layer_count = vk.REMAINING_ARRAY_LAYERS,
-                    },
-                })),
-            });
-
-            command_buffer.end();
-            try command_buffer.submitAndWait();
-        }
-    }
 
     return self;
 }
@@ -350,6 +302,27 @@ pub fn destroyView(self: Image, view: Image.View) void {
     _ = self;
 
     defer Context.self.vkd.destroyImageView(Context.self.device, view.handle, Context.self.allocation_callbacks);
+}
+
+///Does nothing in OptimizeMode.Debug
+pub fn debugSetName(self: Image, name: []const u8) void {
+    if (@import("builtin").mode != .Debug) return;
+
+    var name_buffer: [1024]u8 = undefined;
+
+    const name_z = std.fmt.bufPrintZ(&name_buffer, "{s}", .{name}) catch unreachable;
+
+    Context.self.vkd.setDebugUtilsObjectNameEXT(Context.self.device, &.{
+        .object_type = .image,
+        .object_handle = @intFromEnum(self.handle),
+        .p_object_name = name_z,
+    }) catch unreachable;
+
+    Context.self.vkd.setDebugUtilsObjectNameEXT(Context.self.device, &.{
+        .object_type = .image_view,
+        .object_handle = @intFromEnum(self.view),
+        .p_object_name = name_z,
+    }) catch unreachable;
 }
 
 const Image = @This();

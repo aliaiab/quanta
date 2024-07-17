@@ -160,11 +160,22 @@ fn debugUtilsMessengerCallback(
     _ = message_types;
     _ = p_user_data;
 
+    //I don't know if a message can have multiple severity bits set, but I don't even know what that would mean semantically
     if (message_severity.error_bit_ext) {
-        log.err("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message.? });
-        @panic("");
+        log.err("(vulkan_validation):\n\n{s} {s}\n\n", .{
+            p_callback_data.?.p_message_id_name orelse "",
+            p_callback_data.?.p_message.?,
+        });
+
+        //This is inherently supposed to be unrecoverable: The prorgam is in an invalid state: fix it
+        @panic("(vulkan_validation): Validation Error");
     } else if (message_severity.warning_bit_ext) {
-        log.warn("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message.? });
+        log.warn("(vulkan_validation):\n\n{s} {s}\n\n", .{
+            p_callback_data.?.p_message_id_name orelse "",
+            p_callback_data.?.p_message.?,
+        });
+
+        //This is inherently supposed to be unrecoverable: The prorgam is in an invalid state: fix it
         @panic("");
     } else {
         log.debug("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message.? });
@@ -395,18 +406,43 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
         }
     }
 
-    const validation_features = [_]vk.ValidationFeatureEnableEXT{
-        .synchronization_validation_ext,
-        // .gpu_assisted_ext,
+    //Layer Settings if validation is enabled
+    const layer_settings = [_]vk.LayerSettingEXT{
+        .{
+            .p_layer_name = "VK_LAYER_KHRONOS_validation",
+            .p_setting_name = "validate_sync",
+            .type = vk.LayerSettingTypeEXT.bool32_ext,
+            .value_count = 1,
+            .p_values = &@as(u32, vk.TRUE),
+        },
+        .{
+            .p_layer_name = "VK_LAYER_KHRONOS_validation",
+            .p_setting_name = "validate_best_practices",
+            .type = vk.LayerSettingTypeEXT.bool32_ext,
+            .value_count = 1,
+            .p_values = &@as(u32, vk.TRUE),
+        },
+        .{
+            .p_layer_name = "VK_LAYER_KHRONOS_validation",
+            .p_setting_name = "validate_best_practices_nvidia",
+            .type = vk.LayerSettingTypeEXT.bool32_ext,
+            .value_count = 1,
+            .p_values = &@as(u32, vk.TRUE),
+        },
+        .{
+            .p_layer_name = "VK_LAYER_KHRONOS_validation",
+            .p_setting_name = "check_image_layout",
+            .type = vk.LayerSettingTypeEXT.bool32_ext,
+            .value_count = 1,
+            .p_values = &@as(u32, vk.TRUE),
+        },
     };
 
     self.instance = try self.vkb.createInstance(&.{
         .p_next = if (enable_khronos_validation)
-            &vk.ValidationFeaturesEXT{
-                .enabled_validation_feature_count = @as(u32, @intCast(validation_features.len)),
-                .p_enabled_validation_features = &validation_features,
-                .disabled_validation_feature_count = 0,
-                .p_disabled_validation_features = undefined,
+            &vk.LayerSettingsCreateInfoEXT{
+                .setting_count = @intCast(layer_settings.len),
+                .p_settings = &layer_settings,
             }
         else
             null,

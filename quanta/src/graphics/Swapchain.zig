@@ -69,13 +69,22 @@ pub fn initRecycle(allocator: std.mem.Allocator, surface: vk.SurfaceKHR, old_han
     var next_image_acquired = try Semaphore.initBinary();
     errdefer next_image_acquired.deinit();
 
-    const result = try Context.self.vkd.acquireNextImage2KHR(Context.self.device, &vk.AcquireNextImageInfoKHR{
+    const result = Context.self.vkd.acquireNextImage2KHR(Context.self.device, &vk.AcquireNextImageInfoKHR{
         .swapchain = handle,
         .semaphore = next_image_acquired.handle,
         .timeout = std.math.maxInt(u64),
         .fence = .null_handle,
         .device_mask = 1,
-    });
+    }) catch |e| {
+        switch (e) {
+            error.OutOfDateKHR => {
+                std.log.info("swapchain: swap: getting the next image returned out of date", .{});
+
+                return e;
+            },
+            else => return e,
+        }
+    };
 
     if (result.result != .success) {
         return error.ImageAcquireFailed;
@@ -115,6 +124,8 @@ pub fn obtainNextImage(self: *Swapchain) Image {
         .depth = 1,
         .levels = 1,
     };
+
+    color_image.debugSetName("Swapchain Image");
 
     return color_image;
 }
@@ -187,13 +198,27 @@ pub fn present(self: *Swapchain) !void {
 }
 
 pub fn swap(self: *Swapchain) !void {
-    const result = try Context.self.vkd.acquireNextImage2KHR(Context.self.device, &vk.AcquireNextImageInfoKHR{
+    const result = Context.self.vkd.acquireNextImage2KHR(Context.self.device, &vk.AcquireNextImageInfoKHR{
         .swapchain = self.handle,
         .semaphore = self.next_image_acquired.handle,
         .timeout = std.math.maxInt(u64),
         .fence = .null_handle,
         .device_mask = 1,
-    });
+    }) catch |e| {
+        switch (e) {
+            error.OutOfDateKHR => {
+                try Context.self.vkd.queueWaitIdle(Context.self.graphics_queue);
+                std.log.info("swapchain: swap: getting the next image returned out of date", .{});
+
+                try self.recreate();
+
+                return;
+            },
+            else => {
+                return e;
+            },
+        }
+    };
 
     std.mem.swap(Semaphore, &self.swap_images[result.image_index].image_acquired, &self.next_image_acquired);
     self.image_index = result.image_index;

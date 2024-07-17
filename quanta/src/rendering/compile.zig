@@ -25,16 +25,24 @@ pub const Context = struct {
         is_presentation_image: bool = false,
     }) = .{},
     samplers: std.AutoArrayHashMapUnmanaged(u64, graphics.Sampler) = .{},
+    ///The retained barrier map which tracks barriers across frames and within them
+    barrier_map: BarrierMap,
 
     ///The number of buffered command/staging buffers to keep around for gpu/cpu parralelism
     ///This is completely unrelated and independent from swapchain buffering
     const cpu_buffer_count = 2;
 
-    pub fn init(gpa: std.mem.Allocator) Context {
+    ///The context now owns the scatch_allocator, and will reset and deinit it
+    ///TODO: right now you MUST initialize the barrier map in this struct AFTER calling init
+    ///If you don't it's a simple crash
+    pub fn init(
+        gpa: std.mem.Allocator,
+    ) Context {
         var self: Context = .{
             .gpa = gpa,
             .scratch_allocator = std.heap.ArenaAllocator.init(gpa),
             .cpu_buffer = undefined,
+            .barrier_map = undefined,
         };
 
         for (0..cpu_buffer_count) |i| {
@@ -83,6 +91,7 @@ pub const Context = struct {
         self.buffers.deinit(self.gpa);
         self.images.deinit(self.gpa);
         self.samplers.deinit(self.gpa);
+        self.barrier_map.deinit();
         self.scratch_allocator.deinit();
 
         self.* = undefined;
@@ -137,6 +146,7 @@ pub const Context = struct {
 
         if (compile_buffer.graphics_command_buffer == null) {
             compile_buffer.graphics_command_buffer = try graphics.CommandBuffer.init(.graphics);
+            compile_buffer.graphics_command_buffer.?.debugSetName("Compiled Render Graph Command Buffer");
         } else {
             compile_buffer.graphics_command_buffer.?.wait_fence.wait();
             compile_buffer.graphics_command_buffer.?.wait_fence.reset();
@@ -325,11 +335,7 @@ pub const Context = struct {
         //TODO: resource creation should be driven by the dependency graph, not static reference counts
         {
             for (builder.raster_pipelines.items(.reference_count), 0..) |reference_count, pipeline_index| {
-                if (reference_count == 0) {
-                    //TODO: deallocate unreferenced pipelines if they have a backing store
-                    continue;
-                }
-
+                _ = reference_count; // autofix
                 const handle: graph.RasterPipeline = builder.raster_pipelines.items(.handle)[pipeline_index];
 
                 const get_or_put_res = try self.raster_pipelines.getOrPut(self.gpa, handle.id);
@@ -440,10 +446,15 @@ pub const Context = struct {
                     image_depth,
                     image_levels,
                     @enumFromInt(@intFromEnum(image_format)),
-                    .shader_read_only_optimal,
                     image_usage.usage,
                 );
                 errdefer get_or_put_res.value_ptr.image.deinit();
+
+                const maybe_image_name = builder.debug_info.getImageName(builder.*, handle);
+
+                if (maybe_image_name) |image_name| {
+                    get_or_put_res.value_ptr.*.image.debugSetName(image_name);
+                }
             }
 
             for (builder.samplers.items(.reference_count), 0..) |reference_count, sampler_index| {
@@ -508,10 +519,30 @@ pub const Context = struct {
             try command_buffer.begin();
             defer command_buffer.end();
 
-            var barrier_map: BarrierMap = .{
-                .context = self,
-            };
-            defer barrier_map.deinit();
+            const barrier_map = &self.barrier_map;
+
+            for (self.images.values()) |*image| {
+                if (image.is_presentation_image) {
+                    const image_ptr = &image.image;
+
+                    //If the image is a presentation image, we need to synchronise with vkAcquireNextImage, which posts a read on the color attachment output stage
+                    //We must only do this once per frame as a presentation image may be used multiple times in a frame (obviously)
+                    barrier_map.acquireImage(
+                        .{
+                            .image = image_ptr,
+                            .base_mip_level = 0,
+                            .level_count = 1,
+                            .stage = .{
+                                .color_attachment_output = true,
+                            },
+                            .access = .{},
+                            .expected_layout = .undefined,
+                        },
+                    );
+                    try barrier_map.flushBarriers(command_buffer);
+                    barrier_map.releaseImage(.{ .image = image_ptr });
+                }
+            }
 
             for (dependencies.items) |*dependency| {
                 const pass_index = dependency.pass_index;
@@ -519,7 +550,6 @@ pub const Context = struct {
                 const pass_data: graph.Builder.PassData = builder.passes.items(.data)[pass_index];
 
                 var current_pipline: ?*graphics.GraphicsPipeline = null;
-                var current_index_buffer: ?*graphics.Buffer = null;
 
                 if (pass_data == .raster) {
                     const attachments_input = pass_data.raster.attachments;
@@ -528,34 +558,61 @@ pub const Context = struct {
                     for (attachments_input) |input| {
                         const image = &self.images.getPtr(input.image).?.image;
 
-                        try barrier_map.readWriteImage(
-                            image,
-                            0,
-                            1,
-                            .{ .color_attachment_output = true },
-                            .{ .color_attachment_write = true },
-                            .color_attachment_optimal,
+                        barrier_map.acquireImage(
+                            .{
+                                .image = image,
+                                .stage = .{
+                                    .color_attachment_output = true,
+                                },
+                                .access = .{
+                                    .color_attachment_read = false,
+                                    .color_attachment_write = input.store,
+                                },
+                                //If we clear, we don't want to flush the cache because that's a waste
+                                .discard_previous_data = input.clear != null,
+                                .expected_layout = .color_attachment_optimal,
+                            },
                         );
                     }
 
                     if (pass_data.raster.depth_attachment != null) {
                         const image = &self.images.getPtr(pass_data.raster.depth_attachment.?.image).?.image;
 
-                        try barrier_map.readWriteImage(
-                            image,
-                            0,
-                            1,
+                        barrier_map.acquireImage(
                             .{
-                                .early_fragment_tests = true,
+                                .image = image,
+                                .stage = .{
+                                    .early_fragment_tests = true,
+                                    .color_attachment_output = true,
+                                    //Depth fragments are written in late fragment tests
+                                    // .late_fragment_tests = pass_data.raster.depth_attachment.?.store,
+                                },
+                                .access = .{
+                                    .depth_attachment_read = true,
+                                    .depth_attachment_write = pass_data.raster.depth_attachment.?.store,
+                                    .color_attachment_write = true,
+                                },
+                                .expected_layout = .depth_attachment_optimal,
                             },
-                            .{
-                                .depth_attachment_read = true,
-                                .depth_attachment_write = pass_data.raster.depth_attachment.?.store,
-                            },
-                            .depth_attachment_optimal,
                         );
                     }
                 }
+                defer if (pass_data == .raster) {
+                    const attachments_input = pass_data.raster.attachments;
+
+                    // attachment barrier prepass
+                    for (attachments_input) |input| {
+                        const image = &self.images.getPtr(input.image).?.image;
+
+                        barrier_map.releaseImage(.{ .image = image });
+                    }
+
+                    if (pass_data.raster.depth_attachment != null) {
+                        const image = &self.images.getPtr(pass_data.raster.depth_attachment.?.image).?.image;
+
+                        barrier_map.releaseImage(.{ .image = image });
+                    }
+                };
 
                 var command_iter = builder.passCommandIterator(pass_index);
 
@@ -563,88 +620,77 @@ pub const Context = struct {
                 //Places barriers before the entire pass
                 while (command_iter.next()) |command| {
                     switch (command) {
-                        .update_buffer => |update_buffer| {
-                            const buffer = self.buffers.getPtr(update_buffer.buffer).?;
-
-                            try barrier_map.writeBuffer(
-                                buffer,
-                                .{ .copy = true },
-                                .{ .transfer_write = true },
-                            );
-                        },
-                        .update_image => |update_image| {
-                            const image = &self.images.getPtr(update_image.image).?.image;
-
-                            try barrier_map.writeImage(
-                                image,
-                                0,
-                                1,
-                                .{ .copy = true },
-                                .{ .transfer_write = true },
-                                .transfer_dst_optimal,
-                            );
-                        },
                         .set_raster_pipeline_resource_buffer => |command_data| {
                             const buffer = self.buffers.getPtr(command_data.buffer).?;
 
-                            barrier_map.readBuffer(
-                                buffer,
-                                .{ .vertex_shader = true, .fragment_shader = true },
-                                .{ .shader_read = true },
-                            );
+                            barrier_map.acquireBuffer(.{
+                                .buffer = buffer,
+                                .stage = .{
+                                    //TODO: figure out which stages a buffer is used in based on shader reflection data
+                                    //that we already have: This could have a huge affect on pipelining and could remove bubbles
+                                    .vertex_shader = true,
+                                    .fragment_shader = true,
+                                },
+                                .access = .{
+                                    .shader_read = true,
+                                },
+                            });
                         },
                         .set_raster_pipeline_image_sampler => |command_data| {
                             const image = &self.images.getPtr(command_data.image).?.image;
 
-                            barrier_map.readImage(
-                                image,
-                                0,
-                                graphics.vulkan.REMAINING_MIP_LEVELS,
-                                .{ .fragment_shader = true },
-                                .{ .shader_read = true },
-                                .shader_read_only_optimal,
-                            );
+                            barrier_map.acquireImage(.{
+                                .image = image,
+                                .base_mip_level = 0,
+                                .stage = .{ .fragment_shader = true },
+                                .access = .{ .shader_read = true },
+                                .expected_layout = .shader_read_only_optimal,
+                            });
                         },
                         .set_index_buffer => |command_data| {
-                            current_index_buffer = self.buffers.getPtr(command_data.index_buffer).?;
-                            barrier_map.readBuffer(
-                                current_index_buffer.?,
-                                .{ .index_input = true },
-                                .{ .index_read = true },
+                            const buffer = self.buffers.getPtr(command_data.index_buffer).?;
+
+                            barrier_map.acquireBuffer(
+                                .{
+                                    .buffer = buffer,
+                                    .stage = .{ .index_input = true },
+                                    .access = .{ .index_read = true },
+                                },
                             );
                         },
-                        .draw_indexed => {},
                         .draw_indexed_indirect_count => |command_data| {
                             const draw_buffer = self.buffers.getPtr(command_data.draw_buffer).?;
                             const count_buffer = self.buffers.getPtr(command_data.count_buffer).?;
 
-                            barrier_map.readBuffer(
-                                draw_buffer,
-                                .{ .draw_indirect = true },
-                                .{ .indirect_command_read = true },
-                            );
+                            barrier_map.acquireBuffer(.{
+                                .buffer = draw_buffer,
+                                .stage = .{
+                                    .draw_indirect = true,
+                                    //Is this needed?
+                                    .pre_rasterization_shaders = true,
+                                },
+                                .access = .{
+                                    .indirect_command_read = true,
+                                },
+                            });
 
-                            barrier_map.readBuffer(
-                                count_buffer,
-                                .{ .draw_indirect = true },
-                                .{ .indirect_command_read = true },
-                            );
+                            barrier_map.acquireBuffer(.{
+                                .buffer = count_buffer,
+                                .stage = .{ .draw_indirect = true },
+                                .access = .{
+                                    .indirect_command_read = true,
+                                },
+                            });
                         },
                         else => {},
                     }
                 }
 
-                command_buffer.bufferBarriers(
-                    barrier_map.buffer_barriers.items(.buffer),
-                    barrier_map.buffer_barriers.items(.barrier),
-                );
-                barrier_map.buffer_barriers.shrinkRetainingCapacity(0);
+                command_buffer.debugLabelBegin("(quanta): pre_raster_pass: Flush barriers");
 
-                command_buffer.imageBarriers(
-                    barrier_map.image_barriers.items(.image),
-                    barrier_map.image_barriers.items(.barrier),
-                );
-                barrier_map.image_barriers.shrinkRetainingCapacity(0);
+                try barrier_map.flushBarriers(command_buffer);
+
+                command_buffer.debugLabelEnd();
 
                 const maybe_pass_name = builder.debug_info.getPassName(builder.*, pass_handle);
 
@@ -666,6 +712,7 @@ pub const Context = struct {
                         output.image = &self.images.getPtr(input.image).?.image;
                         output.clear = if (input.clear != null) .{ .color = input.clear.? } else null;
                         output.store = input.store;
+                        output.load = input.load;
                     }
 
                     command_buffer.beginRenderPass(
@@ -691,41 +738,75 @@ pub const Context = struct {
                 };
 
                 current_pipline = null;
-                current_index_buffer = null;
 
                 command_iter = builder.passCommandIterator(pass_index);
 
                 //encode final commands
                 while (command_iter.next()) |command| {
+                    //Command barrier aqcuire
                     switch (command) {
                         .blit_image => |blit_image| {
                             const source_image = &self.images.getPtr(blit_image.src_image).?.image;
+                            const destination_image = &self.images.getPtr(blit_image.dst_image).?.image;
 
-                            barrier_map.readImage(
-                                source_image,
-                                blit_image.region.src_subresource.mip_level,
-                                1,
-                                .{ .copy = true },
-                                .{ .transfer_read = true },
-                                .transfer_src_optimal,
+                            barrier_map.acquireImage(
+                                .{
+                                    .image = source_image,
+                                    .base_mip_level = blit_image.region.src_subresource.mip_level,
+                                    .level_count = 1,
+                                    .stage = .{ .copy = true },
+                                    .access = .{ .transfer_read = true },
+                                    .expected_layout = .transfer_src_optimal,
+                                },
                             );
+
+                            barrier_map.acquireImage(
+                                .{
+                                    .image = destination_image,
+                                    .base_mip_level = blit_image.region.dst_subresource.mip_level,
+                                    .level_count = 1,
+                                    .stage = .{ .copy = true },
+                                    .access = .{ .transfer_write = true },
+                                    .expected_layout = .transfer_dst_optimal,
+                                },
+                            );
+                        },
+                        //Should only be allowed in transfer and compute
+                        .update_buffer => |update_buffer| {
+                            const buffer = self.buffers.getPtr(update_buffer.buffer).?;
+
+                            barrier_map.acquireBuffer(.{
+                                .buffer = buffer,
+                                .stage = .{
+                                    .copy = true,
+                                },
+                                .access = .{
+                                    .transfer_write = true,
+                                },
+                            });
+                        },
+                        .update_image => |update_image| {
+                            barrier_map.acquireImage(.{
+                                .image = &self.images.getPtr(update_image.image).?.image,
+                                .level_count = 1,
+                                .stage = .{
+                                    .copy = true,
+                                },
+                                .access = .{
+                                    .transfer_write = true,
+                                },
+                                .expected_layout = .transfer_dst_optimal,
+                            });
                         },
                         else => {},
                     }
 
-                    //Place command level barriers
-                    command_buffer.bufferBarriers(
-                        barrier_map.buffer_barriers.items(.buffer),
-                        barrier_map.buffer_barriers.items(.barrier),
-                    );
-                    barrier_map.buffer_barriers.shrinkRetainingCapacity(0);
+                    //Pipeline barriers can't be placed in a render pass instance
+                    if (pass_data != .raster) {
+                        try barrier_map.flushBarriers(command_buffer);
+                    }
 
-                    command_buffer.imageBarriers(
-                        barrier_map.image_barriers.items(.image),
-                        barrier_map.image_barriers.items(.barrier),
-                    );
-                    barrier_map.image_barriers.shrinkRetainingCapacity(0);
-
+                    //Final command buffer encode
                     switch (command) {
                         .update_buffer => |update_buffer| {
                             const buffer = self.buffers.getPtr(update_buffer.buffer).?;
@@ -742,9 +823,11 @@ pub const Context = struct {
                                 update_buffer.buffer_offset,
                                 update_buffer.contents.len,
                             );
+
+                            barrier_map.releaseBuffer(buffer);
                         },
                         .update_image => |update_image| {
-                            const image = self.images.getPtr(update_image.image).?.image;
+                            const image = &self.images.getPtr(update_image.image).?.image;
 
                             const staging_contents = try self.allocateStagingBuffer(4, update_image.contents.len);
 
@@ -754,8 +837,10 @@ pub const Context = struct {
                                 staging_contents.buffer.*,
                                 staging_contents.offset,
                                 staging_contents.mapped_region.len,
-                                image,
+                                image.*,
                             );
+
+                            barrier_map.releaseImage(.{ .image = image });
                         },
                         .blit_image => |blit_image| {
                             const source_image = &self.images.getPtr(blit_image.src_image).?.image;
@@ -811,14 +896,15 @@ pub const Context = struct {
                                 .linear,
                             );
 
-                            try barrier_map.writeImage(
-                                destination_image,
-                                blit_image.region.dst_subresource.mip_level,
-                                blit_image.region.dst_subresource.layer_count,
-                                .{ .copy = true },
-                                .{ .transfer_write = true },
-                                .transfer_dst_optimal,
-                            );
+                            barrier_map.releaseImage(.{
+                                .image = source_image,
+                                .mip_level = blit_image.region.src_subresource.mip_level,
+                            });
+
+                            barrier_map.releaseImage(.{
+                                .image = destination_image,
+                                .mip_level = blit_image.region.dst_subresource.mip_level,
+                            });
                         },
                         .set_raster_pipeline => |set_raster_pipeline| {
                             const pipeline = self.raster_pipelines.getPtr(set_raster_pipeline.pipeline.id).?;
@@ -836,6 +922,8 @@ pub const Context = struct {
                                 command_data.array_index,
                                 buffer.*,
                             );
+
+                            barrier_map.releaseBuffer(buffer);
                         },
                         .set_raster_pipeline_image_sampler => |command_data| {
                             const pipeline = self.raster_pipelines.getPtr(command_data.pipeline.id).?;
@@ -848,7 +936,10 @@ pub const Context = struct {
                                 command_data.array_index,
                                 image.*,
                                 sampler.*,
+                                .shader_read_only_optimal,
                             );
+
+                            barrier_map.releaseImage(.{ .image = image });
                         },
                         .set_viewport => |command_data| {
                             command_buffer.setViewport(
@@ -869,12 +960,14 @@ pub const Context = struct {
                             );
                         },
                         .set_index_buffer => |command_data| {
-                            current_index_buffer = self.buffers.getPtr(command_data.index_buffer).?;
+                            const index_buffer = self.buffers.getPtr(command_data.index_buffer).?;
 
-                            command_buffer.setIndexBuffer(current_index_buffer.?.*, switch (command_data.type) {
+                            command_buffer.setIndexBuffer(index_buffer.*, switch (command_data.type) {
                                 .u16 => .u16,
                                 .u32 => .u32,
                             });
+
+                            barrier_map.releaseBuffer(index_buffer);
                         },
                         .set_push_data => |command_data| {
                             command_buffer.setPushDataBytes(command_data.contents);
@@ -897,14 +990,20 @@ pub const Context = struct {
                             );
                         },
                         .draw_indexed_indirect_count => |command_data| {
+                            const draw_buffer = self.buffers.getPtr(command_data.draw_buffer).?;
+                            const count_buffer = self.buffers.getPtr(command_data.count_buffer).?;
+
                             command_buffer.drawIndexedIndirectCount(
-                                self.buffers.getPtr(command_data.draw_buffer).?.*,
+                                draw_buffer.*,
                                 command_data.draw_buffer_offset,
                                 command_data.draw_buffer_stride,
-                                self.buffers.getPtr(command_data.count_buffer).?.*,
+                                count_buffer.*,
                                 command_data.count_buffer_offset,
                                 command_data.max_draw_count,
                             );
+
+                            barrier_map.releaseBuffer(draw_buffer);
+                            barrier_map.releaseBuffer(count_buffer);
                         },
                         .set_compute_pipeline => |command_data| {
                             const pipeline = self.compute_pipelines.getPtr(command_data.pipeline).?;
@@ -929,14 +1028,28 @@ pub const Context = struct {
                 if (image_entry.value_ptr.is_presentation_image) {
                     const image = self.images.getPtr(image_entry.key_ptr.*) orelse @panic("Presentation image must have a backing image");
 
-                    compile_buffer.graphics_command_buffer.?.imageBarrier(image.*.image, .{
-                        .source_stage = .{ .color_attachment_output = true },
-                        .source_access = .{ .color_attachment_write = true },
-                        .destination_stage = .{},
-                        .destination_access = .{},
-                        .source_layout = .attachment_optimal,
-                        .destination_layout = .present_src_khr,
+                    barrier_map.acquireImage(.{
+                        .image = &image.image,
+                        .stage = .{
+                            .bottom_of_pipe = true,
+                        },
+                        .access = .{},
+                        .expected_layout = .present_src_khr,
                     });
+                }
+            }
+
+            command_buffer.debugLabelBegin("(quanta): post_frame: Presentation Image Transitions");
+
+            try barrier_map.flushBarriers(command_buffer);
+
+            command_buffer.debugLabelEnd();
+
+            while (image_iter.next()) |image_entry| {
+                if (image_entry.value_ptr.is_presentation_image) {
+                    const image = self.images.getPtr(image_entry.key_ptr.*) orelse @panic("Presentation image must have a backing image");
+
+                    barrier_map.releaseImage(.{ .image = &image.image });
                 }
             }
         }
@@ -1061,16 +1174,17 @@ pub const Context = struct {
     const CompilerContext = @This();
 
     pub const BarrierMap = struct {
-        context: *CompilerContext,
+        scratch_allocator: std.mem.Allocator,
         ///Potential barriers (created on resource write)
         buffer_map: std.AutoArrayHashMapUnmanaged(
             *const graphics.Buffer,
             graphics.CommandBuffer.BufferBarrier,
         ) = .{},
         image_map: std.AutoArrayHashMapUnmanaged(
-            *const graphics.Image,
+            ImageSlice,
             graphics.CommandBuffer.ImageBarrier,
         ) = .{},
+        ///Completed barriers based on completed read-write pairs
         buffer_barriers: std.MultiArrayList(struct {
             buffer: *const graphics.Buffer,
             barrier: graphics.CommandBuffer.BufferBarrier,
@@ -1080,159 +1194,246 @@ pub const Context = struct {
             barrier: graphics.CommandBuffer.ImageBarrier,
         }) = .{},
 
+        pub const BufferSlice = struct {
+            buffer: *const graphics.Buffer,
+            offset: usize,
+            size: usize,
+        };
+
+        ///TODO: currently we only support treating seperate mip levels as seperate sync resources
+        ///Add support for offsets and sizes, but make sure to share the layout transitions as
+        ///it doesn't make sense for different parts of an image to be in different layouts
+        pub const ImageSlice = struct {
+            image: *const graphics.Image,
+            mip_level: u32,
+        };
+
         pub fn deinit(self: *@This()) void {
-            self.buffer_map.deinit(self.context.scratch_allocator.allocator());
-            self.image_map.deinit(self.context.scratch_allocator.allocator());
-            self.buffer_barriers.deinit(self.context.scratch_allocator.allocator());
-            self.image_barriers.deinit(self.context.scratch_allocator.allocator());
+            self.buffer_map.deinit(self.scratch_allocator);
+            self.image_map.deinit(self.scratch_allocator);
+            self.buffer_barriers.deinit(self.scratch_allocator);
+            self.image_barriers.deinit(self.scratch_allocator);
 
             self.* = undefined;
         }
 
-        pub fn writeBuffer(
+        comptime {
+            {
+                //acqBuffer(buf, .{ .transfer_copy }, .{ .transfer_write });
+                //defer relBuffer(buf);
+                //
+                //flushBarriers();
+                //
+                //cmdCopyBuffer(buf, ...);
+                //...
+                //...
+            }
+
+            {
+                //acqBuffer(buf, .{ .vertex_input }, .{ .index_read });
+                //defer releaseBuffer(buf);
+
+                //flushBarriers();
+
+                //cmdBindIndexBuffer(buf, ...);
+            }
+
+            {
+                //acqImage(img, .{ .transfer_copy }, .{ .transfer_write }, .transfer_dst_optimal);
+                //defer relImage(img);
+
+                //flushBarriers();
+
+                //copyBufferToImage(img, staging, ...);
+            }
+        }
+
+        ///Call this before flushBarriers to ensure that any barriers generated are actually encoded
+        ///This will not always encode a barrier, only when a non no-op (when there is actually meaningful sync to be done)
+        ///Forms a scope/call pair with releaseBuffer
+        pub fn acquireBuffer(
+            self: *@This(),
+            config: struct {
+                buffer: *const graphics.Buffer,
+                ///Specifies the destination stages which wait for the buffer to be acquired
+                stage: graphics.CommandBuffer.PipelineStage,
+                ///Specifies the way the resource will be accessed in the acquire scope
+                access: graphics.CommandBuffer.ResourceAccess,
+            },
+        ) void {
+            const barrier_result = self.buffer_map.getOrPutValue(
+                self.scratch_allocator,
+                config.buffer,
+                .{
+                    .source_stage = .{},
+                    .source_access = .{},
+                    .destination_access = .{},
+                    .destination_stage = .{},
+                },
+            ) catch @panic("oom");
+
+            //ors the barrier flags together with the config.stage and access flags
+            //We can't just set instead of 'orring' this as acquireBuffer is designed to be able to be called in batches
+            //Such as acq, acq, acq ... (work) ... rel
+            //This ensures that when the actual barrier is emitted, we wait on all stages that could be writing/reading the buffer
+            updateBarrierMask(
+                &barrier_result.value_ptr.*.destination_stage,
+                &barrier_result.value_ptr.*.destination_access,
+                config.stage,
+                config.access,
+            );
+
+            //We techinically don't need/shouldn't emit the barrier if srcStage is zero, as that is a no-op and
+            //is a flat waste of cpu cycles. This doesn't quite apply to image barriers though due to layout transitions
+            //For now, this shouldn't cause any false-negatives and will be entirely conservative for correctness
+            self.buffer_barriers.append(self.scratch_allocator, .{
+                .buffer = config.buffer,
+                .barrier = barrier_result.value_ptr.*,
+            }) catch @panic("oom");
+        }
+
+        //This allows the accesses in the scope to be available to future acquires to do proper sync
+        //You must always do things in acquire/release pairs, otherwise auto synchronisation will not work properly
+        //Release should only be called once after multiple acquires to a single buffer
+        pub fn releaseBuffer(
             self: *@This(),
             buffer: *const graphics.Buffer,
-            stage: graphics.CommandBuffer.PipelineStage,
-            access: graphics.CommandBuffer.ResourceAccess,
-        ) !void {
-            const barrier_result = try self.buffer_map.getOrPut(
-                self.context.scratch_allocator.allocator(),
+        ) void {
+            //Technically release should never be called without acquire, so get should be fine here
+            const barrier_result = self.buffer_map.getPtr(
                 buffer,
-            );
+            ) orelse @panic("This should never happen");
 
-            if (!barrier_result.found_existing) {
-                barrier_result.value_ptr.* = .{
-                    .source_stage = stage,
-                    .source_access = access,
+            //In release, we swap the current src and dst flags and zero out the dst flags.
+            //This is because any accesses done in the scope ended by this release will need to be
+            //read as the src and dst flags for the next barrier, as that's when they need to be waited on
+            //dst flags are set entirely by the acquire calls, so we technically don't need to store them at all,
+            //But I do this mostly because most of this code assumes a full barrier struct
+
+            barrier_result.source_stage = barrier_result.destination_stage;
+            barrier_result.source_access = barrier_result.destination_access;
+
+            //This makes repeated calls to release problematic, but a single call to release after multiple acquires should
+            //be better anyway, so this is how it should be done
+
+            //^ Now the flags for the buffer have the accesses and stage for the acquire/release
+            //scope we just ended, allowing subsequent acquire's to this buffer to encode the correct barriers and wait correctly
+
+            //again, this is technically redundant but let's just do it for consistency
+            barrier_result.destination_access = .{};
+            barrier_result.destination_stage = .{};
+        }
+
+        //Same semantics as acquire/releaseBuffer but with additional layout logic
+        pub fn acquireImage(
+            self: *@This(),
+            config: struct {
+                image: *const graphics.Image,
+                stage: graphics.CommandBuffer.PipelineStage,
+                access: graphics.CommandBuffer.ResourceAccess,
+                expected_layout: graphics.vulkan.ImageLayout,
+                ///Setting this to true is the same as a pipeline barrier with srclayout = .undefined
+                discard_previous_data: bool = false,
+                base_mip_level: u32 = 0,
+                level_count: u32 = graphics.vulkan.REMAINING_MIP_LEVELS,
+            },
+        ) void {
+            const barrier_result = self.image_map.getOrPutValue(
+                self.scratch_allocator,
+                .{ .image = config.image, .mip_level = config.base_mip_level },
+                .{
+                    .source_stage = .{},
+                    .source_access = .{},
                     .destination_stage = .{},
                     .destination_access = .{},
-                };
-            } else {
-                updateBarrierMask(
-                    &barrier_result.value_ptr.*.source_stage,
-                    &barrier_result.value_ptr.*.source_access,
-                    stage,
-                    access,
-                );
+                },
+            ) catch @panic("oom");
+
+            //ors the barrier flags together with the config.stage and access flags
+            //We can't just set instead of 'orring' this as acquireBuffer is designed to be able to be called in batches
+            //Such as acq, acq, acq ... (work) ... rel
+            //This ensures that when the actual barrier is emitted, we wait on all stages that could be writing/reading the buffer
+            updateBarrierMask(
+                &barrier_result.value_ptr.*.destination_stage,
+                &barrier_result.value_ptr.*.destination_access,
+                config.stage,
+                config.access,
+            );
+
+            barrier_result.value_ptr.base_mip_level = config.base_mip_level;
+            barrier_result.value_ptr.level_count = config.level_count;
+            //We expect the destination layout to be the expected layout
+            //If the previous layout (srcLayout) is different, we have specified a layout transition
+            //If the previous layout is the same, we don't need a layout transition
+            barrier_result.value_ptr.destination_layout = config.expected_layout;
+            //For now we ensure that only 1 mip is transitioned/synced
+            //If you want to sync multiple mips together, emit multiple barriers for now
+            barrier_result.value_ptr.level_count = 1;
+
+            //Setting source layout to undefined in vulkan is the same as discarding any previous results
+            //Which is what you want for fresh images acquired from the WSI for example
+            if (config.discard_previous_data or config.expected_layout == .undefined) {
+                barrier_result.value_ptr.source_layout = .undefined;
             }
+
+            //We techinically don't need/shouldn't emit the barrier if srcStage is zero, as that is a no-op and
+            //is a flat waste of cpu cycles. This doesn't quite apply to image barriers though due to layout transitions
+            //For now, this shouldn't cause any false-negatives and will be entirely conservative for correctness
+            self.image_barriers.append(self.scratch_allocator, .{
+                .image = config.image,
+                .barrier = barrier_result.value_ptr.*,
+            }) catch @panic("oom");
         }
 
-        pub fn readBuffer(
+        pub fn releaseImage(
             self: *@This(),
-            buffer: *const graphics.Buffer,
-            stage: graphics.CommandBuffer.PipelineStage,
-            access: graphics.CommandBuffer.ResourceAccess,
+            config: struct {
+                image: *const graphics.Image,
+                mip_level: u32 = 0,
+            },
         ) void {
-            const maybe_buffer_barrier = self.buffer_map.getPtr(buffer);
+            //Technically release should never be called without acquire, so get should be fine here
+            //If the barrier doesn't exist it doesn't need to be released
+            const barrier_result = self.image_map.getPtr(
+                .{ .image = config.image, .mip_level = config.mip_level },
+            ) orelse @panic("This should never happen");
 
-            if (maybe_buffer_barrier) |out_barrier| {
-                updateBarrierMask(
-                    &out_barrier.*.destination_stage,
-                    &out_barrier.*.destination_access,
-                    stage,
-                    access,
-                );
+            //In release, we swap the current src and dst flags and zero out the dst flags.
+            //This is because any accesses done in the scope ended by this release will need to be
+            //read as the src and dst flags for the next barrier, as that's when they need to be waited on
+            //dst flags are set entirely by the acquire calls, so we technically don't need to store them at all,
+            //But I do this mostly because most of this code assumes a full barrier struct
 
-                self.buffer_barriers.append(self.context.scratch_allocator.allocator(), .{
-                    .buffer = buffer,
-                    .barrier = out_barrier.*,
-                }) catch @panic("oom");
-            }
+            barrier_result.source_stage = barrier_result.destination_stage;
+            barrier_result.source_access = barrier_result.destination_access;
+            barrier_result.source_layout = barrier_result.destination_layout;
+
+            //^ Now the flags for the buffer have the accesses and stage for the acquire/release
+            //scope we just ended, allowing subsequent acquire's to this buffer to encode the correct barriers and wait correctly
+
+            //again, this is technically redundant but let's just do it for consistency
+            barrier_result.destination_stage = .{};
+            barrier_result.destination_access = .{};
+            barrier_result.destination_layout = .undefined;
         }
 
-        ///Specifies a dependency that will both read and write an image atomically
-        pub fn readWriteImage(
+        ///Flush pending barriers to the command buffer
+        ///Place this before all passes and before every command in non-raster pipelines
+        pub fn flushBarriers(
             self: *@This(),
-            image: *const graphics.Image,
-            mip_level: u32,
-            level_count: u32,
-            stage: graphics.CommandBuffer.PipelineStage,
-            access: graphics.CommandBuffer.ResourceAccess,
-            expected_layout: graphics.vulkan.ImageLayout,
+            command_buffer: *graphics.CommandBuffer,
         ) !void {
-            try self.writeImage(
-                image,
-                mip_level,
-                level_count,
-                stage,
-                access,
-                expected_layout,
+            command_buffer.bufferBarriers(
+                self.buffer_barriers.items(.buffer),
+                self.buffer_barriers.items(.barrier),
             );
-            self.readImage(
-                image,
-                mip_level,
-                level_count,
-                stage,
-                access,
-                expected_layout,
+            self.buffer_barriers.shrinkRetainingCapacity(0);
+
+            command_buffer.imageBarriers(
+                self.image_barriers.items(.image),
+                self.image_barriers.items(.barrier),
             );
-        }
-
-        pub fn writeImage(
-            self: *@This(),
-            image: *const graphics.Image,
-            mip_level: u32,
-            level_count: u32,
-            stage: graphics.CommandBuffer.PipelineStage,
-            access: graphics.CommandBuffer.ResourceAccess,
-            expected_layout: graphics.vulkan.ImageLayout,
-        ) !void {
-            const barrier_result = try self.image_map.getOrPut(
-                self.context.scratch_allocator.allocator(),
-                image,
-            );
-
-            if (!barrier_result.found_existing) {
-                barrier_result.value_ptr.* = .{
-                    .source_stage = stage,
-                    .source_access = access,
-                    .destination_stage = .{},
-                    .destination_access = .{},
-                    .destination_layout = expected_layout,
-                    .base_mip_level = mip_level,
-                    .level_count = level_count,
-                };
-            } else {
-                updateBarrierMask(
-                    &barrier_result.value_ptr.*.source_stage,
-                    &barrier_result.value_ptr.*.source_access,
-                    stage,
-                    access,
-                );
-
-                barrier_result.value_ptr.base_mip_level = mip_level;
-                barrier_result.value_ptr.level_count = level_count;
-                barrier_result.value_ptr.destination_layout = expected_layout;
-            }
-        }
-
-        pub fn readImage(
-            self: *@This(),
-            image: *const graphics.Image,
-            base_mip_level: u32,
-            level_count: u32,
-            stage: graphics.CommandBuffer.PipelineStage,
-            access: graphics.CommandBuffer.ResourceAccess,
-            expected_layout: graphics.vulkan.ImageLayout,
-        ) void {
-            const maybe_barrier = self.image_map.getPtr(image);
-
-            if (maybe_barrier) |out_barrier| {
-                updateBarrierMask(
-                    &out_barrier.*.destination_stage,
-                    &out_barrier.*.destination_access,
-                    stage,
-                    access,
-                );
-
-                out_barrier.destination_layout = expected_layout;
-                out_barrier.base_mip_level = base_mip_level;
-                out_barrier.level_count = level_count;
-                self.image_barriers.append(self.context.scratch_allocator.allocator(), .{
-                    .image = image,
-                    .barrier = out_barrier.*,
-                }) catch @panic("oom");
-            }
+            self.image_barriers.shrinkRetainingCapacity(0);
         }
 
         fn updateBarrierMask(

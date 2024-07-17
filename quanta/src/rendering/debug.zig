@@ -13,15 +13,25 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
         source_location: std.builtin.SourceLocation,
         name: ?[]const u8 = null,
     }) = .{},
+    images: std.AutoArrayHashMapUnmanaged(graph.ImageHandle, struct {
+        source_location: std.builtin.SourceLocation,
+        name: ?[]const u8 = null,
+    }) = .{},
     file_map: std.StringHashMapUnmanaged(struct {
         source_code: []u8,
     }) = .{},
 
     pub fn deinit(self: *@This(), builder: Builder) void {
-        for (self.buffers.values()) |pass| {
-            if (pass.name == null) continue;
+        for (self.buffers.values()) |buffer| {
+            if (buffer.name == null) continue;
 
-            builder.gpa.free(pass.name.?);
+            builder.gpa.free(buffer.name.?);
+        }
+
+        for (self.images.values()) |image| {
+            if (image.name == null) continue;
+
+            builder.gpa.free(image.name.?);
         }
 
         for (self.passes.values()) |pass| {
@@ -32,6 +42,7 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
 
         self.passes.deinit(builder.gpa);
         self.buffers.deinit(builder.gpa);
+        self.images.deinit(builder.gpa);
 
         var file_map_values = self.file_map.valueIterator();
 
@@ -67,6 +78,17 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
         buffer: graph.BufferHandle,
     ) void {
         _ = self.buffers.getOrPutValue(builder.gpa, buffer, .{
+            .source_location = src,
+        }) catch return;
+    }
+
+    pub fn addImage(
+        self: *@This(),
+        builder: Builder,
+        comptime src: std.builtin.SourceLocation,
+        image: graph.ImageHandle,
+    ) void {
+        _ = self.images.getOrPutValue(builder.gpa, image, .{
             .source_location = src,
         }) catch return;
     }
@@ -155,6 +177,13 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
                 }
             }
 
+            const source_location_string = std.fmt.allocPrint(builder.gpa, "{s}:{}:{}", .{
+                pass_source.file,
+                pass_source.line,
+                pass_source.column,
+            }) catch return null;
+            defer builder.gpa.free(source_location_string);
+
             const name = std.mem.concat(builder.gpa, u8, &.{
                 std.fs.path.stem(std.fs.path.basename(pass_source.file)),
                 ".",
@@ -162,6 +191,8 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
                 "(...)",
                 ": ",
                 pass_line_comment orelse "",
+                "; From: ",
+                source_location_string,
             }) catch return null;
 
             pass_info.pass_name = name;
@@ -174,79 +205,94 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
         var buffer_info = self.buffers.getPtr(buffer) orelse return null;
 
         if (buffer_info.name == null) {
-            const pass_source: std.builtin.SourceLocation = buffer_info.source_location;
+            buffer_info.name = self.getResourceName(builder, buffer_info.source_location);
+        }
 
-            const file_data = self.file_map.getOrPut(builder.gpa, pass_source.file) catch return null;
+        return buffer_info.name;
+    }
 
-            if (!file_data.found_existing) {
-                const file_source = std.fs.cwd().readFileAlloc(builder.gpa, pass_source.file, std.math.maxInt(usize)) catch return {
-                    _ = self.file_map.remove(pass_source.file);
+    pub fn getImageName(self: *@This(), builder: Builder, image: graph.ImageHandle) ?[]const u8 {
+        var image_info = self.images.getPtr(image) orelse return null;
 
-                    return null;
-                };
+        if (image_info.name == null) {
+            image_info.name = self.getResourceName(builder, image_info.source_location);
+        }
 
-                file_data.value_ptr.* = .{
-                    .source_code = file_source,
-                };
-            }
+        return image_info.name;
+    }
 
-            const file_source: []const u8 = file_data.value_ptr.source_code;
+    ///Gets the name for a generic resource-like graph call by tokenizing the source
+    pub fn getResourceName(self: *@This(), builder: Builder, source_location: std.builtin.SourceLocation) ?[]const u8 {
+        const pass_source: std.builtin.SourceLocation = source_location;
 
-            var pass_line: []const u8 = "";
-            var pass_line_index: u32 = 0;
+        const file_data = self.file_map.getOrPut(builder.gpa, pass_source.file) catch return null;
 
-            {
-                var line_index: u32 = 1;
+        if (!file_data.found_existing) {
+            const file_source = std.fs.cwd().readFileAlloc(builder.gpa, pass_source.file, std.math.maxInt(usize)) catch return {
+                _ = self.file_map.remove(pass_source.file);
 
-                var source_lines = std.mem.splitScalar(u8, file_source, '\n');
+                return null;
+            };
 
-                var previous_line: []const u8 = "";
+            file_data.value_ptr.* = .{
+                .source_code = file_source,
+            };
+        }
 
-                while (source_lines.next()) |source_line| : (line_index += 1) {
-                    defer previous_line = source_line;
+        const file_source: []const u8 = file_data.value_ptr.source_code;
 
-                    if (line_index + 1 == pass_source.line) {
-                        //If the pass call has it's args split between multiple lines, then
-                        //the @src() builtin will have a comma after it.
-                        //We have made it in graph.Builder that @src() will ALWAYS be the first argument (after self)
-                        const is_multiline = std.mem.endsWith(u8, source_lines.peek().?, ",");
+        var pass_line: []const u8 = "";
+        var pass_line_index: u32 = 0;
 
-                        if (is_multiline) {
-                            pass_line = source_line;
-                            break;
-                        }
-                    }
+        {
+            var line_index: u32 = 1;
 
-                    if (line_index == pass_source.line) {
+            var source_lines = std.mem.splitScalar(u8, file_source, '\n');
+
+            var previous_line: []const u8 = "";
+
+            while (source_lines.next()) |source_line| : (line_index += 1) {
+                defer previous_line = source_line;
+
+                if (line_index + 1 == pass_source.line) {
+                    //If the pass call has it's args split between multiple lines, then
+                    //the @src() builtin will have a comma after it.
+                    //We have made it in graph.Builder that @src() will ALWAYS be the first argument (after self)
+                    const is_multiline = std.mem.endsWith(u8, source_lines.peek().?, ",");
+
+                    if (is_multiline) {
                         pass_line = source_line;
                         break;
                     }
                 }
 
-                pass_line_index = line_index - 1;
-
-                source_lines.reset();
-
-                line_index = 0;
+                if (line_index == pass_source.line) {
+                    pass_line = source_line;
+                    break;
+                }
             }
 
-            var tokenizer_buffer: [1024]u8 = undefined;
+            pass_line_index = line_index - 1;
 
-            const tokenizer_string = std.fmt.bufPrintZ(&tokenizer_buffer, "{s}", .{pass_line}) catch return null;
+            source_lines.reset();
 
-            var tokenizer = std.zig.Tokenizer.init(tokenizer_string);
-
-            _ = tokenizer.next();
-            const identifier_token = tokenizer.next();
-
-            const name = std.mem.concat(builder.gpa, u8, &.{
-                tokenizer_string[identifier_token.loc.start..identifier_token.loc.end],
-            }) catch return null;
-
-            buffer_info.name = name;
+            line_index = 0;
         }
 
-        return buffer_info.name orelse null;
+        var tokenizer_buffer: [1024]u8 = undefined;
+
+        const tokenizer_string = std.fmt.bufPrintZ(&tokenizer_buffer, "{s}", .{pass_line}) catch return null;
+
+        var tokenizer = std.zig.Tokenizer.init(tokenizer_string);
+
+        _ = tokenizer.next();
+        const identifier_token = tokenizer.next();
+
+        const name = std.mem.concat(builder.gpa, u8, &.{
+            tokenizer_string[identifier_token.loc.start..identifier_token.loc.end],
+        }) catch return null;
+
+        return name;
     }
 } else struct {
     pub inline fn deinit(_: *@This(), _: Builder) void {}
@@ -266,11 +312,22 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
         _: graph.BufferHandle,
     ) void {}
 
+    pub fn addImage(
+        _: *@This(),
+        _: Builder,
+        comptime _: std.builtin.SourceLocation,
+        _: graph.ImageHandle,
+    ) void {}
+
     pub inline fn getPassName(_: *@This(), _: Builder, _: graph.PassHandle) ?[]const u8 {
         return null;
     }
 
     pub inline fn getBufferName(_: *@This(), _: Builder, _: graph.BufferHandle) ?[]const u8 {
+        return null;
+    }
+
+    pub inline fn getImageName(_: *@This(), _: Builder, _: graph.ImageHandle) ?[]const u8 {
         return null;
     }
 };

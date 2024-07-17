@@ -313,10 +313,15 @@ pub const Builder = struct {
         size: usize,
     }) = .{},
     persistant_images: std.AutoArrayHashMapUnmanaged(ImageHandle, struct {
+        ///Store a transient image handle so that pass depedencies can be kept track of
+        image: Image,
+        ///This is true if the image is actively being used in the current graph instance (if it's stored in the images array)
+        is_active: bool,
         format: ImageFormat,
         width: u32,
         height: u32,
         depth: u32,
+        levels: u32,
     }) = .{},
 
     pub const PassData = union(enum) {
@@ -331,6 +336,7 @@ pub const Builder = struct {
                 image: ImageHandle,
                 clear: ?f32 = null,
                 store: bool = true,
+                load: bool = true,
             },
         },
         compute: void,
@@ -381,6 +387,10 @@ pub const Builder = struct {
 
         self.commands.reset();
         self.debug_info.reset(self.*);
+
+        for (self.persistant_images.values()) |*persistant_image| {
+            persistant_image.is_active = false;
+        }
 
         _ = self.scratch_allocator.reset(std.heap.ArenaAllocator.ResetMode{ .retain_capacity = {} });
     }
@@ -562,7 +572,6 @@ pub const Builder = struct {
             levels: u32 = 1,
         },
     ) Image {
-        //TODO: store a identifier base to allow for looped calls with the same src location to produce different handles
         const handle_id = idFromSourceLocationAndInt(src, options.identifier);
 
         const handle: ImageHandle = @enumFromInt(handle_id);
@@ -572,30 +581,19 @@ pub const Builder = struct {
         self.images.append(self.gpa, .{
             .handle = handle,
             .format = options.format,
-            .reference_count = 0,
             .width = options.width,
             .height = options.height,
             .depth = options.depth,
             .levels = options.levels,
+            .reference_count = 0,
         }) catch @panic("oom");
+
+        self.debug_info.addImage(self.*, src, handle);
 
         return .{
             .index = index,
             .pass_index = null,
         };
-    }
-
-    ///Create an image pointer from a handle
-    ///The handle for image must have been created during the graph instance using createImage
-    pub fn imageFromPersistantHandle(
-        self: *@This(),
-        image_handle: ImageHandle,
-    ) Image {
-        for (self.images.items(.handle), 0..) |handle, image_index| {
-            if (handle == image_handle) return image_index;
-        }
-
-        @panic("Invalid image handle");
     }
 
     ///Return the persistant handle for image
@@ -604,7 +602,58 @@ pub const Builder = struct {
         self: *@This(),
         image: Image,
     ) ImageHandle {
-        return self.images.items(.handle)[image.index];
+        const handle = self.images.items(.handle)[image.index];
+
+        const maybe_image = self.persistant_images.getOrPut(self.gpa, handle) catch @panic("oom");
+
+        if (!maybe_image.found_existing) {
+            maybe_image.value_ptr.* = .{
+                .image = .{
+                    .index = image.index,
+                    .pass_index = image.pass_index,
+                },
+                .is_active = true,
+                .width = self.images.items(.width)[image.index],
+                .height = self.images.items(.height)[image.index],
+                .depth = self.images.items(.depth)[image.index],
+                .levels = self.images.items(.levels)[image.index],
+                .format = self.images.items(.format)[image.index],
+            };
+        }
+
+        return handle;
+    }
+
+    ///Create an image pointer from a handle
+    pub fn imageFromPersistantHandle(
+        self: *@This(),
+        image_handle: ImageHandle,
+    ) *Image {
+        const maybe_image = self.persistant_images.getPtr(image_handle);
+
+        //If the image is not active in the current graph instance, add it to the images list so
+        //it can be observed by commands
+        if (!maybe_image.?.is_active) {
+            //Update the image index with the new one
+            maybe_image.?.image.index = @intCast(self.images.len);
+            //Make sure the persistant image is marked as active
+            maybe_image.?.is_active = true;
+            //If the image isn't active, then we must set the pass index to null so that
+            //We don't try to depend on a pass index from the last graph instance
+            maybe_image.?.image.pass_index = null;
+
+            self.images.append(self.gpa, .{
+                .handle = image_handle,
+                .format = maybe_image.?.format,
+                .width = maybe_image.?.width,
+                .height = maybe_image.?.height,
+                .depth = maybe_image.?.depth,
+                .levels = maybe_image.?.levels,
+                .reference_count = 0,
+            }) catch @panic("oom");
+        }
+
+        return &maybe_image.?.image;
     }
 
     pub fn imageGetWidth(
@@ -774,6 +823,7 @@ pub const Builder = struct {
         image: ImageHandle,
         clear: ?[4]f32 = null,
         store: bool = true,
+        load: bool = true,
     };
 
     pub const RasterRenderArea = union(enum) {
@@ -793,7 +843,7 @@ pub const Builder = struct {
         color_attachments: []const struct {
             image: *Image,
             clear: ?[4]f32 = null,
-            ///TODO: determine this at graph compile?
+            load: bool = true,
             store: bool = true,
         },
         depth_attachment: ?union(enum) {
@@ -817,6 +867,7 @@ pub const Builder = struct {
                 .image = self.images.items(.handle)[attachment.image.index],
                 .clear = attachment.clear,
                 .store = attachment.store,
+                .load = attachment.load,
             };
         }
 

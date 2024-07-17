@@ -9,7 +9,9 @@ pub fn parse(comptime T: type, allocator: std.mem.Allocator, source: [:0]const u
 pub fn parseFree(comptime T: type, allocator: std.mem.Allocator, data: T) void {
     inline for (std.meta.fields(T)) |field| {
         switch (@typeInfo(field.type)) {
-            .Struct => {},
+            .Struct => {
+                parseFree(field.type, allocator, @field(data, field.name));
+            },
             .Pointer => |pointer_type_info| {
                 switch (pointer_type_info.size) {
                     .Slice => {
