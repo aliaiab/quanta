@@ -245,6 +245,7 @@ pub const Builder = struct {
         push_constant_size: u32,
         attachment_formats: []const ImageFormat,
         depth_attachment_format: ImageFormat,
+        input_assembly_state: @import("../graphics.zig").GraphicsPipeline.Options.InputAssemblyState,
         depth_state: @import("../graphics.zig").GraphicsPipeline.Options.DepthState,
         rasterisation_state: @import("../graphics.zig").GraphicsPipeline.Options.RasterisationState,
         blend_state: @import("../graphics.zig").GraphicsPipeline.Options.BlendState,
@@ -406,7 +407,8 @@ pub const Builder = struct {
     const CreateRasterPipelineOptions = struct {
         attachment_formats: []const ImageFormat,
         depth_attachment_format: ImageFormat = .undefined,
-        ///TODO: create dedicated pipeline option structs for renderer graph
+        ///TODO: create dedicated pipeline option structs for rendering.graph
+        input_assembly_state: @import("../graphics.zig").GraphicsPipeline.Options.InputAssemblyState = .{},
         depth_state: @import("../graphics.zig").GraphicsPipeline.Options.DepthState = .{},
         rasterisation_state: @import("../graphics.zig").GraphicsPipeline.Options.RasterisationState = .{},
         blend_state: @import("../graphics.zig").GraphicsPipeline.Options.BlendState = .{},
@@ -434,6 +436,7 @@ pub const Builder = struct {
             .push_constant_size = @intCast(push_constant_size),
             .attachment_formats = self.scratch_allocator.allocator().dupe(ImageFormat, options.attachment_formats) catch @panic("oom"),
             .depth_attachment_format = options.depth_attachment_format,
+            .input_assembly_state = options.input_assembly_state,
             .depth_state = options.depth_state,
             .rasterisation_state = options.rasterisation_state,
             .blend_state = options.blend_state,

@@ -25,9 +25,19 @@ pub const Options = struct {
     fragment_shader_binary: []align(4) const u8,
     task_shader_binary: ?[]align(4) const u8 = null,
     mesh_shader_binary: ?[]align(4) const u8 = null,
+    input_assembly_state: InputAssemblyState = .{},
     depth_state: DepthState = .{},
     rasterisation_state: RasterisationState = .{},
     blend_state: BlendState = .{},
+
+    pub const InputAssemblyState = struct {
+        primitive_topology: PrimitiveTopology = .triangle_list,
+
+        pub const PrimitiveTopology = enum {
+            triangle_list,
+            line_list,
+        };
+    };
 
     pub const DepthState = struct {
         write_enabled: bool = false,
@@ -405,7 +415,10 @@ pub fn init(
         },
         .p_input_assembly_state = &.{
             .flags = .{},
-            .topology = .triangle_list,
+            .topology = switch (options.input_assembly_state.primitive_topology) {
+                .triangle_list => .triangle_list,
+                .line_list => .line_list,
+            },
             .primitive_restart_enable = vk.FALSE,
         },
         .p_tessellation_state = null,

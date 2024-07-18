@@ -362,6 +362,7 @@ pub const Context = struct {
                         .depth_attachment_format = @enumFromInt(@intFromEnum(depth_attachment_format)),
                         .vertex_shader_binary = @alignCast(vertex_module.code),
                         .fragment_shader_binary = @alignCast(fragment_module.code),
+                        .input_assembly_state = pipeline.input_assembly_state,
                         .depth_state = pipeline.depth_state,
                         .rasterisation_state = pipeline.rasterisation_state,
                         .blend_state = pipeline.blend_state,
