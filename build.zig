@@ -67,9 +67,28 @@ pub fn build(builder: *std.Build) !void {
         quanta_module.addImport(spv_module.import_name, spv_module.module);
     }
 
-    //TODO: dynamically load instead of linking
-    quanta_module.linkSystemLibrary("xkbcommon", .{});
-    quanta_module.linkSystemLibrary("xcb-xinput", .{});
+    switch (target.result.os.tag) {
+        .linux,
+        .openbsd,
+        .freebsd,
+        => {
+            //TODO: dynamically load instead of linking to avoid a dep on the system linker
+            quanta_module.linkSystemLibrary("xkbcommon", .{});
+            quanta_module.linkSystemLibrary("xcb-xinput", .{});
+        },
+        .windows => {
+            const maybe_zigwin32 = builder.lazyDependency("zigwin32", .{});
+
+            if (maybe_zigwin32) |zigwin32| {
+                quanta_module.addAnonymousImport("win32", .{
+                    .root_source_file = zigwin32.path("win32.zig"),
+                });
+            }
+        },
+        else => {
+            return error.OsPlatformNotSupported;
+        },
+    }
 
     //TODO: allow user to override asset compiler
     const asset_compiler = builder.addExecutable(.{

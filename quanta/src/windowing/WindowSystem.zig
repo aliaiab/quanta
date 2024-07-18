@@ -43,12 +43,14 @@ pub inline fn createWindow(
 ///Implementation structure
 const Impl = switch (quanta_options.windowing.preferred_backend) {
     .wayland => @compileError("Wayland not yet supported"),
-    .xcb => @import("xcb/XcbWindowSystem.zig"),
-    .win32 => @compileError("Win32 not yet supported"),
+    .xcb => @import("xcb/WindowSystem.zig"),
+    .win32 => @import("win32/WindowSystem.zig"),
 };
 
 test {
     std.testing.refAllDecls(@This());
+
+    _ = Impl;
 }
 
 const WindowSystem = @This();

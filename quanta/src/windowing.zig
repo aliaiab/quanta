@@ -155,7 +155,14 @@ pub const WindowSystem = @import("windowing/WindowSystem.zig");
 ///Module level options
 pub const Options = struct {
     ///The window system backend to be used
-    preferred_backend: Backend = .xcb,
+    preferred_backend: Backend = switch (@import("builtin").os.tag) {
+        .linux,
+        .freebsd,
+        .openbsd,
+        => .xcb,
+        .windows => .win32,
+        else => @compileError("quanta.windowing not supported on this target"),
+    },
 };
 
 test {

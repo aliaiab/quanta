@@ -1,5 +1,6 @@
 pub const enable_khronos_validation = quanta_options.graphics.api_validation;
-pub const enable_debug_messenger = enable_khronos_validation;
+pub const enable_debug_messenger = @import("builtin").mode == .Debug;
+pub const enable_debug_labels = @import("builtin").mode == .Debug;
 pub const vulkan_version = std.SemanticVersion{
     .major = 1,
     .minor = 3,
@@ -30,7 +31,8 @@ pub const vk_apis: []const vk.ApiInfo = &.{
             .getPhysicalDeviceFeatures = true,
             .createDebugUtilsMessengerEXT = enable_debug_messenger,
             .destroyDebugUtilsMessengerEXT = enable_debug_messenger,
-            .createXcbSurfaceKHR = true,
+            .createXcbSurfaceKHR = quanta_options.windowing.preferred_backend == .xcb,
+            .createWin32SurfaceKHR = quanta_options.windowing.preferred_backend == .win32,
         },
         .device_commands = .{
             .destroyDevice = true,
@@ -118,25 +120,24 @@ pub const vk_apis: []const vk.ApiInfo = &.{
             .createEvent = true,
             .destroyEvent = true,
             .getFenceStatus = true,
-            .createQueryPool = true,
-            .destroyQueryPool = true,
-            .cmdWriteTimestamp2 = true,
-            .resetQueryPool = true,
-            .cmdResetQueryPool = true,
-            .cmdBeginQuery = true,
-            .cmdEndQuery = true,
-            .getQueryPoolResults = true,
+            .createQueryPool = false,
+            .destroyQueryPool = false,
+            .cmdWriteTimestamp2 = false,
+            .resetQueryPool = false,
+            .cmdResetQueryPool = false,
+            .cmdBeginQuery = false,
+            .cmdEndQuery = false,
+            .getQueryPoolResults = false,
             .getBufferDeviceAddress = true,
             .waitSemaphores = true,
             .acquireNextImage2KHR = true,
             .cmdBlitImage2 = true,
-            // .getDescriptorEXT = true,
-            .cmdBeginDebugUtilsLabelEXT = @import("builtin").mode == .Debug,
-            .cmdEndDebugUtilsLabelEXT = @import("builtin").mode == .Debug,
-            .setDebugUtilsObjectNameEXT = @import("builtin").mode == .Debug,
+            .cmdBeginDebugUtilsLabelEXT = enable_debug_labels,
+            .cmdEndDebugUtilsLabelEXT = enable_debug_labels,
+            .setDebugUtilsObjectNameEXT = enable_debug_labels,
         },
     },
-    vk.features.version_1_0,
+    vk.features.version_1_3,
     vk.extensions.khr_surface,
     vk.extensions.khr_swapchain,
 };
@@ -148,6 +149,8 @@ pub const DeviceDispatch = vk.DeviceWrapper(vk_apis);
 var vkGetInstanceProcAddr: vk.PfnGetInstanceProcAddr = undefined;
 
 fn getInstanceProcAddress(instance: vk.Instance, name: [*:0]const u8) vk.PfnVoidFunction {
+    std.log.info("Loading {s}", .{name});
+
     return vkGetInstanceProcAddr(instance, name);
 }
 
@@ -349,6 +352,9 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
         .xcb => {
             instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extensions.khr_xcb_surface.name};
         },
+        .win32 => {
+            instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extensions.khr_win_32_surface.name};
+        },
         else => @compileError("Windowing backend not supported by vulkan"),
     }
 
@@ -467,6 +473,8 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
     self.vki = try InstanceDispatch.load(self.instance, getInstanceProcAddress);
 
+    std.log.info("Successfully created vulkan instance", .{});
+
     errdefer self.vki.destroyInstance(self.instance, self.allocation_callbacks);
 
     if (enable_debug_messenger) {
@@ -483,6 +491,8 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
     self.surface = try WindowSurface.init(window);
     errdefer self.surface.deinit();
+
+    std.log.info("Successfully created vulkan surface", .{});
 
     var device_extensions_buffer: [std.meta.fields(RequiredExtensions).len + std.meta.fields(OptionalExtensions).len][*:0]const u8 = undefined;
     var device_extension_count: usize = 0;
@@ -816,7 +826,21 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
         self.device = try self.vki.createDevice(self.physical_device, &device_create_info, self.allocation_callbacks);
 
-        self.vkd = try DeviceDispatch.load(self.device, self.vki.dispatch.vkGetDeviceProcAddr);
+        //debug the failing command
+        {
+            inline for (std.meta.fields(DeviceDispatch.Dispatch)) |field| {
+                const name: [*:0]const u8 = @ptrCast(field.name ++ "\x00");
+                const cmd_ptr = self.vki.dispatch.vkGetDeviceProcAddr(self.device, name) orelse blk: {
+                    std.log.info("Failing: {s}", .{name});
+
+                    break :blk undefined;
+                };
+                _ = cmd_ptr; // autofix
+            }
+        }
+
+        //TODO: handle failures again
+        self.vkd = DeviceDispatch.loadNoFail(self.device, self.vki.dispatch.vkGetDeviceProcAddr);
 
         errdefer self.vkd.destroyDevice(self.device, self.allocation_callbacks);
 

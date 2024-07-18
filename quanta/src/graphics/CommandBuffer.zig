@@ -818,7 +818,7 @@ pub fn computeDispatchIndirect(self: CommandBuffer, buffer: Buffer, offset: usiz
 
 ///Only does something in OptimizeMode.Debug
 pub fn debugLabelBegin(self: CommandBuffer, name: []const u8) void {
-    if (@import("builtin").mode != .Debug) return;
+    if (!Context.enable_debug_messenger) return;
 
     var name_buffer: [1024]u8 = undefined;
 
@@ -832,14 +832,14 @@ pub fn debugLabelBegin(self: CommandBuffer, name: []const u8) void {
 
 ///Only does something in OptimizeMode.Debug
 pub fn debugLabelEnd(self: CommandBuffer) void {
-    if (@import("builtin").mode != .Debug) return;
+    if (!Context.enable_debug_messenger) return;
 
     Context.self.vkd.cmdEndDebugUtilsLabelEXT(self.handle);
 }
 
 ///Does nothing in OptimizeMode.Debug
 pub fn debugSetName(self: CommandBuffer, name: []const u8) void {
-    if (@import("builtin").mode != .Debug) return;
+    if (!Context.enable_debug_messenger) return;
 
     var name_buffer: [1024]u8 = undefined;
 

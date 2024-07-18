@@ -10,6 +10,10 @@
             .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/v1.3.283.tar.gz",
             .hash = "1220a7e73d72a0d56bc2a65f9d8999a7c019e42260a0744c408d1cded111bc205e10",
         },
+        .zigwin32 = .{
+            .url = "https://github.com/marlersoft/zigwin32/archive/11ae00747b490065d044d6f48d7df41ef30c781b.tar.gz",
+            .hash = "122017ec9873fd640410df91303bcc7d0487b753feb55056fee80c50d7cdf8f34323",
+        },
         .zigimg = .{
             .url = "https://github.com/zkburke/zigimg/archive/cbb0c64caffd5b02863aadd62bab48cef7f86ceb.tar.gz",
             .hash = "1220c0980dc05816b12a8188546b4847bcf38e5e99defc0ea79a8d6bd4809049a029",

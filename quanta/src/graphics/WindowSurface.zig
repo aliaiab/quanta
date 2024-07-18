@@ -14,6 +14,12 @@ pub fn init(window: *windowing.Window) !WindowSurface {
                 .window = @intFromEnum(window.impl.window),
             }, Context.self.allocation_callbacks);
         },
+        .win32 => {
+            self.surface = try Context.self.vki.createWin32SurfaceKHR(Context.self.instance, &vk.Win32SurfaceCreateInfoKHR{
+                .hinstance = @ptrCast(window.impl.window_system.instance),
+                .hwnd = @ptrCast(window.impl.hwnd),
+            }, Context.self.allocation_callbacks);
+        },
         else => @compileError("Backend unsupported"),
     }
 

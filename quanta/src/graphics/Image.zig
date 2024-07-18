@@ -306,7 +306,7 @@ pub fn destroyView(self: Image, view: Image.View) void {
 
 ///Does nothing in OptimizeMode.Debug
 pub fn debugSetName(self: Image, name: []const u8) void {
-    if (@import("builtin").mode != .Debug) return;
+    if (!Context.enable_debug_labels) return;
 
     var name_buffer: [1024]u8 = undefined;
 

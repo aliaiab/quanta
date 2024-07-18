@@ -611,7 +611,7 @@ fn xkbKeyToQuantaKey(keysym: u32) ?windowing.Key {
 test {}
 
 const XcbWindow = @This();
-const XcbWindowSystem = @import("XcbWindowSystem.zig");
+const XcbWindowSystem = @import("WindowSystem.zig");
 const std = @import("std");
 const windowing = @import("../../windowing.zig");
 const Key = windowing.Key;

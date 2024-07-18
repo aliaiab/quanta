@@ -95,8 +95,8 @@ pub inline fn getUtf8Input(self: Window) []const u8 {
 ///Implementation structure
 const Impl = switch (quanta_options.windowing.preferred_backend) {
     .wayland => @compileError("Wayland not supported"),
-    .xcb => @import("xcb/XcbWindow.zig"),
-    .win32 => @compileError("Win32 not supported"),
+    .xcb => @import("xcb/Window.zig"),
+    .win32 => @import("win32/Window.zig"),
 };
 
 test {
