@@ -809,14 +809,18 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
     comptime var excluded_component_slice_var: []const type = &.{};
 
     inline for (filters) |filter| {
-        switch (filter) {
-            .with => |with_type| {
-                required_component_slice_var = required_component_slice_var ++ &[_]type{with_type};
-            },
-            .without => |without_type| {
-                excluded_component_slice_var = excluded_component_slice_var ++ &[_]type{without_type};
-            },
-            else => {},
+        if (@TypeOf(filter) != @TypeOf(.enum_literal)) {
+            required_component_slice_var = required_component_slice_var ++ &[_]type{filter};
+        } else {
+            switch (filter) {
+                .with => |with_type| {
+                    required_component_slice_var = required_component_slice_var ++ &[_]type{with_type};
+                },
+                .without => |without_type| {
+                    excluded_component_slice_var = excluded_component_slice_var ++ &[_]type{without_type};
+                },
+                else => {},
+            }
         }
     }
 
@@ -1477,7 +1481,7 @@ fn archetypeAllocateChunk(
 
     const entity_end_offset = max_entity_count * @sizeOf(Entity);
 
-    var running_offset = entity_end_offset;
+    var running_offset: usize = entity_end_offset;
 
     for (
         chunk.columns,
@@ -1493,7 +1497,7 @@ fn archetypeAllocateChunk(
             continue;
         }
 
-        running_offset = std.mem.alignForwardLog2(running_offset, @as(u8, @intCast(component_type.alignment())));
+        running_offset = std.mem.alignForward(usize, running_offset, @as(u8, @intCast(component_type.alignment())));
 
         destination_column.* = .{
             .offset = @as(ChunkOffset, @intCast(running_offset)),

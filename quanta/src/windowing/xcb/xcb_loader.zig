@@ -635,6 +635,7 @@ pub const Event = union(enum) {
     configure_notify: void,
     client_message: ClientMessage,
     xinput_raw_mouse_motion: XInputRawMouseMotion,
+    xinput_motion_event: XInputMotionEvent,
 
     pub const ButtonPress = extern struct {
         response_type: u8,
@@ -751,6 +752,37 @@ pub const Event = union(enum) {
         },
     };
 
+    pub const XInputMotionEvent = extern struct {
+        response_type: u8,
+        extension: u8,
+        sequence: u16,
+        length: u32,
+        event_type: u16,
+        deviceid: u16,
+        time: Timestamp,
+        detail: u32,
+        root: Window,
+        event: Window,
+        child: Window,
+        full_sequence: u32,
+        root_x: Fp1616,
+        root_y: Fp1616,
+        event_x: Fp1616,
+        event_y: Fp1616,
+        buttons_len: u16,
+        valuators_len: u16,
+        sourceid: u16,
+        pad0: [2]u8,
+        flags: u32,
+        mods: xcb_input.xcb_input_modifier_info_t,
+        group: xcb_input.xcb_input_group_info_t,
+    };
+
+    pub const Fp1616 = packed struct(u32) {
+        x: f16,
+        y: f16,
+    };
+
     pub const XInputRawMouseMotion = extern struct {
         response_type: u8,
         extension: u8,
@@ -861,12 +893,24 @@ fn eventFromGenericEvent(generic_event: *GenericEvent) Event {
                 .client_message = event.*,
             };
         },
-        xcb_input.XCB_INPUT_RAW_MOTION => {
-            const event: *Event.XInputRawMouseMotion = @ptrCast(generic_event);
+        xcb_c.XCB_GE_GENERIC => {
+            switch (generic_event.event_type) {
+                xcb_input.XCB_INPUT_MOTION => {
+                    const event: *Event.XInputMotionEvent = @ptrCast(generic_event);
 
-            return .{
-                .xinput_raw_mouse_motion = event.*,
-            };
+                    return .{
+                        .xinput_motion_event = event.*,
+                    };
+                },
+                xcb_input.XCB_INPUT_RAW_MOTION => {
+                    const event: *Event.XInputRawMouseMotion = @ptrCast(generic_event);
+
+                    return .{
+                        .xinput_raw_mouse_motion = event.*,
+                    };
+                },
+                else => return .none,
+            }
         },
         else => return .none,
     }

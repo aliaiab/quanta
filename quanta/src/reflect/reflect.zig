@@ -1,5 +1,3 @@
-const std = @import("std");
-
 ///If this is true, then the reflection api can be used
 ///If this is false, then uses of the reflection api will throw an error
 ///This value should be checked when before using the reflection api
@@ -265,8 +263,13 @@ pub const Type = union(enum) {
                     },
                 };
             },
+            .Vector => {},
             .Type => {},
-            else => @compileError("Type is not supported"),
+            .Fn => {},
+            else => {
+                @compileLog(T);
+                @compileError("Type is not supported");
+            },
         }
 
         return type_data;
@@ -387,3 +390,9 @@ test {
         else => unreachable,
     }
 }
+
+pub const Options = struct {
+    //TODO: allow for reflection data to be disabled and set by quanta_options
+};
+
+const std = @import("std");

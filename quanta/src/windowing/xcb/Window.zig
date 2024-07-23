@@ -59,7 +59,10 @@ pub fn init(
     self.screen = &iter.data[0];
 
     const xinput_extension_info = self.xcb_library.queryExtension(self.connection, "XInputExtension");
-    _ = xinput_extension_info; // autofix
+
+    if (xinput_extension_info.present == 0) {
+        @panic("XInputExtension not present");
+    }
 
     const values = [_]u32{xcb.XCB_EVENT_MASK_EXPOSURE | xcb.XCB_EVENT_MASK_BUTTON_PRESS |
         xcb.XCB_EVENT_MASK_BUTTON_RELEASE | xcb.XCB_EVENT_MASK_POINTER_MOTION |
@@ -97,7 +100,7 @@ pub fn init(
 
     _ = xcb_input.xcb_input_xi_select_events_checked(
         @ptrCast(self.connection),
-        @intFromEnum(self.window),
+        @intFromEnum(self.screen.root),
         1,
         &input_mask.head,
     );
@@ -177,6 +180,7 @@ pub fn deinit(self: *XcbWindow, allocator: std.mem.Allocator) void {
 pub fn pollEvents(self: *XcbWindow) !bool {
     self.previous_key_map = self.key_map;
     self.previous_mouse_map = self.mouse_map;
+    self.last_mouse_position = self.mouse_position;
 
     const query_pointer = self.xcb_library.queryPointer(self.connection, self.window);
 
@@ -253,57 +257,9 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                 }
             },
             .motion_notify => |motion_notify| {
-                const last_mouse_position = self.mouse_position;
-                self.last_mouse_position = last_mouse_position;
-
-                const S = struct {
-                    pub var warped: bool = false;
-                };
-
-                var warped: bool = false;
-
-                // if (motion_notify.event_x != self.getWidth() / 2 or motion_notify.event_y != self.getHeight() / 2) {
-                if (self.cursor_grabbed) {
-                    const predicted_position = self.mouse_position + self.mouse_motion;
-
-                    const warped_last = S.warped;
-                    _ = warped_last; // autofix
-
-                    if (predicted_position[0] <= 0 or predicted_position[1] <= 0 or
-                        predicted_position[0] >= self.getWidth() - 1 or predicted_position[1] >= self.getHeight() - 1)
-                    {
-                        // self.xcb_library.warpPointer(
-                        //     self.connection,
-                        //     self.window,
-                        //     self.window,
-                        //     motion_notify.event_x,
-                        //     motion_notify.event_y,
-                        //     self.getWidth(),
-                        //     self.getHeight(),
-                        //     @intCast(self.getWidth() / 2),
-                        //     @intCast(self.getHeight() / 2),
-                        //     // self.last_mouse_position[0] - self.mouse_motion[0],
-                        //     // self.last_mouse_position[1] - self.mouse_motion[1],
-                        // );
-
-                        warped = true;
-                    }
-
-                    self.mouse_position = .{ motion_notify.event_x, motion_notify.event_y };
-                    // self.mouse_motion = self.mouse_position - self.last_mouse_position;
-
-                    // self.mouse_position += .{ motion_notify.event_x - self.last_mouse_position[0], motion_notify.event_y - self.last_mouse_position[1] };
-                } else {
-                    self.mouse_position = .{ motion_notify.event_x, motion_notify.event_y };
-                }
-
-                if (!S.warped) {
-                    self.mouse_motion = self.mouse_position - self.last_mouse_position;
-                } else {
-                    // self.mouse_motion = .{ 0, 0 };
-                }
-
-                S.warped = warped;
+                _ = motion_notify; // autofix
+                // const last_mouse_position = self.mouse_position;
+                // self.last_mouse_position = last_mouse_position;
             },
             .focus_in => |focus_in| {
                 if (focus_in.mode == xcb.XCB_NOTIFY_MODE_GRAB or focus_in.mode == xcb.XCB_NOTIFY_MODE_UNGRAB) {
@@ -342,12 +298,17 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                     return true;
                 }
             },
+            .xinput_motion_event => |motion| {
+                _ = motion; // autofix
+            },
             .xinput_raw_mouse_motion => |raw_mouse_motion| {
                 _ = raw_mouse_motion; // autofix
             },
             else => {},
         }
     }
+
+    self.mouse_motion = self.mouse_position - self.last_mouse_position;
 
     return false;
 }

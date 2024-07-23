@@ -27,15 +27,13 @@ pub const Acceleration = struct {
 };
 
 pub const Position = struct {
-    x: f32,
-    y: f32,
-    z: f32,
+    vector: @Vector(3, f32),
 };
 
 pub const Orientation = struct {
-    x: f32,
-    y: f32,
-    z: f32,
+    ///Normal vector orientation
+    ///Should be normalized
+    vector: @Vector(3, f32),
 };
 
 pub const NonUniformScale = struct {
