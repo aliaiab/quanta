@@ -187,6 +187,8 @@ pub fn pollEvents(self: *XcbWindow) !bool {
     self.mouse_position[0] = query_pointer.win_x;
     self.mouse_position[1] = query_pointer.win_y;
 
+    @memset(&self.text_buffer, 0);
+
     self.text_len = 0;
 
     self.mouse_scroll = 0;
@@ -230,7 +232,7 @@ pub fn pollEvents(self: *XcbWindow) !bool {
 
                 _ = xkb.xkb_state_update_key(self.xkb_state, key_press.detail, xkb.XKB_KEY_DOWN);
 
-                const text_len = xkb.xkb_state_key_get_utf8(self.xkb_state, key_press.detail, &self.text_buffer[self.text_len], self.text_buffer.len);
+                const text_len = xkb.xkb_state_key_get_utf8(self.xkb_state, key_press.detail, &self.text_buffer[0], self.text_buffer.len);
 
                 self.text_len += @intCast(text_len);
 
@@ -422,6 +424,11 @@ pub fn getMouseButton(self: XcbWindow, key: windowing.MouseButton) windowing.Act
 }
 
 pub fn getMouseMotion(self: XcbWindow) @Vector(2, i16) {
+    //TODO: use raw motion
+    return self.mouse_motion;
+}
+
+pub fn getCursorMotion(self: XcbWindow) @Vector(2, i16) {
     return self.mouse_motion;
 }
 
@@ -431,7 +438,7 @@ pub fn isFocused(self: XcbWindow) bool {
     return self.window == focus.focus;
 }
 
-pub fn getUtf8Input(self: XcbWindow) []const u8 {
+pub fn getUtf8Input(self: *const XcbWindow) []const u8 {
     return self.text_buffer[0..self.text_len];
 }
 
