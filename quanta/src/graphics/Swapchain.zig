@@ -23,16 +23,20 @@ pub fn initRecycle(allocator: std.mem.Allocator, surface: vk.SurfaceKHR, old_han
     const surface_format = try findSurfaceFormat(surface, allocator);
     const present_mode = try findPresentMode(surface, allocator);
 
-    var image_count = caps.min_image_count + 1;
-    if (caps.max_image_count > 0) {
-        image_count = @min(image_count, caps.max_image_count);
-    }
+    const image_count = caps.min_image_count + 1;
+
+    // image_count = @min(image_count, caps.max_image_count);
 
     const qfi = [_]u32{ Context.self.graphics_family_index.?, Context.self.present_family_index.? };
     const sharing_mode: vk.SharingMode = if (Context.self.graphics_family_index.? != Context.self.present_family_index.?)
         .concurrent
     else
         .exclusive;
+
+    std.log.info("caps = {}", .{caps});
+    std.log.info("actual_extent = {}", .{actual_extent});
+    std.log.info("present_mode {}", .{present_mode});
+    std.log.info("surface_format {}", .{surface_format});
 
     const handle = try Context.self.vkd.createSwapchainKHR(Context.self.device, &.{
         .flags = .{},
@@ -51,7 +55,7 @@ pub fn initRecycle(allocator: std.mem.Allocator, surface: vk.SurfaceKHR, old_han
         .queue_family_index_count = qfi.len,
         .p_queue_family_indices = &qfi,
         .pre_transform = caps.current_transform,
-        .composite_alpha = .{ .opaque_bit_khr = true },
+        .composite_alpha = .{ .inherit_bit_khr = true },
         .present_mode = present_mode,
         .clipped = vk.TRUE,
         .old_swapchain = old_handle,
@@ -310,8 +314,8 @@ fn initSwapchainImages(swapchain: vk.SwapchainKHR, format: vk.Format, allocator:
 fn findSurfaceFormat(surface: vk.SurfaceKHR, allocator: std.mem.Allocator) !vk.SurfaceFormatKHR {
     const preferred = vk.SurfaceFormatKHR{
         //might be preferred, idk, this might fuck things up
-        // .format = .b8g8r8a8_srgb,
-        .format = vk.Format.r8g8b8a8_unorm,
+        .format = .b8g8r8a8_unorm,
+        // .format = vk.Format.r8g8b8a8_unorm,
         .color_space = .srgb_nonlinear_khr,
     };
 
@@ -322,6 +326,8 @@ fn findSurfaceFormat(surface: vk.SurfaceKHR, allocator: std.mem.Allocator) !vk.S
     _ = try Context.self.vki.getPhysicalDeviceSurfaceFormatsKHR(Context.self.physical_device, surface, &count, surface_formats.ptr);
 
     for (surface_formats) |sfmt| {
+        std.log.info("Avaiable surface format: {}", .{sfmt});
+
         if (std.meta.eql(sfmt, preferred)) {
             return preferred;
         }

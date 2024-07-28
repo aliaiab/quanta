@@ -1,9 +1,7 @@
 //!A replacement for google's shaderc. A frontend to khronos glslang for use in zig build.
 //!As such, this frontend does not need to provide a human readable command line interface.
 
-const glslang_c = @cImport(
-    @cInclude("glslang/Include/glslang_c_interface.h"),
-);
+const glslang_c = @import("glslang_c");
 
 extern fn glslang_default_resource() callconv(.C) *const glslang_c.glslang_resource_t;
 

@@ -281,6 +281,7 @@ const Value = union(enum) {
             const offset: u32 = switch (node_type) {
                 .enum_literal,
                 .struct_init_dot,
+                .struct_init_dot_comma,
                 .struct_init_dot_two,
                 .struct_init_dot_two_comma,
                 .array_init,

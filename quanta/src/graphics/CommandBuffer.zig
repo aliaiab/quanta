@@ -765,6 +765,26 @@ pub fn drawIndexedIndirect(
     );
 }
 
+pub fn drawIndirectCount(
+    self: CommandBuffer,
+    draw_buffer: Buffer,
+    draw_buffer_offset: usize,
+    draw_buffer_stride: usize,
+    count_buffer: Buffer,
+    count_buffer_offset: usize,
+    max_draw_count: usize,
+) void {
+    Context.self.vkd.cmdDrawIndirectCount(
+        self.handle,
+        draw_buffer.handle,
+        draw_buffer_offset,
+        count_buffer.handle,
+        count_buffer_offset,
+        @as(u32, @truncate(max_draw_count)),
+        @as(u32, @intCast(draw_buffer_stride)),
+    );
+}
+
 pub fn drawIndexedIndirectCount(
     self: CommandBuffer,
     draw_buffer: Buffer,

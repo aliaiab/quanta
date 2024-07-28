@@ -58,7 +58,7 @@ pub fn create(
     return self;
 }
 
-pub fn make(step: *Step, progress_node: std.Progress.Node) anyerror!void {
+pub fn make(step: *Step, make_options: std.Build.Step.MakeOptions) anyerror!void {
     const self = step.cast(GlslCompileStep).?;
 
     var cache_manifest = self.builder.graph.cache.obtain();
@@ -162,7 +162,7 @@ pub fn make(step: *Step, progress_node: std.Progress.Node) anyerror!void {
         }
     }
 
-    try self.glsl_compiler.step.makeFn(&self.glsl_compiler.step, progress_node);
+    try self.glsl_compiler.step.makeFn(&self.glsl_compiler.step, make_options);
 
     try cache_manifest.writeManifest();
 }

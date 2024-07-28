@@ -28,8 +28,8 @@
             .hash = "1220ff2dbebeb83461da67b185d994ae61ebcea747c1bfbfb48b23c8e456cc53ea83",
         },
         .glslang_zig = .{
-            .url = "https://github.com/zkburke/glslang-zig/archive/d9c6d40a27e27827c667d3526cf5b598c17fd2e8.tar.gz",
-            .hash = "122008aae91427cf8740eeb9aed2b0878dcef4ba419313f5b41d82167cc3e9420132",
+            .url = "https://github.com/zkburke/glslang-zig/archive/25fd3eeb8303c2eaafa0989136f9dafb911d8705.tar.gz",
+            .hash = "12208b653f9db35b07c60c3cb35ef2e8d8985f57acd453d193b1abd10cd312ba612c",
         },
     },
     .paths = .{

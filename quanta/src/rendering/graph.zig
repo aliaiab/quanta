@@ -35,6 +35,13 @@ pub const DrawIndexedIndirectCommand = extern struct {
     first_instance: u32,
 };
 
+pub const DrawIndirectCommand = extern struct {
+    vertex_count: u32,
+    instance_count: u32,
+    first_vertex: u32,
+    first_instance: u32,
+};
+
 pub const Command = union(enum) {
     update_buffer: struct {
         buffer: BufferHandle,
@@ -111,6 +118,14 @@ pub const Command = union(enum) {
         first_instance: u32,
     },
     draw_indexed_indirect_count: struct {
+        draw_buffer: BufferHandle,
+        draw_buffer_offset: usize,
+        draw_buffer_stride: usize,
+        count_buffer: BufferHandle,
+        count_buffer_offset: usize,
+        max_draw_count: usize,
+    },
+    draw_indirect_count: struct {
         draw_buffer: BufferHandle,
         draw_buffer_offset: usize,
         draw_buffer_stride: usize,
@@ -1127,6 +1142,30 @@ pub const Builder = struct {
 
         self.commands.add(self.gpa, .{
             .draw_indexed_indirect_count = .{
+                .draw_buffer = self.buffers.items(.handle)[draw_buffer.index],
+                .draw_buffer_offset = draw_buffer_offset,
+                .draw_buffer_stride = draw_buffer_stride,
+                .count_buffer = self.buffers.items(.handle)[count_buffer.index],
+                .count_buffer_offset = count_buffer_offset,
+                .max_draw_count = max_draw_count,
+            },
+        });
+    }
+
+    pub fn drawIndirectCount(
+        self: *@This(),
+        draw_buffer: Buffer,
+        draw_buffer_offset: usize,
+        draw_buffer_stride: usize,
+        count_buffer: Buffer,
+        count_buffer_offset: usize,
+        max_draw_count: usize,
+    ) void {
+        self.referenceBufferAsInput(draw_buffer);
+        self.referenceBufferAsInput(count_buffer);
+
+        self.commands.add(self.gpa, .{
+            .draw_indirect_count = .{
                 .draw_buffer = self.buffers.items(.handle)[draw_buffer.index],
                 .draw_buffer_offset = draw_buffer_offset,
                 .draw_buffer_stride = draw_buffer_stride,

@@ -21,6 +21,7 @@ pub fn build(builder: *std.Build) !void {
 
     glsl_compiler.addIncludePath(builder.path(""));
     glsl_compiler.root_module.addImport("glslang", glslang_zig.module("glslang-zig"));
+    glsl_compiler.root_module.addImport("glslang_c", glslang_zig.module("c_interface"));
 
     const install_glsl_compiler = builder.addInstallArtifact(glsl_compiler, .{});
 

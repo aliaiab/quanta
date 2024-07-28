@@ -328,6 +328,29 @@ pub const Context = struct {
                         count_buffer.value_ptr.*.usage.indirect_buffer_bit = true;
                         count_buffer.value_ptr.*.usage.transfer_dst_bit = true;
                     },
+                    .draw_indirect_count => |command_data| {
+                        const draw_buffer = try buffer_usages.getOrPutValue(
+                            self.scratch_allocator.allocator(),
+                            command_data.draw_buffer,
+                            .{
+                                .usage = .{},
+                            },
+                        );
+
+                        draw_buffer.value_ptr.*.usage.indirect_buffer_bit = true;
+                        draw_buffer.value_ptr.*.usage.transfer_dst_bit = true;
+
+                        const count_buffer = try buffer_usages.getOrPutValue(
+                            self.scratch_allocator.allocator(),
+                            command_data.count_buffer,
+                            .{
+                                .usage = .{},
+                            },
+                        );
+
+                        count_buffer.value_ptr.*.usage.indirect_buffer_bit = true;
+                        count_buffer.value_ptr.*.usage.transfer_dst_bit = true;
+                    },
                     else => {},
                 }
             }
@@ -394,13 +417,17 @@ pub const Context = struct {
                     continue;
                 }
 
+                const maybe_buffer_name = builder.debug_info.getBufferName(builder.*, handle);
+
+                if (maybe_buffer_name) |buffer_name| {
+                    std.log.info("Creating buffer: {s}", .{buffer_name});
+                }
+
                 get_or_put_res.value_ptr.* = try graphics.Buffer.initUsageFlags(
                     buffer_size,
                     buffer_usages.get(handle).?.usage,
                 );
                 errdefer get_or_put_res.value_ptr.deinit();
-
-                const maybe_buffer_name = builder.debug_info.getBufferName(builder.*, handle);
 
                 if (maybe_buffer_name) |buffer_name| {
                     get_or_put_res.value_ptr.*.debugSetName(buffer_name);
@@ -661,7 +688,33 @@ pub const Context = struct {
                                 },
                             );
                         },
-                        .draw_indexed_indirect_count => |command_data| {
+                        .draw_indexed_indirect_count,
+                        => |command_data| {
+                            const draw_buffer = self.buffers.getPtr(command_data.draw_buffer).?;
+                            const count_buffer = self.buffers.getPtr(command_data.count_buffer).?;
+
+                            barrier_map.acquireBuffer(.{
+                                .buffer = draw_buffer,
+                                .stage = .{
+                                    .draw_indirect = true,
+                                    //Is this needed?
+                                    .pre_rasterization_shaders = true,
+                                },
+                                .access = .{
+                                    .indirect_command_read = true,
+                                },
+                            });
+
+                            barrier_map.acquireBuffer(.{
+                                .buffer = count_buffer,
+                                .stage = .{ .draw_indirect = true },
+                                .access = .{
+                                    .indirect_command_read = true,
+                                },
+                            });
+                        },
+                        .draw_indirect_count,
+                        => |command_data| {
                             const draw_buffer = self.buffers.getPtr(command_data.draw_buffer).?;
                             const count_buffer = self.buffers.getPtr(command_data.count_buffer).?;
 
@@ -997,6 +1050,22 @@ pub const Context = struct {
                             const count_buffer = self.buffers.getPtr(command_data.count_buffer).?;
 
                             command_buffer.drawIndexedIndirectCount(
+                                draw_buffer.*,
+                                command_data.draw_buffer_offset,
+                                command_data.draw_buffer_stride,
+                                count_buffer.*,
+                                command_data.count_buffer_offset,
+                                command_data.max_draw_count,
+                            );
+
+                            barrier_map.releaseBuffer(draw_buffer);
+                            barrier_map.releaseBuffer(count_buffer);
+                        },
+                        .draw_indirect_count => |command_data| {
+                            const draw_buffer = self.buffers.getPtr(command_data.draw_buffer).?;
+                            const count_buffer = self.buffers.getPtr(command_data.count_buffer).?;
+
+                            command_buffer.drawIndirectCount(
                                 draw_buffer.*,
                                 command_data.draw_buffer_offset,
                                 command_data.draw_buffer_stride,

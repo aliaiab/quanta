@@ -1,4 +1,5 @@
-///An asset archive format that allows for parralel streaming and incremental compilation/caching/hot reload.
+//! An asset archive format that allows for parralel streaming and incremental compilation/caching/hot reload.
+
 image: []u8,
 asset_name_hashes: []u64,
 asset_content_hashes: []align(1) u256,

@@ -170,6 +170,17 @@ pub fn getBaseHashFromSource(src: std.builtin.SourceLocation) []const u8 {
     return &source_hash.finalResult();
 }
 
+pub fn getBaseHashFromBytes(bytes: []const u8) []const u8 {
+    //Hacky but very bug free approach to changing the base hash
+    var source_hash = std.Build.Cache.Hasher.init("ASSET" ++ [_]u8{0} ** 11);
+
+    @setEvalBranchQuota(100000);
+
+    source_hash.update(bytes);
+
+    return &source_hash.finalResult();
+}
+
 ///Specifies how/if compression should be done on the asset/module level
 pub const CompressionMode = enum {
     ///Optimize for minimum size at the potential cost of performance

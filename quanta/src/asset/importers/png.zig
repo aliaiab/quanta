@@ -28,11 +28,12 @@ pub const Import = struct {
 
     pub const file_extension = ".png";
     ///Change this when the format changes
-    pub const base_hash: []const u8 = compiler.getBaseHashFromSource(struct {
-        pub fn src() std.builtin.SourceLocation {
-            return @src();
-        }
-    }.src());
+    // pub const base_hash: []const u8 = compiler.getBaseHashFromSource(struct {
+    //     pub fn src() std.builtin.SourceLocation {
+    //         return @src();
+    //     }
+    // }.src());
+    pub const base_hash: []const u8 = compiler.getBaseHashFromBytes(@embedFile("png.zig"));
 };
 
 ///Also supports png because I'm lazy atm...

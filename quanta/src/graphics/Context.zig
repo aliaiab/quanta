@@ -114,6 +114,7 @@ pub const vk_apis: []const vk.ApiInfo = &.{
             .cmdDispatchIndirect = true,
             .cmdDrawIndexedIndirect = true,
             .cmdDrawIndexedIndirectCount = true,
+            .cmdDrawIndirectCount = true,
             .cmdSetEvent = true,
             .cmdSetEvent2 = true,
             .getEventStatus = true,
@@ -317,7 +318,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
     self.optional_extensions = .{};
 
     const vulkan_loader_path = switch (builtin.os.tag) {
-        .linux, .freebsd => "libvulkan.so",
+        .linux, .freebsd => "libvulkan.so.1",
         .windows => "vulkan-1.dll",
         .macos => "libvulkan.1.dylib",
         else => @compileError("Targeted os doesn't support the Khronos vulkan loader!"),
@@ -631,6 +632,8 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
             for (queue_families, 0..) |queue_family, queue_family_index| {
                 if (queue_family.queue_flags.graphics_bit) {
                     self.graphics_family_index = @as(u32, @intCast(queue_family_index));
+                    //Set transfer family to graphics family just in case no dedicated transfer queue is supported
+                    self.transfer_family_index = @as(u32, @intCast(queue_family_index));
                 }
 
                 if (queue_family.queue_flags.compute_bit) {

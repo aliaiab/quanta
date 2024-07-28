@@ -147,11 +147,13 @@ pub const Import = struct {
     ///TODO: add extension alternatives to handle the .ase extension
     pub const file_extension = ".aseprite";
 
-    pub const base_hash = compiler.getBaseHashFromSource(struct {
-        pub fn src() std.builtin.SourceLocation {
-            return @src();
-        }
-    }.src());
+    // pub const base_hash = compiler.getBaseHashFromSource(struct {
+    // pub fn src() std.builtin.SourceLocation {
+    // return @src();
+    // }
+    // }.src());
+
+    pub const base_hash = compiler.getBaseHashFromBytes(@embedFile("aseprite.zig"));
 
     pub const Encoded = extern struct {
         width: u32,
