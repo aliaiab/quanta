@@ -92,8 +92,10 @@ pub const Library = struct {
         library.dynamic_library = try std.DynLib.open("libxcb.so");
         errdefer library.dynamic_library.close();
 
+        const function_prefix = "xcb_";
+
         inline for (comptime std.meta.fieldNames(@TypeOf(library.functions))) |field_name| {
-            @field(library.functions, field_name) = library.dynamic_library.lookup(@TypeOf(@field(library.functions, field_name)), "xcb_" ++ field_name).?;
+            @field(library.functions, field_name) = library.dynamic_library.lookup(@TypeOf(@field(library.functions, field_name)), function_prefix ++ field_name).?;
         }
 
         return library;

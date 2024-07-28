@@ -1,3 +1,6 @@
+//TODO: We really don't need this file in the long term, so once we have all the functions we need in the handrolled bindings
+//I'm keeping this around to make maintaining the handrolled bindings more doable
+
 pub const __builtin_bswap16 = @import("std").zig.c_builtins.__builtin_bswap16;
 pub const __builtin_bswap32 = @import("std").zig.c_builtins.__builtin_bswap32;
 pub const __builtin_bswap64 = @import("std").zig.c_builtins.__builtin_bswap64;

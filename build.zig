@@ -72,11 +72,7 @@ pub fn build(builder: *std.Build) !void {
         .linux,
         .openbsd,
         .freebsd,
-        => {
-            //TODO: dynamically load instead of linking to avoid a dep on the system linker
-            quanta_module.linkSystemLibrary("xkbcommon", .{});
-            quanta_module.linkSystemLibrary("xcb-xinput", .{});
-        },
+        => {},
         .windows => {
             const maybe_zigwin32 = builder.lazyDependency("zigwin32", .{});
 

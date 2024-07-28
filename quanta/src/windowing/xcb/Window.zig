@@ -1,14 +1,16 @@
 window_system: *XcbWindowSystem,
 xcb_library: *xcb_loader.Library,
+xcb_xinput_library: *xcb_xinput_loader.Library,
+xkbcommon_library: *xkbcommon_loader.Library,
 width: u16,
 height: u16,
 connection: *xcb_loader.Connection,
 screen: *xcb_loader.Screen,
 window: xcb_loader.Window,
 wm_delete_window_atom: xcb_loader.Atom,
-xkb_context: *xkb.xkb_context,
-xkb_state: *xkb.xkb_state,
-xkb_keymap: *xkb.xkb_keymap,
+xkb_context: *xkbcommon_loader.Context,
+xkb_state: *xkbcommon_loader.State,
+xkb_keymap: *xkbcommon_loader.Keymap,
 hidden_cursor: xcb_loader.Cursor,
 key_map: [std.enums.values(windowing.Key).len]bool,
 key_press_timestamps: [std.enums.values(windowing.Key).len]u32,
@@ -50,6 +52,8 @@ pub fn init(
         .previous_mouse_map = std.mem.zeroes([std.enums.values(windowing.MouseButton).len]bool),
         .hidden_cursor = undefined,
         .xcb_library = &window_system.xcb_library,
+        .xkbcommon_library = &window_system.xkbcommon_library,
+        .xcb_xinput_library = &window_system.xcb_xinput_library,
     };
 
     const setup = self.xcb_library.getSetup(self.connection).?;
@@ -87,22 +91,22 @@ pub fn init(
         &values,
     );
 
-    const input_mask: extern struct {
-        head: xcb_input.xcb_input_event_mask_t,
-        mask: xcb_input.xcb_input_xi_event_mask_t,
-    } = .{
+    const input_mask: xcb_xinput_loader.EventMaskList = .{
         .head = .{
-            .deviceid = xcb_input.XCB_INPUT_DEVICE_ALL_MASTER,
+            .deviceid = .all_master,
             .mask_len = 1,
         },
-        .mask = xcb_input.XCB_INPUT_XI_EVENT_MASK_MOTION | xcb_input.XCB_INPUT_XI_EVENT_MASK_RAW_MOTION,
+        .mask = .{
+            .motion = true,
+            .raw_motion = true,
+        },
     };
 
-    _ = xcb_input.xcb_input_xi_select_events_checked(
-        @ptrCast(self.connection),
-        @intFromEnum(self.screen.root),
+    self.xcb_xinput_library.xiSelectEventsChecked(
+        self.connection,
+        self.window,
         1,
-        &input_mask.head,
+        @ptrCast(@alignCast(&input_mask.head)),
     );
 
     _ = self.xcb_library.changeProperty(
@@ -132,9 +136,14 @@ pub fn init(
         &delete_window_atom.atom,
     );
 
-    self.xkb_context = xkb.xkb_context_new(xkb.XKB_CONTEXT_NO_FLAGS).?;
-    self.xkb_keymap = xkb.xkb_keymap_new_from_names(self.xkb_context, null, xkb.XKB_KEYMAP_COMPILE_NO_FLAGS).?;
-    self.xkb_state = xkb.xkb_state_new(self.xkb_keymap).?;
+    self.xkb_context = self.xkbcommon_library.contextNew(.{});
+    errdefer self.xkbcommon_library.contextUnref(self.xkb_context);
+
+    self.xkb_keymap = self.xkbcommon_library.keymapNewFromNames(self.xkb_context, null, .{});
+    errdefer self.xkbcommon_library.keymapUnref(self.xkb_keymap);
+
+    self.xkb_state = self.xkbcommon_library.stateNew(self.xkb_keymap);
+    errdefer self.xkbcommon_library.stateUnref(self.xkb_state);
 
     const hidden_cursor_pixmap = self.xcb_library.createPixmap(
         self.connection,
@@ -169,9 +178,9 @@ pub fn init(
 
 pub fn deinit(self: *XcbWindow, allocator: std.mem.Allocator) void {
     _ = allocator;
-    xkb.xkb_context_unref(self.xkb_context);
-    xkb.xkb_state_unref(self.xkb_state);
-    xkb.xkb_keymap_unref(self.xkb_keymap);
+    self.xkbcommon_library.contextUnref(self.xkb_context);
+    self.xkbcommon_library.stateUnref(self.xkb_state);
+    self.xkbcommon_library.keymapUnref(self.xkb_keymap);
 
     self.* = undefined;
 }
@@ -228,13 +237,18 @@ pub fn pollEvents(self: *XcbWindow) !bool {
             .key_press => |key_press| {
                 if (!self.isFocused()) continue;
 
-                const keysym = xkb.xkb_state_key_get_one_sym(self.xkb_state, key_press.detail);
+                const keysym = self.xkbcommon_library.stateKeyGetOneSym(self.xkb_state, @enumFromInt(key_press.detail));
 
-                _ = xkb.xkb_state_update_key(self.xkb_state, key_press.detail, xkb.XKB_KEY_DOWN);
+                _ = self.xkbcommon_library.stateUpdateKey(self.xkb_state, @enumFromInt(key_press.detail), .down);
 
-                const text_len = xkb.xkb_state_key_get_utf8(self.xkb_state, key_press.detail, &self.text_buffer[0], self.text_buffer.len);
+                const text_len = self.xkbcommon_library.stateKeyGetUtf8(
+                    self.xkb_state,
+                    @enumFromInt(key_press.detail),
+                    &self.text_buffer,
+                    self.text_buffer.len,
+                );
 
-                self.text_len += @intCast(text_len);
+                self.text_len += text_len;
 
                 if (xkbKeyToQuantaKey(keysym)) |key| {
                     const time_difference = key_press.time - self.key_press_timestamps[@intFromEnum(key)];
@@ -250,9 +264,9 @@ pub fn pollEvents(self: *XcbWindow) !bool {
             .key_release => |key_release| {
                 if (!self.isFocused()) continue;
 
-                const keysym = xkb.xkb_state_key_get_one_sym(self.xkb_state, key_release.detail);
+                const keysym = self.xkbcommon_library.stateKeyGetOneSym(self.xkb_state, @enumFromInt(key_release.detail));
 
-                _ = xkb.xkb_state_update_key(self.xkb_state, key_release.detail, xkb.XKB_KEY_UP);
+                _ = self.xkbcommon_library.stateUpdateKey(self.xkb_state, @enumFromInt(key_release.detail), .up);
 
                 if (xkbKeyToQuantaKey(keysym)) |key| {
                     self.key_map[@intFromEnum(key)] = false;
@@ -452,126 +466,126 @@ fn eventFocusOut(self: *XcbWindow) void {
 }
 
 ///Convert xkb key symbol to windowing.Key
-fn xkbKeyToQuantaKey(keysym: u32) ?windowing.Key {
+fn xkbKeyToQuantaKey(keysym: xkbcommon_loader.KeySym) ?windowing.Key {
     return switch (keysym) {
-        xkb.XKB_KEY_space => .space,
-        xkb.XKB_KEY_apostrophe => .apostrophe,
-        xkb.XKB_KEY_comma => .comma,
-        xkb.XKB_KEY_minus => .minus,
-        xkb.XKB_KEY_period => .period,
-        xkb.XKB_KEY_slash => .slash,
-        xkb.XKB_KEY_0 => .zero,
-        xkb.XKB_KEY_1 => .one,
-        xkb.XKB_KEY_2 => .two,
-        xkb.XKB_KEY_3 => .three,
-        xkb.XKB_KEY_4 => .four,
-        xkb.XKB_KEY_5 => .five,
-        xkb.XKB_KEY_6 => .six,
-        xkb.XKB_KEY_7 => .seven,
-        xkb.XKB_KEY_8 => .eight,
-        xkb.XKB_KEY_9 => .nine,
-        xkb.XKB_KEY_semicolon => .semicolon,
-        xkb.XKB_KEY_equal => .equal,
-        xkb.XKB_KEY_A, xkb.XKB_KEY_a => .a,
-        xkb.XKB_KEY_B, xkb.XKB_KEY_b => .b,
-        xkb.XKB_KEY_C, xkb.XKB_KEY_c => .c,
-        xkb.XKB_KEY_D, xkb.XKB_KEY_d => .d,
-        xkb.XKB_KEY_E, xkb.XKB_KEY_e => .e,
-        xkb.XKB_KEY_F, xkb.XKB_KEY_f => .f,
-        xkb.XKB_KEY_G, xkb.XKB_KEY_g => .g,
-        xkb.XKB_KEY_H, xkb.XKB_KEY_h => .h,
-        xkb.XKB_KEY_I, xkb.XKB_KEY_i => .i,
-        xkb.XKB_KEY_J, xkb.XKB_KEY_j => .j,
-        xkb.XKB_KEY_K, xkb.XKB_KEY_k => .k,
-        xkb.XKB_KEY_L, xkb.XKB_KEY_l => .l,
-        xkb.XKB_KEY_M, xkb.XKB_KEY_m => .m,
-        xkb.XKB_KEY_N, xkb.XKB_KEY_n => .n,
-        xkb.XKB_KEY_O, xkb.XKB_KEY_o => .o,
-        xkb.XKB_KEY_P, xkb.XKB_KEY_p => .p,
-        xkb.XKB_KEY_Q, xkb.XKB_KEY_q => .q,
-        xkb.XKB_KEY_R, xkb.XKB_KEY_r => .r,
-        xkb.XKB_KEY_S, xkb.XKB_KEY_s => .s,
-        xkb.XKB_KEY_T, xkb.XKB_KEY_t => .t,
-        xkb.XKB_KEY_U, xkb.XKB_KEY_u => .u,
-        xkb.XKB_KEY_V, xkb.XKB_KEY_v => .v,
-        xkb.XKB_KEY_W, xkb.XKB_KEY_w => .w,
-        xkb.XKB_KEY_X, xkb.XKB_KEY_x => .x,
-        xkb.XKB_KEY_Y, xkb.XKB_KEY_y => .y,
-        xkb.XKB_KEY_Z, xkb.XKB_KEY_z => .z,
-        xkb.XKB_KEY_botleftsqbracket => .left_bracket,
-        xkb.XKB_KEY_backslash => .backslash,
-        xkb.XKB_KEY_botrightsqbracket => .right_bracket,
-        xkb.XKB_KEY_grave => .grave_accent,
-        xkb.XKB_KEY_Escape => .escape,
-        xkb.XKB_KEY_Return => .enter,
-        xkb.XKB_KEY_Tab => .tab,
-        xkb.XKB_KEY_BackSpace => .backspace,
-        xkb.XKB_KEY_Insert => .insert,
-        xkb.XKB_KEY_Delete => .delete,
-        xkb.XKB_KEY_Right => .right,
-        xkb.XKB_KEY_Left => .left,
-        xkb.XKB_KEY_Down => .down,
-        xkb.XKB_KEY_Up => .up,
-        xkb.XKB_KEY_Page_Up => .page_up,
-        xkb.XKB_KEY_Page_Down => .page_down,
-        xkb.XKB_KEY_Home => .home,
-        xkb.XKB_KEY_End => .end,
-        xkb.XKB_KEY_Caps_Lock => .caps_lock,
-        xkb.XKB_KEY_Scroll_Lock => .scroll_lock,
-        xkb.XKB_KEY_Num_Lock => .num_lock,
-        xkb.XKB_KEY_Print => .print_screen,
-        xkb.XKB_KEY_Pause => .pause,
-        xkb.XKB_KEY_F1 => .F1,
-        xkb.XKB_KEY_F2 => .F2,
-        xkb.XKB_KEY_F3 => .F3,
-        xkb.XKB_KEY_F4 => .F4,
-        xkb.XKB_KEY_F5 => .F5,
-        xkb.XKB_KEY_F6 => .F6,
-        xkb.XKB_KEY_F7 => .F7,
-        xkb.XKB_KEY_F8 => .F8,
-        xkb.XKB_KEY_F9 => .F9,
-        xkb.XKB_KEY_F10 => .F10,
-        xkb.XKB_KEY_F11 => .F11,
-        xkb.XKB_KEY_F12 => .F12,
-        xkb.XKB_KEY_F13 => .F13,
-        xkb.XKB_KEY_F14 => .F14,
-        xkb.XKB_KEY_F15 => .F15,
-        xkb.XKB_KEY_F16 => .F16,
-        xkb.XKB_KEY_F17 => .F17,
-        xkb.XKB_KEY_F18 => .F18,
-        xkb.XKB_KEY_F19 => .F19,
-        xkb.XKB_KEY_F20 => .F20,
-        xkb.XKB_KEY_F21 => .F21,
-        xkb.XKB_KEY_F22 => .F22,
-        xkb.XKB_KEY_F23 => .F23,
-        xkb.XKB_KEY_F24 => .F24,
-        xkb.XKB_KEY_F25 => .F25,
-        xkb.XKB_KEY_KP_0 => .kp_0,
-        xkb.XKB_KEY_KP_1 => .kp_1,
-        xkb.XKB_KEY_KP_2 => .kp_2,
-        xkb.XKB_KEY_KP_3 => .kp_3,
-        xkb.XKB_KEY_KP_4 => .kp_4,
-        xkb.XKB_KEY_KP_5 => .kp_5,
-        xkb.XKB_KEY_KP_6 => .kp_6,
-        xkb.XKB_KEY_KP_7 => .kp_7,
-        xkb.XKB_KEY_KP_8 => .kp_8,
-        xkb.XKB_KEY_KP_9 => .kp_9,
-        xkb.XKB_KEY_KP_Decimal => .kp_decimal,
-        xkb.XKB_KEY_KP_Divide => .kp_divide,
-        xkb.XKB_KEY_KP_Multiply => .kp_multiply,
-        xkb.XKB_KEY_KP_Subtract => .kp_subtract,
-        xkb.XKB_KEY_KP_Add => .kp_add,
-        xkb.XKB_KEY_KP_Enter => .kp_enter,
-        xkb.XKB_KEY_KP_Equal => .kp_equal,
-        xkb.XKB_KEY_Shift_L => .left_shift,
-        xkb.XKB_KEY_Control_L => .left_control,
-        xkb.XKB_KEY_Alt_L => .left_alt,
-        xkb.XKB_KEY_Super_L => .left_super,
-        xkb.XKB_KEY_Shift_R => .right_shift,
-        xkb.XKB_KEY_Control_R => .right_control,
-        xkb.XKB_KEY_Alt_R => .right_alt,
-        xkb.XKB_KEY_Super_R => .right_super,
-        xkb.XKB_KEY_Menu => .menu,
+        .space => .space,
+        .apostrophe => .apostrophe,
+        .comma => .comma,
+        .minus => .minus,
+        .period => .period,
+        .slash => .slash,
+        .@"0" => .zero,
+        .@"1" => .one,
+        .@"2" => .two,
+        .@"3" => .three,
+        .@"4" => .four,
+        .@"5" => .five,
+        .@"6" => .six,
+        .@"7" => .seven,
+        .@"8" => .eight,
+        .@"9" => .nine,
+        .semicolon => .semicolon,
+        .equal => .equal,
+        .A, .a => .a,
+        .B, .b => .b,
+        .C, .c => .c,
+        .D, .d => .d,
+        .E, .e => .e,
+        .F, .f => .f,
+        .G, .g => .g,
+        .H, .h => .h,
+        .I, .i => .i,
+        .J, .j => .j,
+        .K, .k => .k,
+        .L, .l => .l,
+        .M, .m => .m,
+        .N, .n => .n,
+        .O, .o => .o,
+        .P, .p => .p,
+        .Q, .q => .q,
+        .R, .r => .r,
+        .S, .s => .s,
+        .T, .t => .t,
+        .U, .u => .u,
+        .V, .v => .v,
+        .W, .w => .w,
+        .X, .x => .x,
+        .Y, .y => .y,
+        .Z, .z => .z,
+        .botleftsqbracket => .left_bracket,
+        .backslash => .backslash,
+        .botrightsqbracket => .right_bracket,
+        .grave => .grave_accent,
+        .Escape => .escape,
+        .Return => .enter,
+        .Tab => .tab,
+        .BackSpace => .backspace,
+        .Insert => .insert,
+        .Delete => .delete,
+        .Right => .right,
+        .Left => .left,
+        .Down => .down,
+        .Up => .up,
+        .Page_Up => .page_up,
+        .Page_Down => .page_down,
+        .Home => .home,
+        .End => .end,
+        .Caps_Lock => .caps_lock,
+        .Scroll_Lock => .scroll_lock,
+        .Num_Lock => .num_lock,
+        .Print => .print_screen,
+        .Pause => .pause,
+        .F1 => .F1,
+        .F2 => .F2,
+        .F3 => .F3,
+        .F4 => .F4,
+        .F5 => .F5,
+        .F6 => .F6,
+        .F7 => .F7,
+        .F8 => .F8,
+        .F9 => .F9,
+        .F10 => .F10,
+        .F11 => .F11,
+        .F12 => .F12,
+        .F13 => .F13,
+        .F14 => .F14,
+        .F15 => .F15,
+        .F16 => .F16,
+        .F17 => .F17,
+        .F18 => .F18,
+        .F19 => .F19,
+        .F20 => .F20,
+        .F21 => .F21,
+        .F22 => .F22,
+        .F23 => .F23,
+        .F24 => .F24,
+        .F25 => .F25,
+        .KP_0 => .kp_0,
+        .KP_1 => .kp_1,
+        .KP_2 => .kp_2,
+        .KP_3 => .kp_3,
+        .KP_4 => .kp_4,
+        .KP_5 => .kp_5,
+        .KP_6 => .kp_6,
+        .KP_7 => .kp_7,
+        .KP_8 => .kp_8,
+        .KP_9 => .kp_9,
+        .KP_Decimal => .kp_decimal,
+        .KP_Divide => .kp_divide,
+        .KP_Multiply => .kp_multiply,
+        .KP_Subtract => .kp_subtract,
+        .KP_Add => .kp_add,
+        .KP_Enter => .kp_enter,
+        .KP_Equal => .kp_equal,
+        .Shift_L => .left_shift,
+        .Control_L => .left_control,
+        .Alt_L => .left_alt,
+        .Super_L => .left_super,
+        .Shift_R => .right_shift,
+        .Control_R => .right_control,
+        .Alt_R => .right_alt,
+        .Super_R => .right_super,
+        .Menu => .menu,
         else => null,
     };
 }
@@ -585,6 +599,7 @@ const windowing = @import("../../windowing.zig");
 const Key = windowing.Key;
 const Action = windowing.Action;
 const xcb = @import("xcb.zig");
-const xkb = @import("xkbcommon.zig");
 const xcb_input = @import("xinput.zig");
 const xcb_loader = @import("xcb_loader.zig");
+const xkbcommon_loader = @import("xkbcommon_loader.zig");
+const xcb_xinput_loader = @import("xcb_xinput_loader.zig");
