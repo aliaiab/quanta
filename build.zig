@@ -226,7 +226,7 @@ pub fn addGlslCompileStep(
 }
 
 pub const AssetCompileOptions = struct {
-    ///The directory containing source assets
+    ///The directory containing source assets, cwd relative.
     source_directory: []const u8,
     ///The directory to install the compiled archives
     ///Defaults to the builder.install_path
@@ -272,19 +272,68 @@ pub fn addAssetCompileStep(
     const target = if (config.target) |targ| targ else builder.host;
     _ = target; // autofix
 
-    run_asset_compiler.addArg(@tagName(optimize));
+    std.log.info("config.source_dir = {s}", .{config.source_directory});
 
-    run_asset_compiler.addArg(config.source_directory);
+    run_asset_compiler.addArg(@tagName(optimize));
+    run_asset_compiler.addDirectoryArg(.{ .cwd_relative = config.source_directory });
     run_asset_compiler.addArg(builder.pathJoin(&.{
         config.install_directory orelse builder.install_path,
         config.install_sub_directory,
     }));
     run_asset_compiler.addArg(config.artifact_name);
 
+    _ = run_asset_compiler.step.addDirectoryWatchInput(.{ .cwd_relative = config.source_directory }) catch @panic("Failed to watch asset source dir");
+
+    var asset_directory = std.fs.cwd().openDir(config.source_directory, .{
+        .iterate = true,
+    }) catch @panic("Cannot find asset root directory");
+    defer asset_directory.close();
+
+    addAssetDirectoryAsInput(
+        builder,
+        run_asset_compiler,
+        asset_directory,
+        config.source_directory,
+    );
+
     return .{
         .step = &run_asset_compiler.step,
         .run_step = run_asset_compiler,
     };
+}
+
+///Recurses the asset directory to add all directories as watch inputs. This probably innefficient
+fn addAssetDirectoryAsInput(
+    builder: *std.Build,
+    run: *std.Build.Step.Run,
+    directory: std.fs.Dir,
+    directory_path: []const u8,
+) void {
+    var iter = directory.iterate();
+
+    while (iter.next() catch @panic("Cannot iterate asset source directory")) |entry| {
+        switch (entry.kind) {
+            .file => {
+                std.log.info("Adding file input '{s}'", .{builder.pathJoin(&.{ directory_path, entry.name })});
+
+                run.addFileInput(.{ .cwd_relative = builder.pathJoin(&.{ directory_path, entry.name }) });
+            },
+            .directory => {
+                var asset_directory = std.fs.cwd().openDir(builder.pathJoin(&.{ directory_path, entry.name }), .{
+                    .iterate = true,
+                }) catch @panic("Cannot find asset root directory");
+                defer asset_directory.close();
+
+                addAssetDirectoryAsInput(
+                    builder,
+                    run,
+                    asset_directory,
+                    entry.name,
+                );
+            },
+            else => {},
+        }
+    }
 }
 
 const std = @import("std");

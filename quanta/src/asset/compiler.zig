@@ -99,13 +99,6 @@ pub const CompilerContext = struct {
             }
         }
     }
-
-    pub fn pathFromRoot(
-        self: CompilerContext,
-        path: []const u8,
-    ) ![]u8 {
-        return try std.fs.path.join(self.allocator, &.{ self.directory_path, path });
-    }
 };
 
 pub const AssetCompilerInfo = struct {
