@@ -1,5 +1,5 @@
-//!Implements compiling aseprite files directly.
-//!Aseprite file format is fully specified by https://github.com/aseprite/aseprite/blob/main/docs/ase-file-specs.md
+//! Implements compiling aseprite files directly.
+//! Aseprite file format is fully specified by https://github.com/aseprite/aseprite/blob/main/docs/ase-file-specs.md
 
 pub const Import = struct {
     //Currently just takes all frames and creates a static image
@@ -146,12 +146,6 @@ pub const Import = struct {
 
     ///TODO: add extension alternatives to handle the .ase extension
     pub const file_extension = ".aseprite";
-
-    // pub const base_hash = compiler.getBaseHashFromSource(struct {
-    // pub fn src() std.builtin.SourceLocation {
-    // return @src();
-    // }
-    // }.src());
 
     pub const base_hash = compiler.getBaseHashFromBytes(@embedFile("aseprite.zig"));
 

@@ -8,6 +8,7 @@ pub const CompilerContext = struct {
     ///TODO: storing the previous archive is potentially very memory intensive;
     ///Only store the previous headers as the content isn't needed until archive re-encoding
     previous_archive: Archive,
+    archive_path: []u8,
     hasher: Hasher,
 
     pub fn deinit(self: *CompilerContext) void {
@@ -63,17 +64,28 @@ pub const CompilerContext = struct {
                 //handle when the asset doesn't exist in the prev archive (the asset is new)
                 const old_asset_index = self.previous_archive.getAssetIndexFromName(name) orelse null;
 
+                if (old_asset_index == null) {
+                    std.log.info("asset doesn't exist in previous archive. The asset is new", .{});
+                }
+
                 const old_asset_content_hash = if (old_asset_index != null) self.previous_archive.asset_content_hashes[old_asset_index.?] else null;
 
                 //The asset contents are the same, don't compile---use the old one
                 if (old_asset_content_hash != null and old_asset_content_hash.? == hash) {
-                    std.log.info("Old Hash = 0x{x}", .{old_asset_content_hash.?});
+                    //Cache hit
+                    std.log.info("Cache hit: Hash = 0x{x}", .{old_asset_content_hash.?});
 
                     const previous_asset_header = self.previous_archive.assets[old_asset_index.?];
 
+                    const asset_data = try self.previous_archive.mapAssetDataFromFile(
+                        self.allocator,
+                        @enumFromInt(old_asset_index.?),
+                        self.archive_path,
+                    );
+
                     try self.assets.append(self.allocator, .{
                         .name = name,
-                        .source_data = self.previous_archive.image[previous_asset_header.source_data_offset .. previous_asset_header.source_data_offset + previous_asset_header.source_data_size],
+                        .source_data = asset_data,
                         .source_data_alignment = previous_asset_header.mapped_data_alignment,
                         .mapped_data_size = previous_asset_header.mapped_data_size,
                         .content_hash = hash,

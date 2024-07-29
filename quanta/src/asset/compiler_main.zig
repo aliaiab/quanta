@@ -104,14 +104,14 @@ pub fn main() !void {
 
     if (previous_exists) {
         //TODO: only read headers and lazily load old artifacts
-        // var previous_archive = try Archive.decodeHeaderOnlyFromFile(allocator, asset_archive_file);
-        const archive_all = try asset_archive_file.readToEndAlloc(allocator, std.math.maxInt(usize));
-        previous_archive = try Archive.decode(allocator, archive_all);
+        previous_archive = try Archive.decodeHeaderOnlyFromFile(allocator, asset_archive_file);
+        // const archive_all = try asset_archive_file.readToEndAlloc(allocator, std.math.maxInt(usize));
+        // previous_archive = try Archive.decode(allocator, previous_archive_data);
 
         std.log.info("Previous archive exists: count: {}", .{previous_archive.assets.len});
     }
 
-    defer if (previous_exists) previous_archive.decodeFree(allocator);
+    // defer if (previous_exists) previous_archive.decodeFree(allocator);
 
     const asset_compilers = [_]compiler.AssetCompilerInfo{
         compiler.AssetCompilerInfo.fromType(importers.gltf.Import),
@@ -128,6 +128,7 @@ pub fn main() !void {
         .directory_path = asset_directory_path,
         .hasher = std.Build.Cache.Hasher.init("ASSET" ++ [_]u8{0} ** 11),
         .previous_archive = previous_archive,
+        .archive_path = archive_path,
         .compiled_asset_count = 0,
     };
     defer context.deinit();

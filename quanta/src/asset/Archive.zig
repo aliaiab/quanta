@@ -12,16 +12,19 @@ pub const Header = extern struct {
     asset_content_hashes_count: u32,
 };
 
+///Represents an index into the asset header table in the archive
 pub const AssetDescriptor = enum(u32) { _ };
 
 pub const AssetHeader = extern struct {
+    ///An offset of the source data in the address space of the archive
     source_data_offset: u64,
+    ///The size that the source data takes up in the archive from source_data_offset
     source_data_size: u64,
+    ///Must be greater than or equal to source_data_size
     mapped_data_size: u64,
+    ///Must represent an alignment greater than or equal to the relative alignment of source_data_offset
     mapped_data_alignment: u32,
 };
-
-pub const AssetMappedRegion = extern struct {};
 
 pub const AssetDescription = struct {
     name: []const u8,
@@ -149,7 +152,10 @@ pub fn decodeFree(self: *Archive, allocator: std.mem.Allocator) void {
     self.* = undefined;
 }
 
-pub fn decodeHeaderOnlyFromFile(allocator: std.mem.Allocator, file: std.fs.File) !Archive {
+pub fn decodeHeaderOnlyFromFile(
+    allocator: std.mem.Allocator,
+    file: std.fs.File,
+) !Archive {
     var archive = Archive{
         .image = &.{},
         .assets = &.{},
@@ -160,36 +166,50 @@ pub fn decodeHeaderOnlyFromFile(allocator: std.mem.Allocator, file: std.fs.File)
 
     const header = try file.reader().readStruct(Header);
 
+    std.log.info("Read header: {}", .{header});
+
     var headers_size: usize = 0;
 
     headers_size += @sizeOf(Header);
 
     headers_size += @sizeOf(u64) * header.asset_count;
-
-    headers_size = std.mem.alignForward(usize, headers_size, @alignOf(u256));
     headers_size += @sizeOf(u256) * header.asset_content_hashes_count;
 
     headers_size = std.mem.alignForward(usize, headers_size, @alignOf(AssetHeader));
     headers_size += @sizeOf(AssetHeader) * header.asset_count;
 
     //load the partial image that contains only heady data (no content)
-    const image = try allocator.alloc(u8, headers_size);
-    defer allocator.free(image);
+    const image = try allocator.alignedAlloc(u8, @alignOf(Header), headers_size);
+    errdefer allocator.free(image);
+
+    archive.image = image;
+
+    try file.seekTo(0);
 
     _ = try file.readAll(image);
 
     var image_offset: usize = 0;
 
+    image_offset += @sizeOf(Header);
+
     archive.asset_name_hashes = @as([*]u64, @ptrCast(@alignCast(image.ptr + image_offset)))[0..header.asset_count];
     image_offset += @sizeOf(u64) * header.asset_count;
 
-    archive.asset_content_hashes = @as([*]u256, @ptrCast(@alignCast(image.ptr + image_offset)))[0..header.asset_content_hashes_count];
+    archive.asset_content_hashes = @as([*]align(1) u256, @ptrCast(@alignCast(image.ptr + image_offset)))[0..header.asset_content_hashes_count];
     image_offset += @sizeOf(u256) * header.asset_content_hashes_count;
 
     image_offset = std.mem.alignForward(usize, image_offset, @alignOf(AssetHeader));
 
     archive.assets = @as([*]AssetHeader, @ptrCast(@alignCast(image.ptr + image_offset)))[0..header.asset_count];
     image_offset += @sizeOf(AssetHeader) * header.asset_count;
+
+    std.debug.assert(image_offset == image.len);
+
+    archive.asset_content = &.{};
+
+    for (archive.asset_name_hashes) |name_hash| {
+        std.log.info("asset_name_hash: 0x{x}", .{name_hash});
+    }
 
     return archive;
 }
@@ -198,7 +218,10 @@ pub fn decodeHeaderOnlyFromFile(allocator: std.mem.Allocator, file: std.fs.File)
 pub fn getAssetIndexFromName(self: Archive, name: []const u8) ?usize {
     const hash = hashAssetName(name);
 
+    //TODO: use some kind of bucket based table to allow for archives with very large numbers of assets
     return for (self.asset_name_hashes, 0..) |asset_name_hash, index| {
+        std.log.info("getAssetIndex: testing hash 0x{x} against name: 0x{x}", .{ asset_name_hash, hash });
+
         if (hash == asset_name_hash) {
             break index;
         }
@@ -209,6 +232,30 @@ pub fn getAssetData(self: Archive, asset: AssetDescriptor) []u8 {
     const header = self.assets[@intFromEnum(asset)];
 
     return self.image[header.source_data_offset .. header.source_data_offset + header.source_data_size];
+}
+
+pub fn mapAssetDataFromFile(
+    self: Archive,
+    gpa: std.mem.Allocator,
+    asset: AssetDescriptor,
+    file_path: []const u8,
+) ![]u8 {
+    const asset_header = self.assets[@intFromEnum(asset)];
+
+    const file = try std.fs.cwd().openFile(file_path, .{});
+    defer file.close();
+
+    //TODO: respect mapped_alignment
+    const data = try gpa.alloc(u8, asset_header.mapped_data_size);
+    errdefer gpa.free(data);
+
+    @memset(data[asset_header.source_data_size..], 0);
+
+    try file.seekTo(asset_header.source_data_offset);
+
+    _ = try file.read(data);
+
+    return data;
 }
 
 pub fn getAssetDataFromName(self: Archive, comptime name: []const u8) error{

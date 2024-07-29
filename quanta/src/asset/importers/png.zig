@@ -1,8 +1,3 @@
-const std = @import("std");
-const img = @import("zigimg");
-const png = img.png;
-const compiler = @import("../compiler.zig");
-
 pub const Import = struct {
     data: []u8,
     width: u32,
@@ -27,12 +22,6 @@ pub const Import = struct {
     }
 
     pub const file_extension = ".png";
-    ///Change this when the format changes
-    // pub const base_hash: []const u8 = compiler.getBaseHashFromSource(struct {
-    //     pub fn src() std.builtin.SourceLocation {
-    //         return @src();
-    //     }
-    // }.src());
     pub const base_hash: []const u8 = compiler.getBaseHashFromBytes(@embedFile("png.zig"));
 };
 
@@ -121,3 +110,8 @@ pub fn free(self: *Import, allocator: std.mem.Allocator) void {
 
     self.* = undefined;
 }
+
+const std = @import("std");
+const img = @import("zigimg");
+const png = img.png;
+const compiler = @import("../compiler.zig");

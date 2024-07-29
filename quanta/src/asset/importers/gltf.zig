@@ -1,11 +1,3 @@
-const std = @import("std");
-const Renderer3D = @import("quanta").renderer_3d.Renderer3D;
-const png = @import("png.zig");
-const zgltf = @import("zgltf");
-const AssetStorage = @import("../AssetStorage.zig");
-const compiler = @import("../compiler.zig");
-const Asset = AssetStorage.Asset;
-
 pub const Import = struct {
     vertex_positions: []Renderer3D.VertexPosition,
     vertices: []Renderer3D.Vertex,
@@ -706,3 +698,11 @@ fn packUnorm4x8(v: [4]f32) u32 {
         .w = w,
     }));
 }
+
+const std = @import("std");
+const Renderer3D = @import("quanta").renderer_3d.Renderer3D;
+const png = @import("png.zig");
+const zgltf = @import("zgltf");
+const AssetStorage = @import("../AssetStorage.zig");
+const compiler = @import("../compiler.zig");
+const Asset = AssetStorage.Asset;
