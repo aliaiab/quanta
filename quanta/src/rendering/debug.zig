@@ -104,8 +104,6 @@ pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
             const file_data = self.file_map.getOrPut(builder.gpa, pass_source.file) catch return null;
 
             if (!file_data.found_existing) {
-                std.log.debug("pass_source.file {s}", .{pass_source.file});
-
                 const file_source = std.fs.cwd().readFileAlloc(builder.gpa, pass_source.file, std.math.maxInt(usize)) catch return {
                     _ = self.file_map.remove(pass_source.file);
 

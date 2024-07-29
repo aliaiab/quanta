@@ -52,8 +52,9 @@ pub fn build(builder: *std.Build) !void {
             .{ .name = "spvine", .module = builder.dependency("spvine", .{}).module("spvine") },
             .{ .name = "zigimg", .module = builder.dependency("zigimg", .{}).module("zigimg") },
         },
-        .link_libc = true,
         .target = target,
+        //We currently depend on libc to load vulkan/xcb/xkb and to free various pieces of memory passed from these apis
+        .link_libc = true,
     });
 
     const vk_zig_file = vk_generate_cmd.addOutputFileArg("vk.zig");

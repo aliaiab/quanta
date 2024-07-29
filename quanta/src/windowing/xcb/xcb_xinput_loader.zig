@@ -1,6 +1,11 @@
 pub const Library = struct {
     functions: struct {
-        xi_select_events_checked: *const fn (c: *xcb_loader.Connection, window: xcb_loader.Window, num_mask: u16, masks: [*]const EventMask) xcb_loader.VoidCookie,
+        xi_select_events_checked: *const fn (
+            connection: *xcb_loader.Connection,
+            window: xcb_loader.Window,
+            num_mask: u16,
+            masks: [*]const EventMask,
+        ) xcb_loader.VoidCookie,
     },
     dynamic_library: std.DynLib,
 
@@ -21,7 +26,7 @@ pub const Library = struct {
     }
 };
 
-pub const EventMask = packed struct(u32) {
+pub const EventMask = extern struct {
     deviceid: DeviceId,
     mask_len: u16,
 };
@@ -69,10 +74,10 @@ pub const DeviceId = enum(u16) {
 pub fn load() !Library {
     var library: Library = undefined;
 
+    const function_prefix = "xcb_input_";
+
     library.dynamic_library = try std.DynLib.open("libxcb-xinput.so");
     errdefer library.dynamic_library.close();
-
-    const function_prefix = "xcb_input_";
 
     inline for (comptime std.meta.fieldNames(@TypeOf(library.functions))) |field_name| {
         @field(library.functions, field_name) = library.dynamic_library.lookup(@TypeOf(@field(library.functions, field_name)), function_prefix ++ field_name).?;

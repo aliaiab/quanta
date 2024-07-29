@@ -1,4 +1,4 @@
-//Handwritten binding for xcb, with dynamic loading facilities
+//! Handwritten binding for xcb, with dynamic loading facilities
 
 pub const Library = struct {
     functions: struct {
@@ -288,7 +288,7 @@ pub const Library = struct {
 
         if (generic_event == null) return null;
 
-        defer std.c.free(generic_event.?);
+        // defer std.c.free(generic_event.?);
 
         return eventFromGenericEvent(generic_event.?);
     }

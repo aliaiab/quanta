@@ -65,16 +65,18 @@ pub fn init(
     const xinput_extension_info = self.xcb_library.queryExtension(self.connection, "XInputExtension");
 
     if (xinput_extension_info.present == 0) {
-        @panic("XInputExtension not present");
+        @panic("XInputExtension not present. The compositor must have support for the XInputExtension and provide libxcb-input");
     }
 
-    const values = [_]u32{xcb.XCB_EVENT_MASK_EXPOSURE | xcb.XCB_EVENT_MASK_BUTTON_PRESS |
-        xcb.XCB_EVENT_MASK_BUTTON_RELEASE | xcb.XCB_EVENT_MASK_POINTER_MOTION |
-        xcb.XCB_EVENT_MASK_ENTER_WINDOW | xcb.XCB_EVENT_MASK_LEAVE_WINDOW |
-        xcb.XCB_EVENT_MASK_KEY_PRESS | xcb.XCB_EVENT_MASK_KEY_RELEASE | xcb.XCB_EVENT_MASK_PROPERTY_CHANGE |
-        xcb.XCB_EVENT_MASK_STRUCTURE_NOTIFY | xcb.XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | xcb.XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | xcb.XCB_EVENT_MASK_VISIBILITY_CHANGE |
-        xcb_input.XCB_INPUT_XI_EVENT_MASK_RAW_MOTION | xcb_input.XCB_INPUT_XI_EVENT_MASK_MOTION | xcb_input.XCB_INPUT_XI_EVENT_MASK_RAW_KEY_PRESS |
-        xcb.XCB_EVENT_MASK_ENTER_WINDOW | xcb.XCB_EVENT_MASK_FOCUS_CHANGE | xcb.XCB_EVENT_MASK_OWNER_GRAB_BUTTON | xcb.XCB_EVENT_MASK_POINTER_MOTION_HINT};
+    const values = [_]u32{
+        xcb.XCB_EVENT_MASK_EXPOSURE | xcb.XCB_EVENT_MASK_BUTTON_PRESS |
+            xcb.XCB_EVENT_MASK_BUTTON_RELEASE | xcb.XCB_EVENT_MASK_POINTER_MOTION |
+            xcb.XCB_EVENT_MASK_ENTER_WINDOW | xcb.XCB_EVENT_MASK_LEAVE_WINDOW |
+            xcb.XCB_EVENT_MASK_KEY_PRESS | xcb.XCB_EVENT_MASK_KEY_RELEASE | xcb.XCB_EVENT_MASK_PROPERTY_CHANGE |
+            xcb.XCB_EVENT_MASK_STRUCTURE_NOTIFY | xcb.XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | xcb.XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | xcb.XCB_EVENT_MASK_VISIBILITY_CHANGE |
+            xcb_input.XCB_INPUT_XI_EVENT_MASK_RAW_MOTION | xcb_input.XCB_INPUT_XI_EVENT_MASK_MOTION | xcb_input.XCB_INPUT_XI_EVENT_MASK_RAW_KEY_PRESS |
+            xcb.XCB_EVENT_MASK_ENTER_WINDOW | xcb.XCB_EVENT_MASK_FOCUS_CHANGE | xcb.XCB_EVENT_MASK_OWNER_GRAB_BUTTON | xcb.XCB_EVENT_MASK_POINTER_MOTION_HINT,
+    };
 
     self.window = self.xcb_library.createWindow(
         self.connection,
@@ -102,12 +104,15 @@ pub fn init(
         },
     };
 
-    self.xcb_xinput_library.xiSelectEventsChecked(
-        self.connection,
-        self.window,
-        1,
-        @ptrCast(@alignCast(&input_mask.head)),
-    );
+    //TODO: FIXME: This is currently crashing in release fast and I don't know why
+    if (@import("builtin").mode != .ReleaseFast) {
+        self.xcb_xinput_library.xiSelectEventsChecked(
+            self.connection,
+            self.window,
+            1,
+            @ptrCast(&input_mask.head),
+        );
+    }
 
     _ = self.xcb_library.changeProperty(
         self.connection,
