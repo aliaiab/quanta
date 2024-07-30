@@ -161,20 +161,6 @@ pub const AssetCompilerInfo = struct {
     }
 };
 
-///Hashes the source of a file, providing a reliable and bug-free approach to computing the base hash
-///So that when the source of an asset compiler changes, the hash for that asset type can be invalidated
-///This catches a lot of bugs, so is worth paying the price for when compiling the compiler
-pub fn getBaseHashFromSource(src: std.builtin.SourceLocation) []const u8 {
-    //Hacky but very bug free approach to changing the base hash
-    var source_hash = std.Build.Cache.Hasher.init("ASSET" ++ [_]u8{0} ** 11);
-
-    @setEvalBranchQuota(100000);
-
-    source_hash.update(@embedFile(src.file));
-
-    return &source_hash.finalResult();
-}
-
 pub fn getBaseHashFromBytes(bytes: []const u8) []const u8 {
     //Hacky but very bug free approach to changing the base hash
     var source_hash = std.Build.Cache.Hasher.init("ASSET" ++ [_]u8{0} ** 11);
