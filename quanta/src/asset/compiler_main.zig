@@ -147,7 +147,7 @@ pub fn main() !void {
 
     std.log.info("Recompiled {} assets", .{context.compiled_asset_count});
 
-    const asset_archive = try Archive.encode(allocator, context.assets.items);
+    const asset_archive = try Archive.encode(std.heap.page_allocator, context.assets.items);
 
     try asset_archive_file.setEndPos(0);
     try asset_archive_file.seekTo(0);
