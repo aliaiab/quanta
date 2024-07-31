@@ -1,10 +1,10 @@
 //! Implements compiling aseprite files directly.
 //! Aseprite file format is fully specified by https://github.com/aseprite/aseprite/blob/main/docs/ase-file-specs.md
 
-pub const Import = struct {
+pub const Import = extern struct {
     //Currently just takes all frames and creates a static image
     //TODO: implement layers and animations
-    data: []u8,
+    data: encoded_format.RelativeSlice(u8, u16, u16),
     width: u32,
     height: u32,
 
@@ -103,43 +103,23 @@ pub const Import = struct {
 
         //Encode the imported data
 
-        const fixed_buffer = try context.allocator.alloc(u8, @sizeOf(Encoded) + pixel_data.?.len);
+        const fixed_buffer = try context.allocator.alignedAlloc(u8, @alignOf(Import), @sizeOf(Import) + pixel_data.?.len);
+        errdefer context.allocator.free(fixed_buffer);
 
-        var out_stream = std.io.FixedBufferStream([]u8){ .buffer = fixed_buffer, .pos = 0 };
+        var bump: u32 = 0;
 
-        const out_writer = out_stream.writer();
+        const encoded_import_data: *Import = @alignCast(@ptrCast(fixed_buffer.ptr));
 
-        _ = try out_writer.writeStruct(Encoded{
-            .width = width,
-            .height = height,
-        });
+        bump += @sizeOf(Import);
 
-        _ = try out_writer.write(pixel_data.?);
+        encoded_import_data.width = width;
+        encoded_import_data.height = height;
+
+        encoded_import_data.data.set(fixed_buffer[bump..]);
+
+        @memcpy(fixed_buffer[bump..], pixel_data.?);
 
         return fixed_buffer;
-    }
-
-    pub fn decode(
-        allocator: std.mem.Allocator,
-        data: []u8,
-    ) !Import {
-        _ = allocator; // autofix
-        var in_stream = std.io.fixedBufferStream(data);
-
-        const reader = in_stream.reader();
-
-        const encoded = try reader.readStruct(Encoded);
-
-        const pixel_data_size = encoded.width * encoded.height * @sizeOf(u32);
-        _ = pixel_data_size; // autofix
-
-        const pixel_data = data[in_stream.pos..];
-
-        return .{
-            .width = encoded.width,
-            .height = encoded.height,
-            .data = pixel_data,
-        };
     }
 
     pub const Metadata = struct {};
@@ -148,11 +128,6 @@ pub const Import = struct {
     pub const file_extension = ".aseprite";
 
     pub const base_hash = compiler.getBaseHashFromBytes(@embedFile("aseprite.zig"));
-
-    pub const Encoded = extern struct {
-        width: u32,
-        height: u32,
-    };
 };
 
 const Header = extern struct {
@@ -273,5 +248,6 @@ const CelChunk = extern struct {
 };
 
 const compiler = @import("../compiler.zig");
+const encoded_format = @import("../encoded_format.zig");
 const std = @import("std");
 const log = std.log.scoped(.aseprite);

@@ -5,6 +5,7 @@ pub const importers = @import("asset/importers.zig");
 pub const CubeMap = @import("asset/CubeMap.zig");
 pub const metadata = @import("asset/metadata.zig");
 pub const compiler = @import("asset/compiler.zig");
+pub const encoded_format = @import("asset/encoded_format.zig");
 
 test {
     @import("std").testing.refAllDecls(@This());
