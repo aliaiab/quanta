@@ -69,7 +69,8 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
     errdefer allocator.free(image);
 
     //In order for builds to be reproducable, images must set padding bytes to a known value
-    @memset(image, 0xaa);
+    //Using zero will potentially improve compression ratios and is just better generally
+    @memset(image, 0);
 
     const name_hashes: [*]u64 = @alignCast(@ptrCast(image.ptr + name_hashes_offset));
     const asset_headers: [*]AssetHeader = @alignCast(@ptrCast(image.ptr + asset_headers_offset));
