@@ -98,9 +98,9 @@ pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![
 
         current_content_offset = std.mem.alignForward(usize, current_content_offset, asset.source_data_alignment);
 
-        asset_header.source_data_size = @as(u32, @intCast(asset.source_data.len));
-        asset_header.source_data_offset = @as(u32, @intCast(current_content_offset));
-        asset_header.mapped_data_size = @as(u32, @intCast(asset.mapped_data_size));
+        asset_header.source_data_size = @intCast(asset.source_data.len);
+        asset_header.source_data_offset = @intCast(current_content_offset);
+        asset_header.mapped_data_size = @intCast(asset.mapped_data_size);
         asset_header.mapped_data_alignment = 1;
 
         name_hashes[i] = hashAssetName(asset.name);
