@@ -114,10 +114,10 @@ pub fn main() !void {
     // defer if (previous_exists) previous_archive.decodeFree(allocator);
 
     const asset_compilers = [_]compiler.AssetCompilerInfo{
-        compiler.AssetCompilerInfo.fromType(importers.gltf.Import),
+        compiler.AssetCompilerInfo.fromType(frontends.gltf.Import),
         compiler.AssetCompilerInfo.fromType(CubeMap),
-        compiler.AssetCompilerInfo.fromType(importers.png.Import),
-        compiler.AssetCompilerInfo.fromType(importers.aseprite.Import),
+        compiler.AssetCompilerInfo.fromType(frontends.png.Import),
+        compiler.AssetCompilerInfo.fromType(frontends.aseprite.Import),
     };
 
     var context = compiler.CompilerContext{
@@ -161,6 +161,6 @@ const std = @import("std");
 const quanta = @import("quanta");
 const compiler = quanta.asset.compiler;
 const zon = quanta.zon;
-const importers = quanta.asset.importers;
+const frontends = quanta.asset.frontends;
 const CubeMap = quanta.asset.CubeMap;
 const Archive = quanta.asset.Archive;
