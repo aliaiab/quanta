@@ -73,5 +73,5 @@ pub const file_extension = ".cubemap.zon";
 pub const base_hash = "1";
 
 const compiler = @import("compiler.zig");
-const importers = @import("importers.zig");
+const importers = @import("frontends.zig");
 const std = @import("std");

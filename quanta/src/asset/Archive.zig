@@ -38,7 +38,10 @@ pub const AssetLocation = struct {
     path: []const u8,
 };
 
-pub fn encode(allocator: std.mem.Allocator, assets: []const AssetDescription) ![]const u8 {
+pub fn encode(
+    allocator: std.mem.Allocator,
+    assets: []const AssetDescription,
+) ![]const u8 {
     var image_size: usize = @sizeOf(Header);
 
     const name_hashes_offset = image_size;
