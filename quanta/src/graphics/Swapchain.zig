@@ -5,6 +5,8 @@ present_mode: vk.PresentModeKHR,
 extent: vk.Extent2D,
 handle: vk.SwapchainKHR,
 swap_images: []SwapImage,
+swap_image_handles: []vk.Image,
+swap_image_views: []vk.ImageView,
 image_index: u32,
 next_image_acquired: Semaphore,
 
@@ -23,9 +25,11 @@ pub fn initRecycle(allocator: std.mem.Allocator, surface: vk.SurfaceKHR, old_han
     const surface_format = try findSurfaceFormat(surface, allocator);
     const present_mode = try findPresentMode(surface, allocator);
 
-    const image_count = caps.min_image_count + 1;
+    var image_count = @max(caps.min_image_count, 3);
 
-    // image_count = @min(image_count, caps.max_image_count);
+    if (caps.max_image_count > 0) {
+        image_count = @min(image_count, caps.max_image_count);
+    }
 
     const qfi = [_]u32{ Context.self.graphics_family_index.?, Context.self.present_family_index.? };
     const sharing_mode: vk.SharingMode = if (Context.self.graphics_family_index.? != Context.self.present_family_index.?)
@@ -33,13 +37,26 @@ pub fn initRecycle(allocator: std.mem.Allocator, surface: vk.SurfaceKHR, old_han
     else
         .exclusive;
 
-    std.log.info("caps = {}", .{caps});
-    std.log.info("actual_extent = {}", .{actual_extent});
-    std.log.info("present_mode {}", .{present_mode});
-    std.log.info("surface_format {}", .{surface_format});
+    var present_modes_info = vk.SwapchainPresentModesCreateInfoEXT{
+        .present_mode_count = 1,
+        .p_present_modes = &.{vk.PresentModeKHR.mailbox_khr},
+    };
+
+    var present_scaling_info = vk.SwapchainPresentScalingCreateInfoEXT{
+        .p_next = &present_modes_info,
+        .scaling_behavior = .{
+            .stretch_bit_ext = true,
+        },
+        .present_gravity_x = .{ .centered_bit_ext = true },
+        .present_gravity_y = .{ .centered_bit_ext = true },
+    };
 
     const handle = try Context.self.vkd.createSwapchainKHR(Context.self.device, &.{
-        .flags = .{},
+        .p_next = &present_scaling_info,
+        .flags = .{
+            //TODO: look into why this doesn't work. Currently returns a timeout on acquire image and I have no idea why
+            .deferred_memory_allocation_bit_ext = false,
+        },
         .surface = surface,
         .min_image_count = image_count,
         .image_format = surface_format.format,
@@ -63,38 +80,30 @@ pub fn initRecycle(allocator: std.mem.Allocator, surface: vk.SurfaceKHR, old_han
     errdefer Context.self.vkd.destroySwapchainKHR(Context.self.device, handle, null);
 
     if (old_handle != .null_handle) {
-        // Apparently, the old swapchain handle still needs to be destroyed after recreating.
+        //TODO: defer this so that the old swapchain can be used by the current rendering frame
         Context.self.vkd.destroySwapchainKHR(Context.self.device, old_handle, null);
     }
 
-    const swap_images = try initSwapchainImages(handle, surface_format.format, allocator);
+    var queryed_image_count: u32 = undefined;
+
+    _ = try Context.self.vkd.getSwapchainImagesKHR(Context.self.device, handle, &queryed_image_count, null);
+
+    //Why are we fucking allocating using a gpa here?
+    const images = try allocator.alloc(vk.Image, queryed_image_count);
+    errdefer allocator.free(images);
+
+    _ = try Context.self.vkd.getSwapchainImagesKHR(Context.self.device, handle, &queryed_image_count, images.ptr);
+
+    const image_views = try allocator.alloc(vk.ImageView, queryed_image_count);
+    errdefer allocator.free(image_views);
+
+    @memset(image_views, .null_handle);
+
+    const swap_images = try initSwapchainImages(allocator, images);
     errdefer for (swap_images) |*si| si.deinit();
 
     var next_image_acquired = try Semaphore.initBinary();
     errdefer next_image_acquired.deinit();
-
-    const result = Context.self.vkd.acquireNextImage2KHR(Context.self.device, &vk.AcquireNextImageInfoKHR{
-        .swapchain = handle,
-        .semaphore = next_image_acquired.handle,
-        .timeout = std.math.maxInt(u64),
-        .fence = .null_handle,
-        .device_mask = 1,
-    }) catch |e| {
-        switch (e) {
-            error.OutOfDateKHR => {
-                std.log.info("swapchain: swap: getting the next image returned out of date", .{});
-
-                return e;
-            },
-            else => return e,
-        }
-    };
-
-    if (result.result != .success) {
-        return error.ImageAcquireFailed;
-    }
-
-    std.mem.swap(Semaphore, &swap_images[result.image_index].image_acquired, &next_image_acquired);
 
     return Swapchain{
         .allocator = allocator,
@@ -104,40 +113,24 @@ pub fn initRecycle(allocator: std.mem.Allocator, surface: vk.SurfaceKHR, old_han
         .extent = actual_extent,
         .handle = handle,
         .swap_images = swap_images,
-        .image_index = result.image_index,
+        .swap_image_handles = images,
+        .swap_image_views = image_views,
+        .image_index = 0,
         .next_image_acquired = next_image_acquired,
     };
-}
-
-///Obtain the next image for presentation
-pub fn obtainNextImage(self: *Swapchain) Image {
-    const image = self.swap_images[self.image_index];
-
-    const color_image: Image = .{
-        .handle = image.image,
-        .type = .@"2d",
-        .view = image.view,
-        .memory_page = undefined,
-        .size = undefined,
-        .alignment = undefined,
-        .format = self.surface_format.format,
-        .layout = .color_attachment_optimal,
-        .aspect_mask = .{ .color_bit = true },
-        .width = self.extent.width,
-        .height = self.extent.height,
-        .depth = 1,
-        .levels = 1,
-    };
-
-    color_image.debugSetName("Swapchain Image");
-
-    return color_image;
 }
 
 fn deinitExceptSwapchain(self: *Swapchain) void {
     for (self.swap_images) |*image| {
         image.deinit();
     }
+
+    for (self.swap_image_views) |image_view| {
+        if (image_view == .null_handle) continue;
+
+        Context.self.vkd.destroyImageView(Context.self.device, image_view, null);
+    }
+
     self.allocator.free(self.swap_images);
     self.next_image_acquired.deinit();
 }
@@ -164,6 +157,81 @@ pub fn currentImage(self: Swapchain) vk.Image {
 
 pub fn currentSwapImage(self: Swapchain) *const SwapImage {
     return &self.swap_images[self.image_index];
+}
+
+///Obtain the next image for presentation
+pub fn obtainNextImage(self: *Swapchain) !Image {
+    const result = Context.self.vkd.acquireNextImage2KHR(Context.self.device, &vk.AcquireNextImageInfoKHR{
+        .swapchain = self.handle,
+        .semaphore = self.next_image_acquired.handle,
+        .timeout = std.math.maxInt(u64),
+        .fence = .null_handle,
+        .device_mask = 1,
+    }) catch |e| {
+        switch (e) {
+            error.OutOfDateKHR => {
+                try Context.self.vkd.queueWaitIdle(Context.self.graphics_queue);
+
+                try self.recreate();
+
+                return try self.obtainNextImage();
+            },
+            else => {
+                return e;
+            },
+        }
+    };
+
+    if (result.image_index >= self.swap_images.len) {
+        std.log.info("res.image_index = 0x{x}", .{result.image_index});
+        std.log.info("res.result = {}", .{result.result});
+    }
+
+    std.debug.assert(result.image_index < self.swap_images.len);
+
+    std.mem.swap(Semaphore, &self.swap_images[result.image_index].image_acquired, &self.next_image_acquired);
+    self.image_index = result.image_index;
+
+    if (self.swap_image_views[self.image_index] == .null_handle) {
+        const view = try Context.self.vkd.createImageView(Context.self.device, &.{
+            .flags = .{},
+            .image = self.swap_image_handles[self.image_index],
+            .view_type = .@"2d",
+            .format = self.surface_format.format,
+            .components = .{ .r = .identity, .g = .identity, .b = .identity, .a = .identity },
+            .subresource_range = .{
+                .aspect_mask = .{ .color_bit = true },
+                .base_mip_level = 0,
+                .level_count = 1,
+                .base_array_layer = 0,
+                .layer_count = 1,
+            },
+        }, null);
+        errdefer Context.self.vkd.destroyImageView(Context.self.device, view, null);
+
+        self.swap_image_views[self.image_index] = view;
+    }
+
+    const color_image: Image = .{
+        .handle = self.swap_image_handles[self.image_index],
+        .type = .@"2d",
+        .view = self.swap_image_views[self.image_index],
+        .memory_page = undefined,
+        .size = undefined,
+        .alignment = undefined,
+        .format = self.surface_format.format,
+        .layout = .color_attachment_optimal,
+        .aspect_mask = .{ .color_bit = true },
+        .width = self.extent.width,
+        .height = self.extent.height,
+        .depth = 1,
+        .levels = 1,
+    };
+
+    //TODO: just set this in init swapchain
+    color_image.debugSetName("Swapchain Image");
+
+    return color_image;
 }
 
 pub fn present(self: *Swapchain) !void {
@@ -201,63 +269,21 @@ pub fn present(self: *Swapchain) !void {
     };
 }
 
+///Soft Deprecated, present does what swap used to do. This is a no op
 pub fn swap(self: *Swapchain) !void {
-    const result = Context.self.vkd.acquireNextImage2KHR(Context.self.device, &vk.AcquireNextImageInfoKHR{
-        .swapchain = self.handle,
-        .semaphore = self.next_image_acquired.handle,
-        .timeout = std.math.maxInt(u64),
-        .fence = .null_handle,
-        .device_mask = 1,
-    }) catch |e| {
-        switch (e) {
-            error.OutOfDateKHR => {
-                try Context.self.vkd.queueWaitIdle(Context.self.graphics_queue);
-                std.log.info("swapchain: swap: getting the next image returned out of date", .{});
-
-                try self.recreate();
-
-                return;
-            },
-            else => {
-                return e;
-            },
-        }
-    };
-
-    std.mem.swap(Semaphore, &self.swap_images[result.image_index].image_acquired, &self.next_image_acquired);
-    self.image_index = result.image_index;
+    _ = self; // autofix
 }
 
 pub const SwapImage = struct {
-    image: vk.Image,
-    view: vk.ImageView,
     image_acquired: Semaphore,
     render_finished: Semaphore,
     frame_fence: vk.Fence,
 
-    fn init(image: vk.Image, format: vk.Format) !SwapImage {
-        const view = try Context.self.vkd.createImageView(Context.self.device, &.{
-            .flags = .{},
-            .image = image,
-            .view_type = .@"2d",
-            .format = format,
-            .components = .{ .r = .identity, .g = .identity, .b = .identity, .a = .identity },
-            .subresource_range = .{
-                .aspect_mask = .{ .color_bit = true },
-                .base_mip_level = 0,
-                .level_count = 1,
-                .base_array_layer = 0,
-                .layer_count = 1,
-            },
-        }, null);
-        errdefer Context.self.vkd.destroyImageView(Context.self.device, view, null);
-
+    fn init() !SwapImage {
         const frame_fence = try Context.self.vkd.createFence(Context.self.device, &.{ .flags = .{ .signaled_bit = true } }, null);
         errdefer Context.self.vkd.destroyFence(Context.self.device, frame_fence, null);
 
         return SwapImage{
-            .image = image,
-            .view = view,
             .image_acquired = try Semaphore.initBinary(),
             .render_finished = try Semaphore.initBinary(),
             .frame_fence = frame_fence,
@@ -266,8 +292,6 @@ pub const SwapImage = struct {
 
     fn deinit(self: *SwapImage) void {
         self.waitForFence() catch return;
-
-        Context.self.vkd.destroyImageView(Context.self.device, self.view, null);
 
         self.image_acquired.deinit();
         self.render_finished.deinit();
@@ -289,23 +313,17 @@ pub const SwapImage = struct {
     }
 };
 
-fn initSwapchainImages(swapchain: vk.SwapchainKHR, format: vk.Format, allocator: std.mem.Allocator) ![]SwapImage {
-    var count: u32 = undefined;
-
-    _ = try Context.self.vkd.getSwapchainImagesKHR(Context.self.device, swapchain, &count, null);
-
-    const images = try allocator.alloc(vk.Image, count);
-    defer allocator.free(images);
-
-    _ = try Context.self.vkd.getSwapchainImagesKHR(Context.self.device, swapchain, &count, images.ptr);
-
-    const swap_images = try allocator.alloc(SwapImage, count);
+fn initSwapchainImages(
+    allocator: std.mem.Allocator,
+    images: []vk.Image,
+) ![]SwapImage {
+    const swap_images = try allocator.alloc(SwapImage, images.len);
     errdefer allocator.free(swap_images);
 
     errdefer for (swap_images) |*si| si.deinit();
 
-    for (swap_images, images) |*swap_image, image| {
-        swap_image.* = try SwapImage.init(image, format);
+    for (swap_images) |*swap_image| {
+        swap_image.* = try SwapImage.init();
     }
 
     return swap_images;

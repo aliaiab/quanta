@@ -132,6 +132,7 @@ pub const vk_apis: []const vk.ApiInfo = &.{
             .getBufferDeviceAddress = true,
             .waitSemaphores = true,
             .acquireNextImage2KHR = true,
+            .releaseSwapchainImagesEXT = true,
             .cmdBlitImage2 = true,
             .cmdBeginDebugUtilsLabelEXT = enable_debug_labels,
             .cmdEndDebugUtilsLabelEXT = enable_debug_labels,

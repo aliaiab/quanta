@@ -313,7 +313,9 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                 self.last_mouse_position = .{ x, y };
             },
             .leave_notify => {},
-            .configure_notify => {},
+            .configure_notify => |configure_notify| {
+                std.log.info("CONFIGURINGING w({}), h({})", .{ configure_notify.width, configure_notify.height });
+            },
             .client_message => |client_message| {
                 if (client_message.data.data32[0] == @intFromEnum(self.wm_delete_window_atom)) {
                     return true;
