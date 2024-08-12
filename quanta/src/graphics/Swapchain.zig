@@ -269,11 +269,6 @@ pub fn present(self: *Swapchain) !void {
     };
 }
 
-///Soft Deprecated, present does what swap used to do. This is a no op
-pub fn swap(self: *Swapchain) !void {
-    _ = self; // autofix
-}
-
 pub const SwapImage = struct {
     image_acquired: Semaphore,
     render_finished: Semaphore,

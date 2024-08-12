@@ -214,42 +214,51 @@ pub fn imageBarriers(
     if (images.len == 0) return;
     if (barriers.len == 0) return;
 
-    std.debug.assert(barriers.len <= image_barriers.len);
+    var start: usize = 0;
 
-    for (images, barriers, image_barriers[0..barriers.len]) |image, barrier, *image_barrier| {
-        image_barrier.* = .{
-            .src_stage_mask = getVkPipelineStage(barrier.source_stage),
-            .src_access_mask = getVkResourceAccess(barrier.source_access),
-            .dst_stage_mask = getVkPipelineStage(barrier.destination_stage),
-            .dst_access_mask = getVkResourceAccess(barrier.destination_access),
-            .old_layout = barrier.source_layout,
-            .new_layout = barrier.destination_layout,
-            .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
-            .image = image.handle,
-            .subresource_range = .{
-                .aspect_mask = image.aspect_mask,
-                .base_mip_level = barrier.base_mip_level,
-                .level_count = barrier.level_count,
-                .base_array_layer = 0,
-                .layer_count = vk.REMAINING_ARRAY_LAYERS,
+    while (start < barriers.len) {
+        const batch_size = @min(image_barriers.len, barriers.len - start);
+        defer start += batch_size;
+
+        for (
+            images[start..][0..batch_size],
+            barriers[start..][0..batch_size],
+            image_barriers[0..batch_size],
+        ) |image, barrier, *image_barrier| {
+            image_barrier.* = .{
+                .src_stage_mask = getVkPipelineStage(barrier.source_stage),
+                .src_access_mask = getVkResourceAccess(barrier.source_access),
+                .dst_stage_mask = getVkPipelineStage(barrier.destination_stage),
+                .dst_access_mask = getVkResourceAccess(barrier.destination_access),
+                .old_layout = barrier.source_layout,
+                .new_layout = barrier.destination_layout,
+                .src_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+                .dst_queue_family_index = vk.QUEUE_FAMILY_IGNORED,
+                .image = image.handle,
+                .subresource_range = .{
+                    .aspect_mask = image.aspect_mask,
+                    .base_mip_level = barrier.base_mip_level,
+                    .level_count = barrier.level_count,
+                    .base_array_layer = 0,
+                    .layer_count = vk.REMAINING_ARRAY_LAYERS,
+                },
+            };
+        }
+
+        const dep_info: vk.DependencyInfo = .{
+            .dependency_flags = .{
+                .by_region_bit = true,
             },
+            .memory_barrier_count = 0,
+            .p_memory_barriers = undefined,
+            .buffer_memory_barrier_count = 0,
+            .p_buffer_memory_barriers = undefined,
+            .image_memory_barrier_count = @intCast(batch_size),
+            .p_image_memory_barriers = &image_barriers,
         };
+
+        Context.self.vkd.cmdPipelineBarrier2(self.handle, &dep_info);
     }
-
-    const dep_info: vk.DependencyInfo = .{
-        .dependency_flags = .{
-            .by_region_bit = true,
-        },
-        .memory_barrier_count = 0,
-        .p_memory_barriers = undefined,
-        .buffer_memory_barrier_count = 0,
-        .p_buffer_memory_barriers = undefined,
-        .image_memory_barrier_count = @intCast(barriers.len),
-        .p_image_memory_barriers = &image_barriers,
-    };
-
-    Context.self.vkd.cmdPipelineBarrier2(self.handle, &dep_info);
 }
 
 pub const BufferBarrier = struct {
