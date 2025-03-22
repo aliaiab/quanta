@@ -1,8 +1,0 @@
-.{
-    .top = "bottom.png",
-    .bottom = "bottom.png",
-    .left = "bottom.png",
-    .right = "bottom.png",
-    .front = "bottom.png",
-    .back = "bottom.png",
-}
