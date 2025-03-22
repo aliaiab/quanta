@@ -1,14 +1,15 @@
 .{
-    .name = "quanta",
+    .name = .quanta,
+    .fingerprint = 0xf0bb8b0829c7afa5,
     .version = "0.0.0",
     .dependencies = .{
         .vulkan_zig = .{
-            .url = "https://github.com/Snektron/vulkan-zig/archive/51c5566f92e72fa4a9187c99b61e33f25398f370.tar.gz",
-            .hash = "1220ac3050a262ecf61678144a261d71da9e2bddfecd45d70428669e1215be1b689b",
+            .url = "https://github.com/Snektron/vulkan-zig/archive/604416bf44baf95568c428e1aa55499aa8e07607.tar.gz",
+            .hash = "1220129ea1652cc0f8578db3dcba254bc9fbc6fdd195b5e1021bf4da8592ea5dc9fb",
         },
         .vulkan_headers = .{
-            .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/v1.3.283.tar.gz",
-            .hash = "1220a7e73d72a0d56bc2a65f9d8999a7c019e42260a0744c408d1cded111bc205e10",
+            .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/v1.4.309.tar.gz",
+            .hash = "1220e5878bb14913d8175e9862292d018e596cddc7ebdbd73c32025af18e0bfbba2f",
         },
         .zigwin32 = .{
             .url = "https://github.com/marlersoft/zigwin32/archive/11ae00747b490065d044d6f48d7df41ef30c781b.tar.gz",
@@ -28,8 +29,9 @@
             .hash = "1220ff2dbebeb83461da67b185d994ae61ebcea747c1bfbfb48b23c8e456cc53ea83",
         },
         .glslang_zig = .{
-            .url = "https://github.com/zkburke/glslang-zig/archive/25fd3eeb8303c2eaafa0989136f9dafb911d8705.tar.gz",
-            .hash = "12208b653f9db35b07c60c3cb35ef2e8d8985f57acd453d193b1abd10cd312ba612c",
+            // .url = "https://github.com/zkburke/glslang-zig/archive/25fd3eeb8303c2eaafa0989136f9dafb911d8705.tar.gz",
+            // .hash = "12208b653f9db35b07c60c3cb35ef2e8d8985f57acd453d193b1abd10cd312ba612c",
+            .path = "../glslang-zig/",
         },
     },
     .paths = .{

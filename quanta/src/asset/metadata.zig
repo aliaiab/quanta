@@ -7,14 +7,13 @@ pub fn load(comptime T: type, allocator: std.mem.Allocator, path: []const u8) !T
     const zon_source = try file.readToEndAllocOptions(allocator, std.math.maxInt(u32), null, @alignOf(u8), 0);
     defer allocator.free(zon_source);
 
-    const data = try zon.parse.parse(T, allocator, zon_source);
+    const data = try std.zon.parse.fromSlice(T, allocator, zon_source, null, .{});
 
     return data;
 }
 
 pub fn loadFree(comptime T: type, allocator: std.mem.Allocator, data: T) void {
-    zon.parse.parseFree(T, allocator, data);
+    std.zon.parse.free(allocator, data);
 }
 
 const std = @import("std");
-const zon = @import("../zon.zig");

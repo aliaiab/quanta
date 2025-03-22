@@ -23,7 +23,7 @@ pub const Import = extern struct {
 
         const header = try reader.readStructEndian(Header, .little);
 
-        std.debug.assert(header.magic_number == Header.magic_number);
+        std.debug.assert(header.magic_number == Header.valid_magic_number);
         std.debug.assert(header.file_size == data.len);
 
         log.info("header: {}", .{header});
@@ -35,7 +35,7 @@ pub const Import = extern struct {
         for (0..header.frames) |frame_index| {
             const frame = try reader.readStructEndian(Frame, .little);
 
-            std.debug.assert(frame.magic_number == Frame.magic_number);
+            std.debug.assert(frame.magic_number == Frame.valid_magic_number);
 
             log.info("frame[{}]: {}", .{ frame_index, frame });
 
@@ -154,7 +154,7 @@ const Header = extern struct {
     grid_height: u16,
     padding_reserved: [84]u8,
 
-    pub const magic_number = 0xA5E0;
+    pub const valid_magic_number = 0xA5E0;
 };
 
 comptime {
@@ -169,7 +169,7 @@ const Frame = extern struct {
     padding_reserved: [2]u8,
     chunk_count: u32,
 
-    pub const magic_number = 0xF1FA;
+    pub const valid_magic_number = 0xF1FA;
 };
 
 comptime {

@@ -1,35 +1,21 @@
 const std = @import("std");
 const reflect = @import("../reflect/reflect.zig");
-
 const ComponentStore = @This();
 
 ///Associated flags as part of the entity
-const EntityFlags = packed struct(u16) {
+pub const EntityFlags = packed struct(u16) {
     enabled: bool = false,
     padding: u15 = 0,
 };
 
 ///Unique identifier which describes an entity
-const EntityData = packed struct(u64) {
+pub const Entity = packed struct(u64) {
     index: u32,
     generation: u16,
     flags: EntityFlags,
 
-    pub fn toHandle(self: EntityData) Entity {
-        return @as(Entity, @enumFromInt(@as(u64, @bitCast(self))));
-    }
-
-    pub fn fromHandle(entity: Entity) EntityData {
-        return @as(EntityData, @bitCast(@intFromEnum(entity)));
-    }
-};
-
-///Unique identifier which describes an entity
-pub const Entity = enum(u64) {
-    _,
-
     ///Nil entity is an entity handle which is always invalid
-    pub const nil = @as(Entity, @enumFromInt(std.math.maxInt(u64)));
+    pub const nil: Entity = @bitCast(@as(u64, std.math.maxInt(u64)));
 };
 
 ///Unique identifier for a component type
@@ -55,7 +41,7 @@ pub const Chunk = struct {
     ///The alignment of the chunk block in memory
     ///Always Aligned on cache line boundaries
     ///Always aligned on a multiple of @alignOf(Entity)
-    pub const alignment: usize = 64;
+    pub const alignment: usize = std.heap.page_size_min;
 
     ///The maximum size of a chunk
     ///Always a multiple of a cache line
@@ -278,10 +264,6 @@ const EntityMap = struct {
     next_entity_index: u32 = 0,
     next_entity_generation: u16 = 0,
 
-    comptime {
-        std.debug.assert(@rem(@sizeOf([chunk_size]EntityDescription), std.mem.page_size) == 0);
-    }
-
     pub fn deinit(self: *EntityMap, allocator: std.mem.Allocator) void {
         var iterator = self.chunks.iterator(0);
 
@@ -323,20 +305,20 @@ const EntityMap = struct {
     }
 
     pub fn addEntity(self: *EntityMap, allocator: std.mem.Allocator) !Entity {
-        var entity = EntityData{
+        const entity = Entity{
             .index = self.next_entity_index,
             .generation = self.next_entity_generation,
             .flags = .{},
         };
 
-        const description = try self.mapEntity(allocator, entity.toHandle());
+        const description = try self.mapEntity(allocator, entity);
 
         description.archetype_index = 0;
         description.row = .{};
 
         self.next_entity_index += 1;
 
-        return entity.toHandle();
+        return entity;
     }
 
     pub fn removeEntity(self: *EntityMap, entity: Entity) void {
@@ -349,9 +331,7 @@ const EntityMap = struct {
     }
 
     pub inline fn contains(self: *EntityMap, entity: Entity) bool {
-        const entity_data = EntityData.fromHandle(entity);
-
-        return entity_data.index < self.entity_count and
+        return entity.index < self.entity_count and
             self.getUnchecked(entity).archetype_index != std.math.maxInt(ArchetypeIndex);
     }
 
@@ -365,9 +345,7 @@ const EntityMap = struct {
     }
 
     pub fn getUnchecked(self: *EntityMap, entity: Entity) *EntityDescription {
-        const entity_data = EntityData.fromHandle(entity);
-
-        const index = entity_data.index;
+        const index = entity.index;
 
         const chunk_index = @divTrunc(index, chunk_size);
 
@@ -793,7 +771,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
         const component_Fetch_info = @typeInfo(component_fetch);
 
         switch (component_Fetch_info) {
-            .Optional => {
+            .optional => {
                 components_optional = components_optional ++ &[_]type{std.meta.Child(component_fetch)};
             },
             else => {
@@ -858,7 +836,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             fields[field_index] = .{
                 .name = "entities",
                 .type = []const Entity,
-                .default_value = null,
+                .default_value_ptr = null,
                 .is_comptime = false,
                 .alignment = @alignOf([]const Entity),
             };
@@ -868,7 +846,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
                 fields[field_index + i] = .{
                     .name = componentFieldName(component_type),
                     .type = []component_type,
-                    .default_value = null,
+                    .default_value_ptr = null,
                     .is_comptime = false,
                     .alignment = @alignOf([]component_type),
                 };
@@ -888,7 +866,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
 
             field_index += required_component_slice.len;
 
-            break :block @Type(.{ .Struct = .{
+            break :block @Type(.{ .@"struct" = .{
                 .layout = .auto,
                 .backing_integer = null,
                 .fields = &fields,
@@ -903,7 +881,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             fields[0] = .{
                 .name = "entity_count",
                 .type = *const u16,
-                .default_value = null,
+                .default_value_ptr = null,
                 .is_comptime = false,
                 .alignment = @alignOf(*const u16),
             };
@@ -911,7 +889,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
             fields[1] = .{
                 .name = "entities",
                 .type = [*]const Entity,
-                .default_value = null,
+                .default_value_ptr = null,
                 .is_comptime = false,
                 .alignment = @alignOf([*]const Entity),
             };
@@ -920,13 +898,13 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
                 fields[i] = .{
                     .name = componentFieldName(component_type),
                     .type = [*]component_type,
-                    .default_value = null,
+                    .default_value_ptr = null,
                     .is_comptime = false,
                     .alignment = @alignOf([*]component_type),
                 };
             }
 
-            break :block @Type(.{ .Struct = .{
+            break :block @Type(.{ .@"struct" = .{
                 .layout = .auto,
                 .backing_integer = null,
                 .fields = &fields,
@@ -1074,7 +1052,7 @@ pub fn QueryIterator(comptime component_fetches: anytype, comptime filters: anyt
 
         ///Returns the name of the field in Block that contains the []T
         pub fn componentFieldName(comptime T: type) [:0]const u8 {
-            const full_type_name = @typeName(if (@typeInfo(T) == .Optional) std.meta.Child(T) else T);
+            const full_type_name = @typeName(if (@typeInfo(T) == .optional) std.meta.Child(T) else T);
 
             const index_of_name = std.mem.lastIndexOf(u8, full_type_name, &.{'.'}).? + 1;
 
@@ -1101,7 +1079,7 @@ pub const IsComponentSet = struct {};
 
 pub fn isComponentSet(comptime T: type) bool {
     switch (@typeInfo(T)) {
-        .Struct => inline for (std.meta.fields(T)) |field| {
+        .@"struct" => inline for (std.meta.fields(T)) |field| {
             if (field.type == IsComponentSet) {
                 return true;
             }
@@ -1861,9 +1839,9 @@ fn archetypeHasComponent(
 
 ///Returns a unique ComponentId for the given type
 pub fn componentId(comptime T: type) ComponentId {
-    if (!(@typeInfo(T) == .Struct or
-        @typeInfo(T) == .Enum or
-        @typeInfo(T) == .Union))
+    if (!(@typeInfo(T) == .@"struct" or
+        @typeInfo(T) == .@"enum" or
+        @typeInfo(T) == .@"union"))
     {
         @compileError("T must be a struct, enum or union");
     }
@@ -2046,8 +2024,8 @@ test "Reflection" {
             std.log.warn("We FOUND A ROTATION COMPONENT TYPE!!!", .{});
         }
 
-        std.log.warn("type_info.fields = {any}", .{type_info.*.Struct.fields});
-        std.log.warn("type_info.fields[0].name = {s}", .{type_info.*.Struct.fields[0].name});
-        std.log.warn("type_info.fields[1].name = {s}", .{type_info.*.Struct.fields[1].name});
+        std.log.warn("type_info.fields = {any}", .{type_info.*.@"struct".fields});
+        std.log.warn("type_info.fields[0].name = {s}", .{type_info.*.@"struct".fields[0].name});
+        std.log.warn("type_info.fields[1].name = {s}", .{type_info.*.@"struct".fields[1].name});
     }
 }

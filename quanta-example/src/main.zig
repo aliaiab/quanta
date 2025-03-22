@@ -9,9 +9,8 @@ const GraphicsPipeline = quanta.graphics.GraphicsPipeline;
 const Buffer = quanta.graphics.Buffer;
 const Image = quanta.graphics.Image;
 const Sampler = quanta.graphics.Sampler;
-const png = quanta.asset.importers.png;
-const gltf = quanta.asset.importers.gltf;
-const zalgebra = quanta.math.zalgebra;
+const png = quanta.asset.frontends.png;
+const gltf = quanta.asset.frontends.gltf;
 const imgui = quanta_imgui.cimgui;
 const imguizmo = quanta_imgui.guizmo;
 const entity_editor = quanta_imgui.entity_editor;
@@ -73,7 +72,7 @@ var state: struct {
 
     ///Main window render graph
     render_graph: quanta.rendering.graph.Builder = undefined,
-    render_graph_compile_context: quanta.rendering.graph.CompileContext = undefined,
+    render_graph_compile_context: quanta.rendering.compile.Context = undefined,
 
     graph_renderer_scene: renderer_3d_graph.Scene = undefined,
 

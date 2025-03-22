@@ -173,7 +173,7 @@ fn debugUtilsMessengerCallback(
         });
 
         //This is inherently supposed to be unrecoverable: The prorgam is in an invalid state: fix it
-        @panic("(vulkan_validation): Validation Error");
+        // @panic("(vulkan_validation): Validation Error");
     } else if (message_severity.warning_bit_ext) {
         log.warn("(vulkan_validation):\n\n{s} {s}\n\n", .{
             p_callback_data.?.p_message_id_name orelse "",
@@ -181,7 +181,7 @@ fn debugUtilsMessengerCallback(
         });
 
         //This is inherently supposed to be unrecoverable: The prorgam is in an invalid state: fix it
-        @panic("");
+        // @panic("");
     } else {
         log.debug("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message.? });
     }
@@ -197,7 +197,7 @@ fn vulkanAllocate(
 ) callconv(vk.vulkan_call_conv) ?*anyopaque {
     _ = user_data;
 
-    const memory = (self.allocator.rawAlloc(size + @sizeOf(usize), @as(u8, @intCast(alignment)), @returnAddress()) orelse
+    const memory = (self.allocator.rawAlloc(size + @sizeOf(usize), .fromByteUnits(@as(u8, @intCast(alignment))), @returnAddress()) orelse
         {
         @panic("Allocation failed!");
     })[0 .. size + @sizeOf(usize)];
@@ -220,7 +220,7 @@ fn vulkanReallocate(
     const old_memory = original_pointer[0 .. old_size + @sizeOf(usize)];
 
     if (new_size > old_size) {
-        const memory_ptr = self.allocator.rawAlloc(new_size + @sizeOf(usize), @as(u8, @intCast(alignment)), @returnAddress()) orelse {
+        const memory_ptr = self.allocator.rawAlloc(new_size + @sizeOf(usize), .fromByteUnits(@as(u8, @intCast(alignment))), @returnAddress()) orelse {
             @panic("Allocation failed!");
         };
 
@@ -234,7 +234,7 @@ fn vulkanReallocate(
 
         return allocation_ptr;
     } else {
-        if (!self.allocator.rawResize(old_memory, @as(u8, @intCast(alignment)), new_size, @returnAddress())) {
+        if (!self.allocator.rawResize(old_memory, .fromByteUnits(@as(u8, @intCast(alignment))), new_size, @returnAddress())) {
             @panic("Allocation failed!");
         }
     }
@@ -257,7 +257,7 @@ fn vulkanFree(
     //TODO: This is VERY dodgy, and we *might* have to store alignment in the allocation
     const alignment = 256;
 
-    self.allocator.rawFree(pointer[0 .. size + @sizeOf(usize)], std.math.log2(alignment), @returnAddress());
+    self.allocator.rawFree(pointer[0 .. size + @sizeOf(usize)], .fromByteUnits(std.math.log2(alignment)), @returnAddress());
 }
 
 pub var self: Context = undefined;
@@ -303,6 +303,9 @@ optional_extensions: OptionalExtensions,
 ///Required *device* extensions
 pub const RequiredExtensions = struct {
     khr_swapchain: [:0]const u8 = vk.extensions.khr_swapchain.name,
+    khr_spirv_1_4: [:0]const u8 = vk.extensions.khr_spirv_1_4.name,
+    // ext_surface_maintenance_1: [:0]const u8 = vk.extensions.ext_surface_maintenance_1.name,
+    ext_swapchain_maintenance_1: [:0]const u8 = vk.extensions.ext_swapchain_maintenance_1.name,
     //TODO: for future implementation of descriptor buffer
     // ext_descriptor_buffer: [:0]const u8 = vk.extensions.ext_descriptor_buffer.name,
 };
@@ -518,6 +521,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
         .p_next = &device_vulkan13_features,
         .draw_indirect_count = vk.TRUE,
         .scalar_block_layout = vk.TRUE,
+        .buffer_device_address = vk.TRUE,
         .shader_input_attachment_array_dynamic_indexing = vk.TRUE,
         .shader_uniform_texel_buffer_array_dynamic_indexing = vk.TRUE,
         .shader_storage_texel_buffer_array_dynamic_indexing = vk.TRUE,

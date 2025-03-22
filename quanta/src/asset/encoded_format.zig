@@ -159,7 +159,7 @@ pub fn RelativeLinearStream(
             var offset: usize = 0;
 
             inline for (comptime std.meta.fields(Parent)) |field| {
-                if (@typeInfo(field.type) != .Struct or !@hasDecl(field.type, "is_relative_linear_stream")) {
+                if (@typeInfo(field.type) != .@"struct" or !@hasDecl(field.type, "is_relative_linear_stream")) {
                     comptime continue;
                 }
 
@@ -247,7 +247,7 @@ pub fn relativeStreamSizeOf(header: anytype) usize {
     var offset: usize = 0;
 
     inline for (comptime std.meta.fields(@TypeOf(header))) |field| {
-        if (@typeInfo(field.type) != .Struct or !@hasDecl(field.type, "is_relative_linear_stream")) {
+        if (@typeInfo(field.type) != .@"struct" or !@hasDecl(field.type, "is_relative_linear_stream")) {
             comptime continue;
         }
 

@@ -22,7 +22,13 @@ pub const Library = struct {
         num_masks: u16,
         masks: [*]const EventMask,
     ) void {
-        _ = self.functions.xi_select_events_checked(connection, window, num_masks, masks);
+        _ = self;
+        _ = connection;
+        _ = window;
+        _ = num_masks;
+        _ = masks;
+        //TODO: this crashes for some reason that I can't explain
+        // _ = self.functions.xi_select_events_checked(connection, window, num_masks, masks);
     }
 };
 

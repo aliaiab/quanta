@@ -14,7 +14,7 @@ pub fn build(builder: *std.Build) !void {
     const glsl_compiler = builder.addExecutable(.{
         .name = "glsl_compiler",
         .root_source_file = builder.path("quanta/src/asset/build_steps/glsl_compiler.zig"),
-        .target = builder.host,
+        .target = builder.graph.host,
         .optimize = .Debug,
         .sanitize_thread = true,
     });
@@ -92,7 +92,7 @@ pub fn build(builder: *std.Build) !void {
     const asset_compiler = builder.addExecutable(.{
         .name = "asset_compiler",
         .root_source_file = builder.path("quanta/src/asset/compiler_main.zig"),
-        .target = builder.host,
+        .target = builder.graph.host,
         .optimize = .Debug,
     });
 
@@ -175,8 +175,8 @@ pub fn addGlslCompileStep(
     ) catch @panic("oom");
     defer builder.allocator.free(root_zon_data);
 
-    const root_zon = zon.parse.parse(ShadersRootZon, builder.allocator, root_zon_data) catch @panic("");
-    defer zon.parse.parseFree(ShadersRootZon, builder.allocator, root_zon);
+    const root_zon = std.zon.parse.fromSlice(ShadersRootZon, builder.allocator, root_zon_data, null, .{}) catch @panic("");
+    defer std.zon.parse.free(builder.allocator, root_zon);
 
     const source_directory = std.fs.path.dirname(options.source_directory).?;
 
@@ -269,7 +269,7 @@ pub fn addAssetCompileStep(
     const run_asset_compiler = builder.addRunArtifact(asset_compiler);
 
     const optimize = if (config.optimize) |opt| opt else .Debug;
-    const target = if (config.target) |targ| targ else builder.host;
+    const target = if (config.target) |targ| targ else builder.graph.host;
     _ = target; // autofix
 
     std.log.info("config.source_dir = {s}", .{config.source_directory});
@@ -339,4 +339,3 @@ fn addAssetDirectoryAsInput(
 const std = @import("std");
 const builtin = @import("builtin");
 const quanta = @import("quanta/src/root.zig");
-const zon = quanta.zon;

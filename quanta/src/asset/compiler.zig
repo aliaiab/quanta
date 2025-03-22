@@ -138,15 +138,15 @@ pub const AssetCompilerInfo = struct {
 
         const static = struct {
             fn function(context: *CompilerContext, file_path: []const u8, data: []const u8, meta_data: ?[:0]const u8) anyerror![]const u8 {
-                const args = @typeInfo(@TypeOf(compile_fn)).Fn.params;
+                const args = @typeInfo(@TypeOf(compile_fn)).@"fn".params;
 
                 const MetaDataType = std.meta.Child(args[3].type.?);
 
-                const meta_data_parsed = if (meta_data != null) try zon.parse.parse(MetaDataType, context.allocator, meta_data.?) else @as(
+                const meta_data_parsed = if (meta_data != null) try std.zon.parse.fromSlice(MetaDataType, context.allocator, meta_data.?, null, .{}) else @as(
                     MetaDataType,
                     .{},
                 );
-                defer if (meta_data != null) zon.parse.parseFree(MetaDataType, context.allocator, meta_data_parsed);
+                defer if (meta_data != null) std.zon.parse.free(context.allocator, meta_data_parsed);
 
                 return @call(.always_inline, compile_fn, .{
                     context,
@@ -184,6 +184,5 @@ pub const CompressionMode = enum {
 
 const std = @import("std");
 const quanta = @import("quanta");
-const zon = quanta.zon;
 const Archive = quanta.asset.Archive;
 const Hasher = std.Build.Cache.Hasher;

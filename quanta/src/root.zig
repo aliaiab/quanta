@@ -11,7 +11,6 @@ pub const reflect = @import("reflect/reflect.zig");
 pub const physics = @import("physics.zig");
 pub const systems = @import("systems.zig");
 pub const components = @import("components.zig");
-pub const zon = @import("zon.zig");
 
 ///Sets global project level options at compile time that can be overriden in project root
 ///Analogous to std.Options

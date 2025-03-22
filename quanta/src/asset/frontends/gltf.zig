@@ -667,7 +667,7 @@ fn quantiseUV(uv: @Vector(2, f32)) Renderer3D.VertexUV {
 }
 
 fn quantiseFloat(comptime T: type, float: f32) T {
-    if (@typeInfo(T).Int.signedness == .unsigned) {
+    if (@typeInfo(T).int.signedness == .unsigned) {
         const normalized = @abs(std.math.clamp(float, -1, 1));
 
         return @intFromFloat(normalized * std.math.maxInt(T));
