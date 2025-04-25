@@ -17,21 +17,22 @@
             .lazy = true,
         },
         .zigimg = .{
-            .url = "https://github.com/zkburke/zigimg/archive/d9dbbe22b5f7b5f1f4772169ed93ffeed8e8124d.tar.gz",
-            .hash = "122013646f7038ecc71ddf8a0d7de346d29a6ec40140af57f838b0a975c69af512b0",
+            .url = "git+https://github.com/zigimg/zigimg#159bae9fa46c596b9bae4aff5f8a8d7accbef333",
+            .hash = "zigimg-0.1.0-AAAAAFTfEQAJC62NPfMQ4nom7AOE3HJmaIMwzAVTOqg6",
         },
+        //TODO: use github version
         .spvine = .{
-            .url = "https://github.com/zkburke/spvine/archive/1c22435b0034d5ea46dee0da14f7ad7ce6a9d2e6.tar.gz",
-            .hash = "1220858951e403f3a8f5644239aa9dd883f9f02c1d608a912b7bd93ae5aadefa3448",
+            // .url = "https://github.com/zkburke/spvine/archive/1c22435b0034d5ea46dee0da14f7ad7ce6a9d2e6.tar.gz",
+            // .hash = "1220858951e403f3a8f5644239aa9dd883f9f02c1d608a912b7bd93ae5aadefa3448",
+            .path = "../spvine/",
         },
         .zgltf = .{
-            .url = "https://github.com/kooparse/zgltf/archive/17fb60b270fa25b3e07b7b3cdb253f86747f9616.tar.gz",
-            .hash = "1220ff2dbebeb83461da67b185d994ae61ebcea747c1bfbfb48b23c8e456cc53ea83",
+            .url = "git+https://github.com/kooparse/zgltf/#b6579c3887c7ab0eef5f1eda09abbbc1f04d76ce",
+            .hash = "zgltf-0.1.0-sX6QAqIKAgAfb7yQlVrdsLwCNc6Fx8wFOLIQRaEGJnVC",
         },
         .glslang_zig = .{
-            // .url = "https://github.com/zkburke/glslang-zig/archive/25fd3eeb8303c2eaafa0989136f9dafb911d8705.tar.gz",
-            // .hash = "12208b653f9db35b07c60c3cb35ef2e8d8985f57acd453d193b1abd10cd312ba612c",
-            .path = "../glslang-zig/",
+            .url = "git+https://github.com/zkburke/glslang-zig.git#8c78cb3278dad47e1beb6a6bb7e19a6ba7e48ac8",
+            .hash = "glslang_zig-0.0.0-V29wT6AxAADnNraYD2-LC6DdTUU2t_b52WszwcAZUGZ5",
         },
     },
     .paths = .{

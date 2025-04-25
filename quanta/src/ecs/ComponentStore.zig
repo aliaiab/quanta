@@ -1,7 +1,3 @@
-const std = @import("std");
-const reflect = @import("../reflect/reflect.zig");
-const ComponentStore = @This();
-
 ///Associated flags as part of the entity
 pub const EntityFlags = packed struct(u16) {
     enabled: bool = false,
@@ -19,20 +15,15 @@ pub const Entity = packed struct(u64) {
 };
 
 ///Unique identifier for a component type
-pub const ComponentId = *const reflect.Type;
+pub const ComponentId = enum(u64) {
+    _,
+};
 
-pub const ComponentType = struct {
+pub const ComponentType = packed struct {
     id: ComponentId,
+    component_type: *const reflect.Type,
     size: u32,
     alignment: u32,
-
-    pub fn fromTypeInfo(type_info: *const reflect.Type) ComponentType {
-        return .{
-            .id = type_info,
-            .size = @as(u32, @intCast(type_info.size())),
-            .alignment = @as(u32, @intCast(type_info.alignment())),
-        };
-    }
 };
 
 pub const ChunkOffset = u16;
@@ -160,7 +151,7 @@ pub const ChunkPool = struct {
         const free_list = &self.free_lists[free_list_index];
 
         if (free_list.count == 0) {
-            const chunk_data = try std.heap.page_allocator.alignedAlloc(u8, Chunk.alignment, size.toSize());
+            const chunk_data = try std.heap.page_allocator.alignedAlloc(u8, .fromByteUnits(Chunk.alignment), size.toSize());
 
             return chunk_data;
         }
@@ -211,7 +202,7 @@ pub const Archetype = struct {
         remove: ?u31,
     };
 
-    component_ids: std.ArrayListUnmanaged(ComponentId) = .{},
+    component_ids: std.ArrayListUnmanaged(ComponentType) = .{},
     edges: std.AutoHashMapUnmanaged(ComponentId, Edge) = .{},
     chunks: std.ArrayListUnmanaged(Chunk) = .{},
     next_free_chunk_index: ChunkIndex = 0,
@@ -574,13 +565,13 @@ pub fn entityRemoveComponent(
     //I suspect it might be an issue with the compiler and compile time function memoisation but I have no clue
     const component_type = componentType(Component);
 
-    return try self.entityRemoveComponentId(entity, component_type.id);
+    return try self.entityRemoveComponentId(entity, component_type);
 }
 
 pub fn entityRemoveComponentId(
     self: *ComponentStore,
     entity: Entity,
-    component_id: ComponentId,
+    component_id: ComponentType,
 ) !void {
     const entity_description = self.entity_map.get(entity).?;
 
@@ -714,7 +705,7 @@ pub fn entitiesAreIsomers(
 pub fn entityGetComponentTypes(
     self: *ComponentStore,
     entity: Entity,
-) []const *const reflect.Type {
+) []const ComponentType {
     const entity_data = self.entity_map.get(entity).?;
 
     const archetype: *Archetype = &self.archetypes.items[entity_data.archetype_index];
@@ -1167,7 +1158,7 @@ fn addToArchetype(
     source_archetype_index: ArchetypeIndex,
     component_type: ComponentType,
 ) !ArchetypeIndex {
-    const component_id = component_type.id;
+    const component_id = component_type;
 
     std.debug.assert(source_archetype_index < self.archetypes.items.len);
 
@@ -1177,7 +1168,7 @@ fn addToArchetype(
         std.debug.assert(source_archetype.component_ids.items.len == 0);
     }
 
-    const potential_source_edge = source_archetype.edges.get(component_id);
+    const potential_source_edge = source_archetype.edges.get(component_id.id);
 
     if (potential_source_edge != null and
         potential_source_edge.?.add != null)
@@ -1187,7 +1178,7 @@ fn addToArchetype(
 
     //Find a suitable adjacent archetype
     const existing_archetype_index: ?ArchetypeIndex = block: {
-        const component_description = self.component_index.getPtr(component_id);
+        const component_description = self.component_index.getPtr(component_id.id);
 
         if (component_description == null) break :block null;
 
@@ -1198,12 +1189,12 @@ fn addToArchetype(
                 continue;
             }
 
-            if (!std.mem.containsAtLeast(ComponentId, archetype.component_ids.items, 1, &.{component_id})) {
+            if (!std.mem.containsAtLeast(ComponentType, archetype.component_ids.items, 1, &.{component_id})) {
                 continue;
             }
 
             for (source_archetype.component_ids.items) |new_component_id| {
-                if (!std.mem.containsAtLeast(ComponentId, archetype.component_ids.items, 1, &.{new_component_id})) {
+                if (!std.mem.containsAtLeast(ComponentType, archetype.component_ids.items, 1, &.{new_component_id})) {
                     continue :archetype_loop;
                 }
             }
@@ -1222,15 +1213,15 @@ fn addToArchetype(
         const existing_archetype: *Archetype = &self.archetypes.items[existing_archetype_index.?];
 
         for (existing_archetype.component_ids.items) |existing_component_id| {
-            std.log.info("cached component: nameof({s})", .{existing_component_id.name()});
+            std.log.info("cached component: nameof({s})", .{existing_component_id.component_type.name()});
         }
 
-        try self.archetypeCreateAddEdge(source_archetype_index, existing_archetype_index.?, component_id);
+        try self.archetypeCreateAddEdge(source_archetype_index, existing_archetype_index.?, component_id.id);
 
         return existing_archetype_index.?;
     }
 
-    const component_ids = try self.allocator.alloc(ComponentId, source_archetype.component_ids.items.len + 1);
+    const component_ids = try self.allocator.alloc(ComponentType, source_archetype.component_ids.items.len + 1);
     errdefer self.allocator.free(component_ids);
 
     var component_index: usize = 0;
@@ -1244,12 +1235,12 @@ fn addToArchetype(
     component_ids[component_index] = component_id;
 
     for (component_ids) |new_comp| {
-        std.log.warn("component_id.name = {s}, size = {}", .{ new_comp.name(), new_comp.size() });
+        std.log.warn("component_id.name = {s}, size = {}", .{ new_comp.component_type.name(), new_comp.size });
     }
 
     const archetype_index = try self.createArchetype(component_ids);
 
-    try self.archetypeCreateAddEdge(source_archetype_index, archetype_index, component_id);
+    try self.archetypeCreateAddEdge(source_archetype_index, archetype_index, component_id.id);
 
     return archetype_index;
 }
@@ -1282,13 +1273,13 @@ fn archetypeCreateAddEdge(
 fn removeFromArchetype(
     self: *ComponentStore,
     source_archetype_index: ArchetypeIndex,
-    component_id: ComponentId,
+    component_id: ComponentType,
 ) !ArchetypeIndex {
     std.debug.assert(source_archetype_index != 0);
 
     var source_archetype: *Archetype = &self.archetypes.items[source_archetype_index];
 
-    const potential_source_edge = source_archetype.edges.get(component_id);
+    const potential_source_edge = source_archetype.edges.get(component_id.id);
 
     if (potential_source_edge != null and
         potential_source_edge.?.remove != null)
@@ -1298,7 +1289,7 @@ fn removeFromArchetype(
 
     //Find a suitable adjacent archetype
     const existing_archetype_index: ?ArchetypeIndex = block: {
-        const component_description = self.component_index.getPtr(component_id);
+        const component_description = self.component_index.getPtr(component_id.id);
 
         if (component_description == null) break :block null;
 
@@ -1309,14 +1300,14 @@ fn removeFromArchetype(
                 continue;
             }
 
-            if (std.mem.containsAtLeast(ComponentId, archetype.component_ids.items, 1, &.{component_id})) {
+            if (std.mem.containsAtLeast(ComponentType, archetype.component_ids.items, 1, &.{component_id})) {
                 continue;
             }
 
             for (source_archetype.component_ids.items) |new_component_id| {
-                if (new_component_id == component_id) continue;
+                if (new_component_id.id == component_id.id) continue;
 
-                if (!std.mem.containsAtLeast(ComponentId, archetype.component_ids.items, 1, &.{new_component_id})) {
+                if (!std.mem.containsAtLeast(ComponentType, archetype.component_ids.items, 1, &.{new_component_id})) {
                     continue :archetype_loop;
                 }
             }
@@ -1328,18 +1319,18 @@ fn removeFromArchetype(
     };
 
     if (existing_archetype_index != null) {
-        try self.archetypeCreateRemoveEdge(source_archetype_index, existing_archetype_index.?, component_id);
+        try self.archetypeCreateRemoveEdge(source_archetype_index, existing_archetype_index.?, component_id.id);
 
         return existing_archetype_index.?;
     }
 
-    const component_ids = try self.allocator.alloc(ComponentId, source_archetype.component_ids.items.len - 1);
+    const component_ids = try self.allocator.alloc(ComponentType, source_archetype.component_ids.items.len - 1);
     errdefer self.allocator.free(component_ids);
 
     var component_index: usize = 0;
 
     for (source_archetype.component_ids.items) |source_component_id| {
-        if (source_component_id == component_id) {
+        if (source_component_id.id == component_id.id) {
             continue;
         }
 
@@ -1350,7 +1341,7 @@ fn removeFromArchetype(
 
     const new_archetype_index = try self.createArchetype(component_ids);
 
-    try self.archetypeCreateRemoveEdge(source_archetype_index, new_archetype_index, component_id);
+    try self.archetypeCreateRemoveEdge(source_archetype_index, new_archetype_index, component_id.id);
 
     return new_archetype_index;
 }
@@ -1379,27 +1370,27 @@ fn archetypeCreateRemoveEdge(
     destination_edge.value_ptr.add = @as(u31, @intCast(source_archetype_index));
 }
 
-fn componentLessThan(_: void, a: ComponentId, b: ComponentId) bool {
-    return @intFromPtr(a) < @intFromPtr(b);
+fn componentLessThan(_: void, a: ComponentType, b: ComponentType) bool {
+    return @intFromEnum(a.id) < @intFromEnum(b.id);
 }
 
 fn createArchetype(
     self: *ComponentStore,
-    component_ids: []ComponentId,
+    component_ids: []ComponentType,
 ) !ArchetypeIndex {
     const archetype_index = @as(ArchetypeIndex, @intCast(self.archetypes.items.len));
 
-    std.sort.insertion(ComponentId, component_ids, {}, componentLessThan);
+    std.sort.insertion(ComponentType, component_ids, {}, componentLessThan);
 
     try self.archetypes.append(self.allocator, .{
-        .component_ids = std.ArrayListUnmanaged(ComponentId).fromOwnedSlice(component_ids),
+        .component_ids = std.ArrayListUnmanaged(ComponentType).fromOwnedSlice(component_ids),
         .edges = .{},
     });
 
     const archetype: *Archetype = &self.archetypes.items[archetype_index];
 
     for (archetype.component_ids.items, 0..) |new_component_id, i| {
-        const component_description = try self.component_index.getOrPutValue(self.allocator, new_component_id, .{});
+        const component_description = try self.component_index.getOrPutValue(self.allocator, new_component_id.id, .{});
 
         const archetype_record = try component_description.value_ptr.archetypes.getOrPut(self.allocator, archetype_index);
 
@@ -1442,8 +1433,8 @@ fn archetypeAllocateChunk(
     var max_padding: usize = 0;
 
     for (archetype.component_ids.items) |component_id| {
-        bytes_per_entity += component_id.size();
-        max_padding += component_id.alignment();
+        bytes_per_entity += component_id.size;
+        max_padding += component_id.alignment;
     }
 
     //Maximum size the chunk to be allocated with alignment padding subtracted
@@ -1465,7 +1456,7 @@ fn archetypeAllocateChunk(
         chunk.columns,
         archetype.component_ids.items,
     ) |*destination_column, component_type| {
-        if (component_type.size() == 0) {
+        if (component_type.size == 0) {
             destination_column.* = .{
                 .offset = 0,
                 .element_size = 0,
@@ -1475,12 +1466,12 @@ fn archetypeAllocateChunk(
             continue;
         }
 
-        running_offset = std.mem.alignForward(usize, running_offset, @as(u8, @intCast(component_type.alignment())));
+        running_offset = std.mem.alignForward(usize, running_offset, @as(u8, @intCast(component_type.alignment)));
 
         destination_column.* = .{
             .offset = @as(ChunkOffset, @intCast(running_offset)),
-            .element_size = @as(u16, @intCast(component_type.size())),
-            .element_alignment = @as(u16, @intCast(component_type.alignment())),
+            .element_size = @as(u16, @intCast(component_type.size)),
+            .element_alignment = @as(u16, @intCast(component_type.alignment)),
         };
 
         running_offset += @as(ChunkOffset, @intCast(max_entity_count)) * @as(ChunkOffset, @intCast(destination_column.element_size));
@@ -1718,11 +1709,11 @@ fn archetypeCopyRowMultiArchetype(
         var src_id = source_archetype.component_ids.items[i];
         var dst_id = destination_archetype.component_ids.items[i];
 
-        if (src_id != dst_id) {
+        if (src_id.id != dst_id.id) {
             for (destination_chunk.columns[0..], 0..) |*new_destination_column, j| {
                 const new_dst_id = destination_archetype.component_ids.items[j];
 
-                if (src_id == new_dst_id) {
+                if (src_id.id == new_dst_id.id) {
                     dst_id = new_dst_id;
                     destination_column = new_destination_column;
 
@@ -1731,11 +1722,11 @@ fn archetypeCopyRowMultiArchetype(
             }
         }
 
-        if (src_id != dst_id) {
+        if (src_id.id != dst_id.id) {
             for (source_chunk.columns[0..], 0..) |*new_source_column, j| {
                 const new_src_id = source_archetype.component_ids.items[j];
 
-                if (dst_id == new_src_id) {
+                if (dst_id.id == new_src_id.id) {
                     src_id = new_src_id;
                     source_column = new_source_column;
 
@@ -1744,7 +1735,7 @@ fn archetypeCopyRowMultiArchetype(
             }
         }
 
-        std.debug.assert(src_id == dst_id);
+        std.debug.assert(src_id.id == dst_id.id);
         std.debug.assert(source_column.element_size == destination_column.element_size);
         std.debug.assert(source_column.element_alignment == destination_column.element_alignment);
 
@@ -1846,12 +1837,15 @@ pub fn componentId(comptime T: type) ComponentId {
         @compileError("T must be a struct, enum or union");
     }
 
-    return reflect.Type.info(T);
+    const hash = std.hash_map.hashString(@typeName(T));
+
+    return @enumFromInt(hash);
 }
 
 pub fn componentType(comptime T: type) ComponentType {
     return .{
         .id = componentId(T),
+        .component_type = reflect.Type.info(T),
         .size = @sizeOf(T),
         .alignment = @alignOf(T),
     };
@@ -2019,7 +2013,9 @@ test "Reflection" {
         Rotation{},
     });
 
-    for (ecs_scene.entityGetComponentTypes(entity)) |type_info| {
+    for (ecs_scene.entityGetComponentTypes(entity)) |comp_type| {
+        const type_info = comp_type.component_type;
+
         if (type_info.is(Rotation)) {
             std.log.warn("We FOUND A ROTATION COMPONENT TYPE!!!", .{});
         }
@@ -2029,3 +2025,7 @@ test "Reflection" {
         std.log.warn("type_info.fields[1].name = {s}", .{type_info.*.@"struct".fields[1].name});
     }
 }
+
+const std = @import("std");
+const reflect = @import("../reflect/reflect.zig");
+const ComponentStore = @This();

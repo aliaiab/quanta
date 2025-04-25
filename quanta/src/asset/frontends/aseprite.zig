@@ -103,7 +103,7 @@ pub const Import = extern struct {
 
         //Encode the imported data
 
-        const fixed_buffer = try context.allocator.alignedAlloc(u8, @alignOf(Import), @sizeOf(Import) + pixel_data.?.len);
+        const fixed_buffer = try context.allocator.alignedAlloc(u8, .fromByteUnits(@alignOf(Import)), @sizeOf(Import) + pixel_data.?.len);
         errdefer context.allocator.free(fixed_buffer);
 
         var bump: u32 = 0;
@@ -250,4 +250,4 @@ const CelChunk = extern struct {
 const compiler = @import("../compiler.zig");
 const encoded_format = @import("../encoded_format.zig");
 const std = @import("std");
-const log = std.log.scoped(.aseprite);
+const log = @import("../../log.zig").log;

@@ -36,7 +36,7 @@ pub fn import(allocator: std.mem.Allocator, data: []const u8) !Import {
     var image = try img.Image.fromMemory(allocator, data);
     defer image.deinit();
 
-    std.log.debug("pixel_format: {s}", .{@tagName(image.pixelFormat())});
+    log.debug("pixel_format: {s}", .{@tagName(image.pixelFormat())});
 
     self.data = image.pixels.asBytes();
     self.width = @as(u32, @intCast(image.width));
@@ -114,4 +114,5 @@ pub fn free(self: *Import, allocator: std.mem.Allocator) void {
 const std = @import("std");
 const img = @import("zigimg");
 const png = img.png;
+const log = @import("../../log.zig").log;
 const compiler = @import("../compiler.zig");

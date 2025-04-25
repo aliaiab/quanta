@@ -68,7 +68,7 @@ pub fn encode(
 
     image_size += source_content_size;
 
-    const image = try allocator.alignedAlloc(u8, @alignOf(Header), image_size);
+    const image = try allocator.alignedAlloc(u8, .fromByteUnits(@alignOf(Header)), image_size);
     errdefer allocator.free(image);
 
     //In order for builds to be reproducable, images must set padding bytes to a known value
@@ -170,7 +170,7 @@ pub fn decodeHeaderOnlyFromFile(
 
     const header = try file.reader().readStruct(Header);
 
-    std.log.info("Read header: {}", .{header});
+    log.info("Read header: {}", .{header});
 
     var headers_size: usize = 0;
 
@@ -183,7 +183,7 @@ pub fn decodeHeaderOnlyFromFile(
     headers_size += @sizeOf(AssetHeader) * header.asset_count;
 
     //load the partial image that contains only heady data (no content)
-    const image = try allocator.alignedAlloc(u8, @alignOf(Header), headers_size);
+    const image = try allocator.alignedAlloc(u8, .fromByteUnits(@alignOf(Header)), headers_size);
     errdefer allocator.free(image);
 
     archive.image = image;
@@ -212,7 +212,7 @@ pub fn decodeHeaderOnlyFromFile(
     archive.asset_content = &.{};
 
     for (archive.asset_name_hashes) |name_hash| {
-        std.log.info("asset_name_hash: 0x{x}", .{name_hash});
+        log.info("asset_name_hash: 0x{x}", .{name_hash});
     }
 
     return archive;
@@ -224,7 +224,7 @@ pub fn getAssetIndexFromName(self: Archive, name: []const u8) ?usize {
 
     //TODO: use some kind of bucket based table to allow for archives with very large numbers of assets
     return for (self.asset_name_hashes, 0..) |asset_name_hash, index| {
-        std.log.info("getAssetIndex: testing hash 0x{x} against name: 0x{x}", .{ asset_name_hash, hash });
+        log.info("getAssetIndex: testing hash 0x{x} against name: 0x{x}", .{ asset_name_hash, hash });
 
         if (hash == asset_name_hash) {
             break index;
@@ -288,4 +288,5 @@ pub const base_hash = compiler.getBaseHashFromSource(struct {
 
 const Archive = @This();
 const std = @import("std");
+const log = @import("../log.zig").log;
 const compiler = @import("compiler.zig");

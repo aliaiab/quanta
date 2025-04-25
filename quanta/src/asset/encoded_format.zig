@@ -6,9 +6,12 @@ pub inline fn relativeAddressFromPtr(
     comptime PointeeType: type,
     comptime AddressType: type,
     base: *const BaseType,
-    ptr: *PointeeType,
+    ptr: *const PointeeType,
 ) AddressType {
-    const base_address: isize = @bitCast(@intFromPtr(base));
+    var base_address: isize = @bitCast(@intFromPtr(base));
+
+    base_address = std.mem.alignForward(isize, base_address, @alignOf(PointeeType));
+
     const to_address: isize = @bitCast(@intFromPtr(ptr));
 
     const difference = to_address - base_address;
@@ -26,7 +29,10 @@ pub inline fn ptrFromRelativeAddress(
 ) ?*PointeeType {
     if (relative_address == 0) return null;
 
-    const base_address: isize = @bitCast(@intFromPtr(base));
+    var base_address: isize = @bitCast(@intFromPtr(base));
+
+    base_address = std.mem.alignForward(isize, base_address, @alignOf(PointeeType));
+
     const difference: isize = @intCast(relative_address * @alignOf(PointeeType));
 
     const to = base_address + difference;
@@ -39,7 +45,7 @@ pub inline fn ptrFromRelativeAddress(
 ///A relative pointer, which refers to an address in memory relative to the location of the pointer itself
 ///This is non-const
 pub fn RelativePtr(
-    comptime Parent: type,
+    comptime PointeeType: type,
     comptime BackingInteger: type,
 ) type {
     return packed struct(BackingInteger) {
@@ -48,21 +54,21 @@ pub fn RelativePtr(
         pub const nil = Self{ .integer = 0 };
 
         //TODO: implement 'of' function when/if userspace RLS referencing functionality is added IE: @Result()
-        pub fn set(self: *Self, to_ptr: *Parent) void {
+        pub fn set(self: *Self, to_ptr: *const PointeeType) void {
             self.integer = relativeAddressFromPtr(
                 Self,
-                Parent,
+                PointeeType,
                 BackingInteger,
                 self,
                 to_ptr,
             );
         }
 
-        ///Returns the absoloute pointer that the relative pointer points to
-        pub fn ptr(self: *const Self) *Parent {
+        ///Returns the absolute pointer that the relative pointer points to
+        pub fn ptr(self: *const Self) *PointeeType {
             return ptrFromRelativeAddress(
                 Self,
-                Parent,
+                PointeeType,
                 BackingInteger,
                 self,
                 self.integer,
@@ -70,7 +76,7 @@ pub fn RelativePtr(
         }
 
         ///Loads the value from that the pointer points to
-        pub fn value(self: *const Self) Parent {
+        pub fn value(self: *const Self) PointeeType {
             return self.ptr().*;
         }
 
@@ -81,7 +87,7 @@ pub fn RelativePtr(
 ///A relative pointer, which refers to an address in memory relative to the location of the pointer itself
 ///This is non-const
 pub fn RelativeSlice(
-    comptime Parent: type,
+    comptime PointeeType: type,
     comptime PtrBackingInteger: type,
     comptime LenBackingInteger: type,
 ) type {
@@ -94,10 +100,10 @@ pub fn RelativeSlice(
             .len = 0,
         };
 
-        pub fn set(self: *Self, to_slice: []Parent) void {
+        pub fn set(self: *Self, to_slice: []const PointeeType) void {
             self.integer_ptr = relativeAddressFromPtr(
                 Self,
-                Parent,
+                PointeeType,
                 PtrBackingInteger,
                 self,
                 @ptrCast(to_slice.ptr),
@@ -106,10 +112,10 @@ pub fn RelativeSlice(
         }
 
         ///Returns the absoloute pointer that the relative pointer points to
-        pub fn ptr(self: *const Self) [*]Parent {
-            const pointer: [*]Parent = @ptrCast(ptrFromRelativeAddress(
+        pub fn ptr(self: *const Self) [*]PointeeType {
+            const pointer: [*]PointeeType = @ptrCast(ptrFromRelativeAddress(
                 Self,
-                Parent,
+                PointeeType,
                 PtrBackingInteger,
                 self,
                 self.integer_ptr,
@@ -118,7 +124,11 @@ pub fn RelativeSlice(
             return pointer;
         }
 
-        pub fn slice(self: *const Self) []Parent {
+        pub fn slice(self: *const Self) []PointeeType {
+            if (self.len == 0) {
+                return &.{};
+            }
+
             return self.ptr()[0..self.len];
         }
 
@@ -316,7 +326,7 @@ test "Relative Linear MultiStream" {
     //Useful for allocating the whole data structure in one hit from a page allocator
     const stream_size = relativeStreamSizeOf(header.*);
 
-    std.log.err("stream size = {}", .{stream_size});
+    log.err("stream size = {}", .{stream_size});
 }
 
 test "Relative Linear Stream" {
@@ -360,10 +370,10 @@ test "Relative Linear Stream" {
     //Useful for allocating the whole data structure in one hit from a page allocator
     const stream_size = relativeStreamSizeOf(header.*);
 
-    std.log.warn("stream size = {}", .{stream_size});
+    log.warn("stream size = {}", .{stream_size});
 
-    std.log.warn("header.first_buffer.slice() = {any}", .{header.first_buffer.slice()});
-    std.log.warn("header.second_buffer.slice() = {any}", .{header.second_buffer.slice()});
+    log.warn("header.first_buffer.slice() = {any}", .{header.first_buffer.slice()});
+    log.warn("header.second_buffer.slice() = {any}", .{header.second_buffer.slice()});
 }
 
 test "Relative Ptr" {
@@ -404,9 +414,10 @@ test "Relative Slice" {
 
     relative_slice.set(buffer[slice_index_begin..slice_end]);
 
-    std.log.err("relative_slice = {any}", .{relative_slice.slice()});
+    log.err("relative_slice = {any}", .{relative_slice.slice()});
 
     try std.testing.expect(std.mem.eql(u32, relative_slice.slice(), &.{ 42, 43, 44, 45 }));
 }
 
 const std = @import("std");
+const log = @import("../log.zig").log;

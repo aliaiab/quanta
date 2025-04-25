@@ -4,7 +4,7 @@
 ///This type is equal to the empty struct when debugging is disabled
 ///Functions returning void can be safely relied upon without need for upfront checking on the consuming code side
 ///Functions returning a value will return null if debug info is disabled
-pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled) struct {
+pub const DebugInfo = if (quanta_options.rendering.debug_info_enabled and !quanta_options.code_hot_swap_enable) struct {
     passes: std.AutoArrayHashMapUnmanaged(graph.PassHandle, struct {
         source_location: std.builtin.SourceLocation,
         pass_name: ?[]const u8 = null,

@@ -38,12 +38,12 @@ fn glslIncludeLocalFunc(
 
     while (path_component_iterator.next()) |path_component| {
         if (std.mem.eql(u8, path_component.path, "..")) {
-            std.log.info("includer: \"{s}\"", .{includer_name});
-            std.log.info("includer_depth: {}", .{include_depth});
-            std.log.info("header_name: \"{s}\"", .{header_name});
-            std.log.info("relative_to_root: \"{s}\"", .{relative_to_root});
+            log.info("includer: \"{s}\"", .{includer_name});
+            log.info("includer_depth: {}", .{include_depth});
+            log.info("header_name: \"{s}\"", .{header_name});
+            log.info("relative_to_root: \"{s}\"", .{relative_to_root});
 
-            std.log.err("Cannot include file \"{s}\"; Outside of asset package root", .{header_name});
+            log.err("Cannot include file \"{s}\"; Outside of asset package root", .{header_name});
 
             return null;
         }
@@ -107,7 +107,7 @@ pub fn run() !void {
         arg_input_path,
         std.math.maxInt(u32),
         null,
-        1,
+        .@"1",
         0,
     );
 
@@ -187,9 +187,9 @@ pub fn run() !void {
                 const error_message = info_log_line[error_token.len..];
 
                 if (std.mem.startsWith(u8, error_message, "0:")) {
-                    std.log.err("{s}:{s}", .{ arg_input_path, error_message[2..] });
+                    log.err("{s}:{s}", .{ arg_input_path, error_message[2..] });
                 } else {
-                    std.log.err("{s}", .{error_message});
+                    log.err("{s}", .{error_message});
                 }
             }
         }
@@ -197,7 +197,7 @@ pub fn run() !void {
         const debug_log: ?[*:0]const u8 = @ptrCast(glslang_c.glslang_shader_get_info_debug_log(shader));
 
         if (debug_log != null and std.mem.span(debug_log.?).len != 0) {
-            std.log.debug("{s}", .{debug_log.?});
+            log.debug("{s}", .{debug_log.?});
         }
     }
 
@@ -243,7 +243,7 @@ pub fn run() !void {
     const spirv_messages = glslang_c.glslang_program_SPIRV_get_messages(program);
 
     if (spirv_messages != null) {
-        std.log.err("{s}", .{spirv_messages});
+        log.err("{s}", .{spirv_messages});
 
         return error.SpirvGenerationFailed;
     }
@@ -259,3 +259,4 @@ pub fn run() !void {
 }
 
 const std = @import("std");
+const log = std.log.scoped(.quanta);

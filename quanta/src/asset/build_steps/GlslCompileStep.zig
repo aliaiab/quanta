@@ -1,8 +1,3 @@
-const std = @import("std");
-
-const GlslCompileStep = @This();
-const Step = std.Build.Step;
-
 pub const ShaderStage = enum {
     vertex,
     fragment,
@@ -176,9 +171,26 @@ pub fn compileModule(
     output: []const u8,
 ) *std.Build.Module {
     const step = GlslCompileStep.create(builder, quanta_dependency, input, input, output, stage, mode);
+    _ = step; // autofix
+
+    const glsl_compiler = quanta_dependency.artifact("glsl_compiler");
+
+    const run_glsl_compiler = builder.addRunArtifact(glsl_compiler);
+
+    run_glsl_compiler.addFileInput(.{ .cwd_relative = input });
+
+    run_glsl_compiler.addArg(@tagName(mode));
+    run_glsl_compiler.addArg(@tagName(stage));
+    run_glsl_compiler.addArg(input);
+    const output_path = run_glsl_compiler.addOutputFileArg(output);
+
+    const resulting_step = &run_glsl_compiler.step;
+
+    resulting_step.addWatchInput(.{ .cwd_relative = input }) catch @panic("oom");
 
     return builder.createModule(.{
-        .root_source_file = std.Build.LazyPath{ .generated = .{ .file = &step.generated_file } },
+        // .root_source_file = std.Build.LazyPath{ .generated = .{ .file = &resulting_step.generated_file } },
+        .root_source_file = output_path,
     });
 }
 
@@ -297,3 +309,8 @@ pub fn getIncludes(
 
     return includes.items;
 }
+
+const std = @import("std");
+const log = std.log.scoped(.quanta_build);
+const GlslCompileStep = @This();
+const Step = std.Build.Step;

@@ -239,7 +239,7 @@ pub const Commands = struct {
         var iter = commands.iterator(0, commands.tags.items.len, 0);
 
         while (iter.next()) |command| {
-            std.log.warn("command = {}", .{command});
+            log.warn("command = {}", .{command});
         }
     }
 
@@ -254,17 +254,19 @@ pub const Builder = struct {
     raster_pipelines: std.MultiArrayList(struct {
         handle: RasterPipeline,
         reference_count: u32,
-        vertex_module: RasterModule,
-        fragment_module: RasterModule,
-
-        push_constant_size: u32,
-        attachment_formats: []const ImageFormat,
-        depth_attachment_format: ImageFormat,
-        input_assembly_state: @import("../graphics.zig").GraphicsPipeline.Options.InputAssemblyState,
-        depth_state: @import("../graphics.zig").GraphicsPipeline.Options.DepthState,
-        rasterisation_state: @import("../graphics.zig").GraphicsPipeline.Options.RasterisationState,
-        blend_state: @import("../graphics.zig").GraphicsPipeline.Options.BlendState,
     }) = .{},
+    ///The current state of a pipeline
+    ///Is retained between frames
+    raster_pipeline_state: std.AutoArrayHashMapUnmanaged(RasterPipeline, CreateRasterPipelineOptions) = .{},
+    raster_pipeline_updates: std.MultiArrayList(struct {
+        operation_handle: UpdateOperationHandle,
+        raster_pipeline: RasterPipeline,
+
+        reference_count: u32,
+
+        new_state: CreateRasterPipelineOptions,
+    }) = .{},
+    update_operation_status_buffer: std.ArrayListUnmanaged(UpdateOperationStatus) = .empty,
     compute_pipelines: std.MultiArrayList(struct {
         handle: ComputePipeline,
         reference_count: u32,
@@ -363,10 +365,16 @@ pub const Builder = struct {
             .gpa = gpa,
             .scratch_allocator = std.heap.ArenaAllocator.init(gpa),
             .current_pass_index = 0,
+            .raster_pipeline_state = .{},
         };
     }
 
     pub fn deinit(self: *@This()) void {
+        //Retained state
+        self.raster_pipeline_updates.deinit(self.gpa);
+        self.raster_pipeline_state.deinit(self.gpa);
+
+        //Transient State
         self.raster_pipelines.deinit(self.gpa);
         self.compute_pipelines.deinit(self.gpa);
         self.buffers.deinit(self.gpa);
@@ -419,23 +427,23 @@ pub const Builder = struct {
         return self.scratch_allocator.allocator().dupe(T, values) catch @panic("oom");
     }
 
-    const CreateRasterPipelineOptions = struct {
-        attachment_formats: []const ImageFormat,
+    pub const CreateRasterPipelineOptions = struct {
+        vertex_module: RasterModule,
+        fragment_module: RasterModule,
+        push_constant_size: usize,
         depth_attachment_format: ImageFormat = .undefined,
         ///TODO: create dedicated pipeline option structs for rendering.graph
         input_assembly_state: @import("../graphics.zig").GraphicsPipeline.Options.InputAssemblyState = .{},
         depth_state: @import("../graphics.zig").GraphicsPipeline.Options.DepthState = .{},
         rasterisation_state: @import("../graphics.zig").GraphicsPipeline.Options.RasterisationState = .{},
         blend_state: @import("../graphics.zig").GraphicsPipeline.Options.BlendState = .{},
+        attachment_formats: []const ImageFormat,
     };
 
     pub fn createRasterPipeline(
         self: *@This(),
         comptime src: SourceLocation,
-        vertex_module: RasterModule,
-        fragment_module: RasterModule,
         options: CreateRasterPipelineOptions,
-        push_constant_size: usize,
     ) RasterPipeline {
         const handle_id = comptime idFromSourceLocation(src);
 
@@ -445,19 +453,133 @@ pub const Builder = struct {
 
         self.raster_pipelines.append(self.gpa, .{
             .handle = handle,
-            .vertex_module = vertex_module,
-            .fragment_module = fragment_module,
             .reference_count = 0,
-            .push_constant_size = @intCast(push_constant_size),
-            .attachment_formats = self.scratch_allocator.allocator().dupe(ImageFormat, options.attachment_formats) catch @panic("oom"),
-            .depth_attachment_format = options.depth_attachment_format,
-            .input_assembly_state = options.input_assembly_state,
-            .depth_state = options.depth_state,
-            .rasterisation_state = options.rasterisation_state,
-            .blend_state = options.blend_state,
+        }) catch @panic("oom");
+
+        const state_result = self.raster_pipeline_state.getOrPut(self.gpa, handle) catch @panic("oom");
+
+        if (!state_result.found_existing) {
+            state_result.value_ptr.* = options;
+
+            state_result.value_ptr.attachment_formats = self.gpa.dupe(ImageFormat, options.attachment_formats) catch @panic("oom");
+            state_result.value_ptr.vertex_module.code = @alignCast(self.gpa.dupe(u8, options.vertex_module.code) catch @panic("oom"));
+            state_result.value_ptr.fragment_module.code = @alignCast(self.gpa.dupe(u8, options.fragment_module.code) catch @panic("oom"));
+        } else {
+            //TODO: check if the state has changed, and if so queue and update for it
+            //^Potential footgun if state changes ever frame, resulting in a bombardment of queued updates
+
+            const old_state = state_result.value_ptr;
+            const new_state_ptr = &options;
+
+            var invalidate: bool = false;
+
+            invalidate = invalidate or !std.mem.eql(u8, std.mem.asBytes(&old_state.blend_state), std.mem.asBytes(&new_state_ptr.blend_state));
+            invalidate = invalidate or !std.mem.eql(u8, std.mem.asBytes(&old_state.rasterisation_state), std.mem.asBytes(&new_state_ptr.rasterisation_state));
+            invalidate = invalidate or !std.mem.eql(u8, std.mem.asBytes(&old_state.input_assembly_state), std.mem.asBytes(&new_state_ptr.input_assembly_state));
+            invalidate = invalidate or !std.mem.eql(u8, std.mem.asBytes(&old_state.depth_state), std.mem.asBytes(&new_state_ptr.depth_state));
+            invalidate = invalidate or !std.mem.eql(u8, std.mem.asBytes(&old_state.depth_attachment_format), std.mem.asBytes(&new_state_ptr.depth_attachment_format));
+
+            if (!invalidate) {
+                const vertex_modules_differ = !std.mem.eql(u8, old_state.vertex_module.code, new_state_ptr.vertex_module.code);
+                const fragment_modules_differ = !std.mem.eql(u8, old_state.fragment_module.code, new_state_ptr.fragment_module.code);
+
+                if (vertex_modules_differ or fragment_modules_differ) {
+                    std.log.info("LOLLLLLL!!!", .{});
+                    std.log.info("old_ptrs: vtx: {*}[0..{}] frag: {*}[0..{}]", .{
+                        old_state.vertex_module.code.ptr,
+                        old_state.vertex_module.code.len,
+                        old_state.fragment_module.code.ptr,
+                        old_state.fragment_module.code.len,
+                    });
+                    std.log.info("new_ptrs: vtx: {*}[0..{}], frag: {*}[0..{}]", .{
+                        new_state_ptr.vertex_module.code.ptr,
+                        new_state_ptr.vertex_module.code.len,
+                        new_state_ptr.fragment_module.code.ptr,
+                        new_state_ptr.fragment_module.code.len,
+                    });
+                }
+
+                invalidate = invalidate or vertex_modules_differ or fragment_modules_differ;
+            }
+
+            if (invalidate) {
+                _ = self.queueUpdateRasterPipeline(handle, options);
+            }
+        }
+
+        return handle;
+    }
+
+    pub fn rasterPipelineGetState(
+        self: *@This(),
+        raster_pipeline: RasterPipeline,
+    ) CreateRasterPipelineOptions {
+        //It is invalid to have a pipeline with no logical state
+        return self.raster_pipeline_state.get(raster_pipeline).?;
+    }
+
+    pub const UpdateOperationHandle = packed struct(u64) {
+        id: IdInt,
+        tag: Tag,
+
+        pub const IdInt = u62;
+
+        pub const nil: UpdateOperationHandle = @bitCast(@as(u64, std.math.maxInt(u64)));
+
+        pub const Tag = enum(u2) {
+            raster_pipeline,
+            compute_pipeline,
+            image,
+            buffer,
+        };
+    };
+
+    pub const UpdateOperationStatus = enum {
+        ///The update is still in progress and is not ready to be commited
+        busy,
+        ///The update has completed and has been commited to the current frame
+        complete,
+    };
+
+    ///Queues an asynchrounous update to the resource.
+    ///Does not create any dependencies on this resource update downstream and doesn't halt the frame
+    ///The status of the update can be polled via pollUpdateStatus
+    pub fn queueUpdateRasterPipeline(
+        self: *@This(),
+        raster_pipeline: RasterPipeline,
+        new_options: CreateRasterPipelineOptions,
+    ) UpdateOperationHandle {
+        _ = self.referenceRasterPipeline(raster_pipeline);
+
+        const handle: UpdateOperationHandle = .{ .id = @intCast(self.raster_pipeline_updates.len), .tag = .raster_pipeline };
+
+        var new_state = new_options;
+
+        //TODO: allocate state in one big blob rather than having a gpa allocation
+        new_state.attachment_formats = self.gpa.dupe(ImageFormat, new_options.attachment_formats) catch @panic("oom");
+        new_state.vertex_module.code = @alignCast(self.gpa.dupe(u8, new_options.vertex_module.code) catch @panic("oom"));
+        new_state.fragment_module.code = @alignCast(self.gpa.dupe(u8, new_options.fragment_module.code) catch @panic("oom"));
+
+        self.raster_pipeline_updates.append(self.gpa, .{
+            //TODO: handle id allocation better?
+            .operation_handle = handle,
+            .raster_pipeline = raster_pipeline,
+            .reference_count = 0,
+            .new_state = new_state,
         }) catch @panic("oom");
 
         return handle;
+    }
+
+    pub fn queueUpdateComputePipeline() UpdateOperationHandle {}
+    pub fn queueUpdateImage() UpdateOperationHandle {}
+    pub fn queueUpdateBuffer() UpdateOperationHandle {}
+
+    pub fn pollUpdateStatus(
+        self: *@This(),
+        update_operation: UpdateOperationHandle,
+    ) UpdateOperationStatus {
+        return self.update_operation_status_buffer.items[update_operation.id];
     }
 
     pub fn createComputePipeline(
@@ -1350,15 +1472,15 @@ pub const ComputeModule = struct {
     code: []align(4) const u8,
 };
 
-pub const RasterPipeline = struct {
+pub const RasterPipeline = packed struct {
     id: u64,
 };
 
-pub const ComputePipeline = struct {
+pub const ComputePipeline = packed struct {
     id: u64,
 };
 
-pub const Sampler = struct {
+pub const Sampler = packed struct {
     id: u64,
 };
 
@@ -1658,4 +1780,5 @@ test {
 
 const Graph = @This();
 const std = @import("std");
+const log = @import("../log.zig").log;
 const DebugInfo = @import("debug.zig").DebugInfo;

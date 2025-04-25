@@ -78,8 +78,6 @@ pub fn init(size: usize, usage: Usage) !Buffer {
         .descriptor = 0,
     };
 
-    const log = std.log.scoped(.quanta);
-
     log.info("Initing buffer!! {}", .{size});
 
     const create_info = vk.BufferCreateInfo{
@@ -361,3 +359,5 @@ pub fn debugSetName(self: Buffer, name: []const u8) void {
 }
 
 test {}
+
+const log = @import("../log.zig").log;

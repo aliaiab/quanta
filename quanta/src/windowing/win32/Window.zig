@@ -207,8 +207,8 @@ fn wndProc(
     const window_system: *WindowSystem = @alignCast(@ptrCast(user_data_ptr.?));
     const window_state: *State = window_system.window_states.getPtr(wnd).?;
 
-    std.log.info("wndProc = {}, {}, {}, {}", .{ wnd, msg, param2, param3 });
-    std.log.info("user_data_ptr = {?*}", .{user_data_ptr});
+    log.info("wndProc = {}, {}, {}, {}", .{ wnd, msg, param2, param3 });
+    log.info("user_data_ptr = {?*}", .{user_data_ptr});
 
     switch (msg) {
         win32.ui.windows_and_messaging.WM_CLOSE => {
@@ -238,3 +238,4 @@ const std = @import("std");
 const Window = @This();
 const WindowSystem = @import("WindowSystem.zig");
 const windowing = @import("../../windowing.zig");
+const log = @import("../../log.zig").log;

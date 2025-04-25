@@ -1,8 +1,3 @@
-const AssetStorage = @import("AssetStorage.zig");
-const Asset = AssetStorage.Asset;
-
-const CubeMap = @This();
-
 pub const image_count = 6;
 
 width: u32,
@@ -50,8 +45,6 @@ pub fn assetCompile(
 ) ![]const u8 {
     _ = data; // autofix
 
-    const log = std.log.scoped(.cubemap_compile);
-
     const directory_path = std.fs.path.dirname(file_path) orelse unreachable;
 
     log.info("meta_data = {?}", .{meta_data});
@@ -75,3 +68,7 @@ pub const base_hash = "1";
 const compiler = @import("compiler.zig");
 const importers = @import("frontends.zig");
 const std = @import("std");
+const log = @import("../log.zig").log;
+const AssetStorage = @import("AssetStorage.zig");
+const Asset = AssetStorage.Asset;
+const CubeMap = @This();

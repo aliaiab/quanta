@@ -151,7 +151,7 @@ pub const DeviceDispatch = vk.DeviceWrapper(vk_apis);
 var vkGetInstanceProcAddr: vk.PfnGetInstanceProcAddr = undefined;
 
 fn getInstanceProcAddress(instance: vk.Instance, name: [*:0]const u8) vk.PfnVoidFunction {
-    std.log.info("Loading {s}", .{name});
+    log.info("Loading {s}", .{name});
 
     return vkGetInstanceProcAddr(instance, name);
 }
@@ -197,10 +197,10 @@ fn vulkanAllocate(
 ) callconv(vk.vulkan_call_conv) ?*anyopaque {
     _ = user_data;
 
-    const memory = (self.allocator.rawAlloc(size + @sizeOf(usize), .fromByteUnits(@as(u8, @intCast(alignment))), @returnAddress()) orelse
+    const memory = (self.gpa.rawAlloc(size + @sizeOf(usize), .fromByteUnits(@as(u8, @intCast(alignment))), @returnAddress()) orelse
         {
-        @panic("Allocation failed!");
-    })[0 .. size + @sizeOf(usize)];
+            @panic("Allocation failed!");
+        })[0 .. size + @sizeOf(usize)];
 
     @as(*usize, @ptrCast(@alignCast(memory.ptr))).* = size;
 
@@ -220,7 +220,7 @@ fn vulkanReallocate(
     const old_memory = original_pointer[0 .. old_size + @sizeOf(usize)];
 
     if (new_size > old_size) {
-        const memory_ptr = self.allocator.rawAlloc(new_size + @sizeOf(usize), .fromByteUnits(@as(u8, @intCast(alignment))), @returnAddress()) orelse {
+        const memory_ptr = self.gpa.rawAlloc(new_size + @sizeOf(usize), .fromByteUnits(@as(u8, @intCast(alignment))), @returnAddress()) orelse {
             @panic("Allocation failed!");
         };
 
@@ -234,7 +234,7 @@ fn vulkanReallocate(
 
         return allocation_ptr;
     } else {
-        if (!self.allocator.rawResize(old_memory, .fromByteUnits(@as(u8, @intCast(alignment))), new_size, @returnAddress())) {
+        if (!self.gpa.rawResize(old_memory, .fromByteUnits(@as(u8, @intCast(alignment))), new_size, @returnAddress())) {
             @panic("Allocation failed!");
         }
     }
@@ -257,12 +257,14 @@ fn vulkanFree(
     //TODO: This is VERY dodgy, and we *might* have to store alignment in the allocation
     const alignment = 256;
 
-    self.allocator.rawFree(pointer[0 .. size + @sizeOf(usize)], .fromByteUnits(std.math.log2(alignment)), @returnAddress());
+    self.gpa.rawFree(pointer[0 .. size + @sizeOf(usize)], .fromByteUnits(std.math.log2(alignment)), @returnAddress());
 }
 
 pub var self: Context = undefined;
 
-allocator: std.mem.Allocator,
+gpa: std.mem.Allocator,
+arena: std.mem.Allocator,
+
 vulkan_loader: std.DynLib,
 vkb: BaseDispatch,
 vki: InstanceDispatch,
@@ -316,10 +318,21 @@ pub const OptionalExtensions = struct {
     ext_memory_budget: ?[:0]const u8 = vk.extensions.ext_memory_budget.name,
 };
 
-pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: []const u8) !void {
-    self.allocator = allocator;
+pub fn init(
+    gpa: std.mem.Allocator,
+    arena: std.mem.Allocator,
+    window: *Window,
+    pipeline_cache_data: []const u8,
+) !void {
+    self.gpa = gpa;
+    self.arena = arena;
     self.required_extensions = .{};
     self.optional_extensions = .{};
+
+    var init_arena_instance: std.heap.ArenaAllocator = .init(arena);
+    defer init_arena_instance.deinit();
+
+    const init_arena = init_arena_instance.allocator();
 
     const vulkan_loader_path = switch (builtin.os.tag) {
         .linux, .freebsd => "libvulkan.so.1",
@@ -383,8 +396,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
         _ = try self.vkb.enumerateInstanceLayerProperties(&layer_count, null);
 
-        const layer_properties = try self.allocator.alloc(vk.LayerProperties, layer_count);
-        defer self.allocator.free(layer_properties);
+        const layer_properties = try init_arena.alloc(vk.LayerProperties, layer_count);
 
         _ = try self.vkb.enumerateInstanceLayerProperties(&layer_count, layer_properties.ptr);
 
@@ -478,8 +490,6 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
     self.vki = try InstanceDispatch.load(self.instance, getInstanceProcAddress);
 
-    std.log.info("Successfully created vulkan instance", .{});
-
     errdefer self.vki.destroyInstance(self.instance, self.allocation_callbacks);
 
     if (enable_debug_messenger) {
@@ -496,8 +506,6 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
     self.surface = try WindowSurface.init(window);
     errdefer self.surface.deinit();
-
-    std.log.info("Successfully created vulkan surface", .{});
 
     var device_extensions_buffer: [std.meta.fields(RequiredExtensions).len + std.meta.fields(OptionalExtensions).len][*:0]const u8 = undefined;
     var device_extension_count: usize = 0;
@@ -564,8 +572,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
         _ = try self.vki.enumeratePhysicalDevices(self.instance, &physical_device_count, null);
 
-        const physical_devices = try self.allocator.alloc(vk.PhysicalDevice, physical_device_count);
-        defer self.allocator.free(physical_devices);
+        const physical_devices = try init_arena.alloc(vk.PhysicalDevice, physical_device_count);
 
         _ = try self.vki.enumeratePhysicalDevices(self.instance, &physical_device_count, physical_devices.ptr);
 
@@ -619,9 +626,10 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
                 vk.apiVersionVariant(self.physical_device_properties.api_version),
             });
 
-            if (vk.apiVersionMajor(self.physical_device_properties.api_version) != vulkan_version.major or
-                vk.apiVersionMinor(self.physical_device_properties.api_version) != vulkan_version.minor)
-            {
+            const is_version_suitable = vk.apiVersionMajor(self.physical_device_properties.api_version) >= vulkan_version.major and
+                vk.apiVersionMinor(self.physical_device_properties.api_version) >= vulkan_version.minor;
+
+            if (!is_version_suitable) {
                 continue;
             }
 
@@ -629,8 +637,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
             self.vki.getPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, null);
 
-            const queue_families = try self.allocator.alloc(vk.QueueFamilyProperties, queue_family_count);
-            defer self.allocator.free(queue_families);
+            const queue_families = try init_arena.alloc(vk.QueueFamilyProperties, queue_family_count);
 
             self.vki.getPhysicalDeviceQueueFamilyProperties(physical_device, &queue_family_count, queue_families.ptr);
 
@@ -666,8 +673,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
             _ = try self.vki.enumerateDeviceExtensionProperties(physical_device, null, &physical_device_extention_count, null);
 
-            const physical_device_extentions = try self.allocator.alloc(vk.ExtensionProperties, physical_device_extention_count);
-            defer self.allocator.free(physical_device_extentions);
+            const physical_device_extentions = try init_arena.alloc(vk.ExtensionProperties, physical_device_extention_count);
 
             _ = try self.vki.enumerateDeviceExtensionProperties(physical_device, null, &physical_device_extention_count, physical_device_extentions.ptr);
 
@@ -698,8 +704,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
             _ = try self.vki.getPhysicalDeviceSurfaceFormatsKHR(physical_device, self.surface.surface, &surface_format_count, null);
 
-            const surface_formats = try self.allocator.alloc(vk.SurfaceFormatKHR, surface_format_count);
-            defer self.allocator.free(surface_formats);
+            const surface_formats = try init_arena.alloc(vk.SurfaceFormatKHR, surface_format_count);
 
             _ = try self.vki.getPhysicalDeviceSurfaceFormatsKHR(physical_device, self.surface.surface, &surface_format_count, surface_formats.ptr);
 
@@ -707,8 +712,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
             _ = try self.vki.getPhysicalDeviceSurfacePresentModesKHR(physical_device, self.surface.surface, &surface_present_mode_count, null);
 
-            const surface_present_modes = try self.allocator.alloc(vk.PresentModeKHR, surface_present_mode_count);
-            defer self.allocator.free(surface_present_modes);
+            const surface_present_modes = try init_arena.alloc(vk.PresentModeKHR, surface_present_mode_count);
 
             _ = try self.vki.getPhysicalDeviceSurfacePresentModesKHR(physical_device, self.surface.surface, &surface_present_mode_count, surface_present_modes.ptr);
 
@@ -793,8 +797,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
 
         _ = try self.vki.enumerateDeviceExtensionProperties(self.physical_device, null, &physical_device_extention_count, null);
 
-        const physical_device_extentions = try self.allocator.alloc(vk.ExtensionProperties, physical_device_extention_count);
-        defer self.allocator.free(physical_device_extentions);
+        const physical_device_extentions = try init_arena.alloc(vk.ExtensionProperties, physical_device_extention_count);
 
         _ = try self.vki.enumerateDeviceExtensionProperties(self.physical_device, null, &physical_device_extention_count, physical_device_extentions.ptr);
 
@@ -839,7 +842,7 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
             inline for (std.meta.fields(DeviceDispatch.Dispatch)) |field| {
                 const name: [*:0]const u8 = @ptrCast(field.name ++ "\x00");
                 const cmd_ptr = self.vki.dispatch.vkGetDeviceProcAddr(self.device, name) orelse blk: {
-                    std.log.info("Failing: {s}", .{name});
+                    log.info("Failing: {s}", .{name});
 
                     break :blk undefined;
                 };
@@ -888,36 +891,30 @@ pub fn init(allocator: std.mem.Allocator, window: *Window, pipeline_cache_data: 
         }
     }
 
-    {
-        @setRuntimeSafety(false);
-
-        self.pipeline_cache = try self.vkd.createPipelineCache(
-            self.device,
-            &.{
-                .flags = .{},
-                .initial_data_size = pipeline_cache_data.len,
-                .p_initial_data = if (pipeline_cache_data.len != 0) pipeline_cache_data.ptr else undefined,
-            },
-            self.allocation_callbacks,
-        );
-    }
+    self.pipeline_cache = try self.vkd.createPipelineCache(
+        self.device,
+        &.{
+            .flags = .{},
+            .initial_data_size = pipeline_cache_data.len,
+            .p_initial_data = if (pipeline_cache_data.len != 0) pipeline_cache_data.ptr else undefined,
+        },
+        self.allocation_callbacks,
+    );
     errdefer self.vkd.destroyPipelineCache(self.device, self.pipeline_cache, self.allocation_callbacks);
 
-    self.memories_by_type = try self.allocator.alloc(std.ArrayListUnmanaged(DeviceMemory), self.physical_device_memory_properties.memory_heap_count);
-    errdefer self.allocator.free(self.memories_by_type);
+    self.memories_by_type = try arena.alloc(std.ArrayListUnmanaged(DeviceMemory), self.physical_device_memory_properties.memory_heap_count);
 
     for (self.memories_by_type) |*memories| {
         memories.* = .{};
     }
 
     self.pages = .{};
-    self.initial_memory_budgets = try self.allocator.alloc(usize, self.physical_device_memory_properties.memory_heap_count);
-    errdefer self.allocator.free(self.initial_memory_budgets);
+    self.initial_memory_budgets = try arena.alloc(usize, self.physical_device_memory_properties.memory_heap_count);
 
     for (self.initial_memory_budgets, 0..) |*budget, i| {
         budget.* = getMemoryHeapBudget(@as(u32, @intCast(i)));
 
-        std.log.info("Budget[{}] = {}", .{ i, budget.* });
+        log.info("Budget[{}] = {}", .{ i, budget.* });
     }
 }
 
@@ -934,16 +931,14 @@ pub fn deinit() void {
     defer if (self.compute_command_pool != .null_handle) self.vkd.destroyCommandPool(self.device, self.compute_command_pool, self.allocation_callbacks);
     defer if (self.transfer_command_pool != .null_handle) self.vkd.destroyCommandPool(self.device, self.transfer_command_pool, self.allocation_callbacks);
     defer self.vkd.destroyPipelineCache(self.device, self.pipeline_cache, self.allocation_callbacks);
-    defer self.allocator.free(self.memories_by_type);
     defer for (self.memories_by_type) |*memories| {
         for (memories.items) |*memory| {
             deviceFree(memory.handle);
         }
 
-        memories.deinit(self.allocator);
+        memories.deinit(self.gpa);
     };
-    defer self.pages.deinit(self.allocator);
-    defer self.allocator.free(self.initial_memory_budgets);
+    defer self.pages.deinit(self.gpa);
 }
 
 pub fn imageMemoryBarrier(
@@ -1154,7 +1149,7 @@ pub fn devicePageAllocate(
             log.info("Allocated a page of device memory: size = {}, alignment = {}", .{ size, alignment });
         }
 
-        try memories.append(self.allocator, .{
+        try memories.append(self.gpa, .{
             .handle = page_memory,
             .next_offset = alignment + size,
             .size = initial_memory_size,
@@ -1163,7 +1158,7 @@ pub fn devicePageAllocate(
         });
     }
 
-    try self.pages.append(self.allocator, .{
+    try self.pages.append(self.gpa, .{
         .memory_index = page_memory_index.?,
         .heap_index = memory_type.heap_index,
         .offset = page_memory_offset,
@@ -1315,7 +1310,7 @@ pub fn getPipelineCacheData() ![]const u8 {
 
     _ = try self.vkd.getPipelineCacheData(self.device, self.pipeline_cache, &data.len, null);
 
-    data = try self.allocator.alloc(u8, data.len);
+    data = try self.gpa.alloc(u8, data.len);
 
     _ = try self.vkd.getPipelineCacheData(self.device, self.pipeline_cache, &data.len, @as(*anyopaque, @ptrCast(data.ptr)));
 

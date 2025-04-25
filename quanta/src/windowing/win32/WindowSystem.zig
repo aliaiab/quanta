@@ -20,7 +20,7 @@ pub fn createWindow(
     allocator: std.mem.Allocator,
     options: windowing.WindowSystem.CreateWindowOptions,
 ) !Window {
-    std.log.info("Creating win32 window! {}", .{options});
+    log.info("Creating win32 window! {}", .{options});
 
     var window: Window = undefined;
 
@@ -33,6 +33,7 @@ const WindowSystem = @This();
 const Window = @import("Window.zig");
 const std = @import("std");
 const windowing = @import("../../windowing.zig");
+const log = @import("../../log.zig").log;
 const win32 = @import("win32");
 
 test {

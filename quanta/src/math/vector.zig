@@ -5,6 +5,18 @@ pub inline fn dot(
     left: @Vector(dimension, T),
     right: @Vector(dimension, T),
 ) f32 {
+    if (@import("builtin").zig_backend == .stage2_x86_64) {
+        const mul_res: [dimension]T = left * right;
+
+        var res: T = 0;
+
+        inline for (mul_res) |elem| {
+            res += elem;
+        }
+
+        return res;
+    }
+
     return @reduce(.Add, left * right);
 }
 

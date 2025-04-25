@@ -17,6 +17,7 @@ pub fn build(builder: *std.Build) !void {
         .target = builder.graph.host,
         .optimize = .Debug,
         .sanitize_thread = true,
+        .use_llvm = true,
     });
 
     glsl_compiler.addIncludePath(builder.path(""));
@@ -94,6 +95,7 @@ pub fn build(builder: *std.Build) !void {
         .root_source_file = builder.path("quanta/src/asset/compiler_main.zig"),
         .target = builder.graph.host,
         .optimize = .Debug,
+        .use_llvm = false,
     });
 
     asset_compiler.root_module.addImport("quanta", quanta_module);
@@ -106,13 +108,10 @@ pub fn build(builder: *std.Build) !void {
 
         const quanta_test = builder.addTest(.{
             .name = "test",
-            .root_source_file = builder.path("quanta/src/root.zig"),
+            .root_module = quanta_module,
             .optimize = .Debug,
             .link_libc = true,
-        });
-
-        quanta_test.root_module.addAnonymousImport("vulkan", .{
-            .root_source_file = vk_zig_file,
+            .use_llvm = false,
         });
 
         const run_quanta_tests = builder.addRunArtifact(quanta_test);
@@ -170,7 +169,7 @@ pub fn addGlslCompileStep(
         options.source_directory,
         std.math.maxInt(usize),
         null,
-        1,
+        .@"1",
         0,
     ) catch @panic("oom");
     defer builder.allocator.free(root_zon_data);
@@ -183,7 +182,7 @@ pub fn addGlslCompileStep(
     var embed_modules: std.ArrayListUnmanaged(GlslCompileStepResult.EmbedModule) = .{};
 
     for (root_zon.paths) |path| {
-        const actual_path = std.fs.path.join(builder.allocator, &.{ source_directory, path }) catch @panic("oom");
+        const actual_path = builder.pathJoin(&.{ source_directory, path });
 
         const path_stem = std.fs.path.stem(actual_path);
         //eg: comp
@@ -272,7 +271,7 @@ pub fn addAssetCompileStep(
     const target = if (config.target) |targ| targ else builder.graph.host;
     _ = target; // autofix
 
-    std.log.info("config.source_dir = {s}", .{config.source_directory});
+    log.info("config.source_dir = {s}", .{config.source_directory});
 
     run_asset_compiler.addArg(@tagName(optimize));
     run_asset_compiler.addDirectoryArg(.{ .cwd_relative = config.source_directory });
@@ -314,7 +313,7 @@ fn addAssetDirectoryAsInput(
     while (iter.next() catch @panic("Cannot iterate asset source directory")) |entry| {
         switch (entry.kind) {
             .file => {
-                std.log.info("Adding file input '{s}'", .{builder.pathJoin(&.{ directory_path, entry.name })});
+                log.info("Adding file input '{s}'", .{builder.pathJoin(&.{ directory_path, entry.name })});
 
                 run.addFileInput(.{ .cwd_relative = builder.pathJoin(&.{ directory_path, entry.name }) });
             },
@@ -336,6 +335,23 @@ fn addAssetDirectoryAsInput(
     }
 }
 
+pub const CompileZigShaderStep = struct {
+    step: *std.Build.Step,
+};
+
+pub fn compileZigShader(
+    builder: *std.Build,
+    quanta_dependency: *std.Build.Dependency,
+    config: struct {
+        module: *std.Build.Module,
+    },
+) CompileZigShaderStep {
+    _ = config; // autofix
+    _ = builder; // autofix
+    _ = quanta_dependency; // autofix
+}
+
 const std = @import("std");
 const builtin = @import("builtin");
 const quanta = @import("quanta/src/root.zig");
+const log = std.log.scoped(.quanta_build);

@@ -14,8 +14,14 @@ pub const Context = struct {
     },
     buffer_index: u32 = 0,
 
+    shutdown_threads: std.atomic.Value(bool) = .init(false),
+    resource_creation_thread: ?std.Thread = null,
+    resource_creation_thread_shutdown: std.Thread.ResetEvent = .{},
+    create_pipeline_queue: *AtomicQueue(CreatePipelineCommand, 512),
+
     //TODO: exploit SourceLocation to make a more efficient mapping
     raster_pipelines: std.AutoArrayHashMapUnmanaged(u64, graphics.GraphicsPipeline) = .{},
+    pending_raster_pipeline_updates: std.AutoArrayHashMapUnmanaged(graph.RasterPipeline, *CreatePipelineCommand.Output) = .{},
     compute_pipelines: std.AutoArrayHashMapUnmanaged(graph.ComputePipeline, graphics.ComputePipeline) = .{},
     buffers: std.AutoArrayHashMapUnmanaged(graph.BufferHandle, graphics.Buffer) = .{},
     images: std.AutoArrayHashMapUnmanaged(graph.ImageHandle, struct {
@@ -37,7 +43,8 @@ pub const Context = struct {
     ///If you don't it's a simple crash
     pub fn init(
         gpa: std.mem.Allocator,
-    ) Context {
+        arena: std.mem.Allocator,
+    ) !Context {
         var self: Context = .{
             .gpa = gpa,
             .scratch_allocator = std.heap.ArenaAllocator.init(gpa),
@@ -45,7 +52,11 @@ pub const Context = struct {
             //TODO: I have no idea why I can't make use of the arena for this, it just crashes
             //This is not a lifetime issue, even if I init at the callsite it just breaks
             .barrier_map = .{ .scratch_allocator = gpa },
+            .resource_creation_thread = null,
+            .create_pipeline_queue = try arena.create(AtomicQueue(CreatePipelineCommand, 512)),
         };
+
+        self.create_pipeline_queue.* = .{};
 
         for (0..cpu_buffer_count) |i| {
             self.cpu_buffer[i] = .{};
@@ -57,6 +68,14 @@ pub const Context = struct {
     pub fn deinit(self: *@This()) void {
         //Maybe wait for specific resources? This will work for now
         graphics.Context.waitIdle();
+
+        self.shutdown_threads.store(true, .release);
+
+        self.resource_creation_thread_shutdown.wait();
+
+        if (self.resource_creation_thread) |thread| {
+            thread.detach();
+        }
 
         for (self.raster_pipelines.values()) |*raster_pipeline| {
             raster_pipeline.deinit(self.gpa);
@@ -97,6 +116,65 @@ pub const Context = struct {
         self.scratch_allocator.deinit();
 
         self.* = undefined;
+    }
+
+    pub const CreatePipelineCommand = struct {
+        output: *Output,
+        builder: *graph.Builder,
+        ///Pointer to a completion flag which is set when the resource is complete
+        options: graph.Builder.CreateRasterPipelineOptions,
+
+        pub const Output = struct {
+            ///TODO: change to a std.Thread.ResetEvent?
+            is_complete: std.atomic.Value(bool) = .init(false),
+            pipeline: graphics.GraphicsPipeline,
+        };
+    };
+
+    pub fn resourceCreationThreadMain(self: *@This()) !void {
+        while (true) {
+            if (self.shutdown_threads.load(.acquire) == true) {
+                self.resource_creation_thread_shutdown.set();
+                return;
+            }
+
+            const maybe_create_pipeline_cmd: ?CreatePipelineCommand = self.create_pipeline_queue.tryPop();
+
+            if (maybe_create_pipeline_cmd) |create_pipeline_cmd| {
+                const builder = create_pipeline_cmd.builder;
+                _ = builder; // autofix
+
+                const vertex_module: graph.RasterModule = create_pipeline_cmd.options.vertex_module;
+                const fragment_module: graph.RasterModule = create_pipeline_cmd.options.fragment_module;
+                const push_constant_size = create_pipeline_cmd.options.push_constant_size;
+                //TODO: FIXME: this is NOT memory safe. We need to make a gpa.dupe of this
+                const attachment_formats = create_pipeline_cmd.options.attachment_formats;
+                const depth_attachment_format = create_pipeline_cmd.options.depth_attachment_format;
+
+                create_pipeline_cmd.output.pipeline = try graphics.GraphicsPipeline.init(
+                    self.gpa,
+                    .{
+                        .color_attachment_formats = @as([*]const graphics.vulkan.Format, @alignCast(@ptrCast(attachment_formats.ptr)))[0..attachment_formats.len],
+                        //TODO: Do explicit format conversion
+                        .depth_attachment_format = @enumFromInt(@intFromEnum(depth_attachment_format)),
+                        .vertex_shader_binary = @alignCast(vertex_module.code),
+                        .fragment_shader_binary = @alignCast(fragment_module.code),
+                        .input_assembly_state = create_pipeline_cmd.options.input_assembly_state,
+                        .depth_state = create_pipeline_cmd.options.depth_state,
+                        .rasterisation_state = create_pipeline_cmd.options.rasterisation_state,
+                        .blend_state = create_pipeline_cmd.options.blend_state,
+                    },
+                    //TODO: handle vertex layouts (if anyone's using that in 2024)
+                    null,
+                    push_constant_size,
+                );
+
+                std.log.info("res alloc thread: Created pipeline!", .{});
+
+                create_pipeline_cmd.output.is_complete.store(true, .release);
+                // errdefer get_or_put_res.value_ptr.deinit(self.gpa);
+            }
+        }
     }
 
     ///Imports and underlying gpu api image and provides a handle that is usable from graph building code
@@ -140,6 +218,10 @@ pub const Context = struct {
         }
 
         defer _ = self.scratch_allocator.reset(.retain_capacity);
+
+        if (self.resource_creation_thread == null) {
+            self.resource_creation_thread = try .spawn(.{}, resourceCreationThreadMain, .{self});
+        }
 
         const compile_buffer = &self.cpu_buffer[self.buffer_index];
 
@@ -360,41 +442,67 @@ pub const Context = struct {
         //TODO: resource creation should be driven by the dependency graph, not static reference counts
         {
             for (builder.raster_pipelines.items(.reference_count), 0..) |reference_count, pipeline_index| {
+                //TODO: only create pipelines that get referenced statically
                 _ = reference_count; // autofix
                 const handle: graph.RasterPipeline = builder.raster_pipelines.items(.handle)[pipeline_index];
 
-                const get_or_put_res = try self.raster_pipelines.getOrPut(self.gpa, handle.id);
+                const maybe_pipeline = self.raster_pipelines.get(handle.id);
 
                 //cache hit
-                if (get_or_put_res.found_existing) {
+                if (maybe_pipeline != null) {
                     continue;
                 }
 
                 const pipeline = builder.raster_pipelines.get(pipeline_index);
 
-                const vertex_module: graph.RasterModule = builder.raster_pipelines.items(.vertex_module)[pipeline_index];
-                const fragment_module: graph.RasterModule = builder.raster_pipelines.items(.fragment_module)[pipeline_index];
-                const push_constant_size = builder.raster_pipelines.items(.push_constant_size)[pipeline_index];
-                const attachment_formats = builder.raster_pipelines.items(.attachment_formats)[pipeline_index];
-                const depth_attachment_format = builder.raster_pipelines.items(.depth_attachment_format)[pipeline_index];
+                if (self.pending_raster_pipeline_updates.get(pipeline.handle) != null) {
+                    //If this is true, then the pipeline was queued for creation but never dynamically referenced
+                    continue;
+                }
 
-                get_or_put_res.value_ptr.* = try graphics.GraphicsPipeline.init(
-                    self.gpa,
-                    .{
-                        .color_attachment_formats = @as([*]const graphics.vulkan.Format, @alignCast(@ptrCast(attachment_formats.ptr)))[0..attachment_formats.len],
-                        .depth_attachment_format = @enumFromInt(@intFromEnum(depth_attachment_format)),
-                        .vertex_shader_binary = @alignCast(vertex_module.code),
-                        .fragment_shader_binary = @alignCast(fragment_module.code),
-                        .input_assembly_state = pipeline.input_assembly_state,
-                        .depth_state = pipeline.depth_state,
-                        .rasterisation_state = pipeline.rasterisation_state,
-                        .blend_state = pipeline.blend_state,
-                    },
-                    //TODO: handle vertex layouts (if anyone's using that in 2024)
-                    null,
-                    push_constant_size,
-                );
-                errdefer get_or_put_res.value_ptr.deinit(self.gpa);
+                const cmd_output = try self.gpa.create(CreatePipelineCommand.Output);
+
+                cmd_output.is_complete = .init(false);
+
+                std.log.info("Pushing pipeline creation!!!", .{});
+
+                try self.pending_raster_pipeline_updates.put(self.gpa, pipeline.handle, cmd_output);
+
+                if (!self.create_pipeline_queue.tryPush(.{
+                    .output = cmd_output,
+                    .builder = builder,
+                    //TODO: we already have the data just use it
+                    .options = builder.rasterPipelineGetState(pipeline.handle),
+                })) {
+                    @panic("Failed to push creation of pipeline to thread");
+                }
+            }
+
+            for (builder.raster_pipeline_updates.items(.reference_count), 0..) |reference_count, pipeline_index| {
+                _ = reference_count; // autofix
+                const pipeline_update = builder.raster_pipeline_updates.get(pipeline_index);
+                const pipeline = pipeline_update.raster_pipeline;
+
+                if (self.pending_raster_pipeline_updates.get(pipeline) != null) {
+                    //If this is true, then the pipeline was queued for creation but never dynamically referenced
+                    continue;
+                }
+
+                const cmd_output = try self.gpa.create(CreatePipelineCommand.Output);
+
+                cmd_output.is_complete = .init(false);
+
+                std.log.info("Pushing pipeline creation!!!", .{});
+
+                try self.pending_raster_pipeline_updates.put(self.gpa, pipeline, cmd_output);
+
+                if (!self.create_pipeline_queue.tryPush(.{
+                    .output = cmd_output,
+                    .builder = builder,
+                    .options = pipeline_update.new_state,
+                })) {
+                    @panic("Failed to push creation of pipeline to thread");
+                }
             }
 
             for (builder.buffers.items(.reference_count), 0..) |reference_count, buffer_index| {
@@ -420,7 +528,7 @@ pub const Context = struct {
                 const maybe_buffer_name = builder.debug_info.getBufferName(builder.*, handle);
 
                 if (maybe_buffer_name) |buffer_name| {
-                    std.log.info("Creating buffer: {s}", .{buffer_name});
+                    log.info("Creating buffer: {s}", .{buffer_name});
                 }
 
                 get_or_put_res.value_ptr.* = try graphics.Buffer.initUsageFlags(
@@ -453,7 +561,7 @@ pub const Context = struct {
                 //cache hit
                 if (get_or_put_res.found_existing) {
                     if (image_width != get_or_put_res.value_ptr.image.width) {
-                        std.log.info("image_width: {}, actual_width: {}", .{
+                        log.info("image_width: {}, actual_width: {}", .{
                             image_width,
                             get_or_put_res.value_ptr.image.width,
                         });
@@ -963,6 +1071,47 @@ pub const Context = struct {
                             });
                         },
                         .set_raster_pipeline => |set_raster_pipeline| {
+                            if (self.pending_raster_pipeline_updates.get(set_raster_pipeline.pipeline)) |pending_update| {
+                                const wait: bool = self.raster_pipelines.getPtr(set_raster_pipeline.pipeline.id) == null;
+
+                                if (wait) {
+                                    while (pending_update.is_complete.load(.acquire) == false) {}
+
+                                    try self.raster_pipelines.put(self.gpa, set_raster_pipeline.pipeline.id, pending_update.pipeline);
+
+                                    self.gpa.destroy(pending_update);
+
+                                    std.debug.assert(self.pending_raster_pipeline_updates.swapRemove(set_raster_pipeline.pipeline));
+                                } else {
+                                    if (pending_update.is_complete.load(.acquire)) {
+                                        try self.raster_pipelines.put(self.gpa, set_raster_pipeline.pipeline.id, pending_update.pipeline);
+
+                                        self.gpa.destroy(pending_update);
+
+                                        std.debug.assert(self.pending_raster_pipeline_updates.swapRemove(set_raster_pipeline.pipeline));
+
+                                        var update_state_index: ?usize = null;
+
+                                        for (builder.raster_pipeline_updates.items(.raster_pipeline), 0..) |potential_pipeline, update_index| {
+                                            if (potential_pipeline == set_raster_pipeline.pipeline) {
+                                                update_state_index = update_index;
+                                            }
+                                        }
+
+                                        std.debug.assert(update_state_index != null);
+
+                                        if (update_state_index != null) {
+                                            const state_ptr = builder.raster_pipeline_state.getPtr(set_raster_pipeline.pipeline).?;
+
+                                            state_ptr.* = builder.raster_pipeline_updates.items(.new_state)[update_state_index.?];
+
+                                            //TODO: completely fucking broken, this will invalidate operation ids
+                                            builder.raster_pipeline_updates.swapRemove(update_state_index.?);
+                                        }
+                                    }
+                                }
+                            }
+
                             const pipeline = self.raster_pipelines.getPtr(set_raster_pipeline.pipeline.id).?;
 
                             command_buffer.setGraphicsPipeline(pipeline.*);
@@ -1545,6 +1694,103 @@ pub const Context = struct {
     }
 };
 
+///Fixed sized multi producer multi consumer queue
+///Based on https://github.com/dotnet/runtime/blob/main/src/libraries/System.Private.CoreLib/src/System/Collections/Concurrent/ConcurrentQueueSegment.cs
+pub fn AtomicQueue(
+    comptime T: type,
+    comptime size: usize,
+) type {
+    return struct {
+        items: [size]T = [_]T{undefined} ** size,
+        sequence_numbers: [size]i32 align(std.atomic.cache_line) = blk: {
+            var numbers: [size]i32 = undefined;
+
+            //There must be a better way to initialize this
+            @setEvalBranchQuota(size);
+
+            for (0..size) |i| {
+                numbers[i] = i;
+            }
+
+            break :blk numbers;
+        },
+        ///Aligned on cache line boundary to prevent false sharing
+        //basically head
+        front: std.atomic.Value(usize) align(std.atomic.cache_line) = .{ .raw = 0 },
+        //basically tail
+        back: std.atomic.Value(usize) align(std.atomic.cache_line) = .{ .raw = 0 },
+
+        pub const index_mask: usize = size - 1;
+
+        ///Returns true if the item was successfully enqueued, otherwise false
+        pub fn tryPush(self: *@This(), item: T) bool {
+            while (true) {
+                const current_back = self.back.load(.monotonic);
+                //Ring buffer indexing
+                const i = current_back % size;
+
+                const sequence_number = @atomicLoad(i32, &self.sequence_numbers[i], .acquire);
+
+                const sequence_diff = sequence_number - @as(i32, @intCast(current_back));
+
+                if (sequence_diff == 0) {
+                    _ = self.back.cmpxchgWeak(current_back, current_back + 1, .acquire, .monotonic) orelse {
+                        self.items[i] = item;
+
+                        @atomicStore(i32, &self.sequence_numbers[i], @intCast(current_back + 1), .release);
+
+                        return true;
+                    };
+                } else if (sequence_diff < 0) {
+                    return false;
+                } else {}
+            }
+
+            return false;
+        }
+
+        pub fn tryPop(self: *@This()) ?T {
+            while (true) {
+                const current_front = self.front.load(.acquire);
+                //Ring indexing
+                const i = current_front % size;
+
+                const sequence_number = @atomicLoad(i32, &self.sequence_numbers[i], .acquire);
+
+                const sequence_difference = sequence_number - @as(i32, @intCast(current_front + 1));
+
+                if (sequence_difference == 0) {
+                    _ = self.front.cmpxchgWeak(
+                        current_front,
+                        current_front + 1,
+                        .acquire,
+                        .monotonic,
+                    ) orelse {
+                        const item = self.items[i];
+                        @atomicStore(
+                            i32,
+                            &self.sequence_numbers[i],
+                            @as(i32, @intCast(current_front)) + @as(i32, size),
+                            .release,
+                        );
+                        return item;
+                    };
+                } else if (sequence_difference < 0) {
+                    const current_back = self.back.load(.acquire);
+
+                    if (current_back - current_front <= 0) {
+                        return null;
+                    }
+
+                    return null;
+
+                    // std.Thread.yield() catch {};
+                }
+            }
+        }
+    };
+}
+
 test {
     std.testing.refAllDecls(@This());
 }
@@ -1552,3 +1798,4 @@ test {
 const std = @import("std");
 const graphics = @import("../graphics.zig");
 const graph = @import("graph.zig");
+const log = @import("../log.zig").log;

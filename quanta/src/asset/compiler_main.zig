@@ -13,7 +13,7 @@ pub fn iterateDirectory(
                 const sub_directory_path = try std.fs.path.join(context.allocator, &.{ directory_path, entry.name });
                 defer context.allocator.free(sub_directory_path);
 
-                std.log.info("sub_directory_path = {s}", .{sub_directory_path});
+                log.info("sub_directory_path = {s}", .{sub_directory_path});
 
                 var sub_directory = try std.fs.cwd().openDir(sub_directory_path, .{ .iterate = true });
                 defer sub_directory.close();
@@ -21,7 +21,7 @@ pub fn iterateDirectory(
                 try iterateDirectory(context, sub_directory, sub_directory_path);
             },
             .file => {
-                std.log.info("Potential asset file: {s}", .{entry.name});
+                log.info("Potential asset file: {s}", .{entry.name});
 
                 const metadata_path = try std.mem.concat(context.allocator, u8, &[_][]const u8{ entry.name, ".zon" });
                 defer context.allocator.free(metadata_path);
@@ -32,15 +32,15 @@ pub fn iterateDirectory(
                 const path = try std.fs.path.join(context.allocator, &[_][]const u8{ directory_path, entry.name });
                 defer context.allocator.free(path);
 
-                std.log.info("metadata file: {s}", .{metadata_path});
-                std.log.info("path: {s}", .{path});
+                log.info("metadata file: {s}", .{metadata_path});
+                log.info("path: {s}", .{path});
 
                 if (metadata_file != null) {
                     const metadata = try metadata_file.?.readToEndAllocOptions(
                         context.allocator,
                         std.math.maxInt(usize),
                         null,
-                        @alignOf(u8),
+                        .fromByteUnits(@alignOf(u8)),
                         0,
                     );
                     defer context.allocator.free(metadata);
@@ -58,10 +58,10 @@ pub fn iterateDirectory(
 pub fn main() !void {
     //TODO: We don't actually have to necessarily free most data
     //as this is usually a short lived program---apart from source and archive data, which will result in a large rss
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer if (false) std.debug.assert(gpa.deinit() != .leak);
+    // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    // defer if (false) std.debug.assert(gpa.deinit() != .leak);
 
-    const allocator = gpa.allocator();
+    const allocator = std.heap.smp_allocator;
 
     var process_args = std.process.args();
 
@@ -69,7 +69,7 @@ pub fn main() !void {
 
     const optimize_mode = process_args.next().?;
 
-    std.log.info("assets root optimize_mode = {s}", .{optimize_mode});
+    log.info("assets root optimize_mode = {s}", .{optimize_mode});
 
     //TODO: allow for multiple asset directories
     const asset_directory_path = process_args.next().?;
@@ -82,7 +82,7 @@ pub fn main() !void {
     const archive_path = try std.fs.path.join(allocator, &.{ install_directory, archive_name });
     defer allocator.free(archive_path);
 
-    std.log.info("Archive path: {s}", .{archive_path});
+    log.info("Archive path: {s}", .{archive_path});
 
     const asset_archive_file = std.fs.cwd().openFile(
         archive_path,
@@ -108,15 +108,15 @@ pub fn main() !void {
         // const archive_all = try asset_archive_file.readToEndAlloc(allocator, std.math.maxInt(usize));
         // previous_archive = try Archive.decode(allocator, previous_archive_data);
 
-        std.log.info("Previous archive exists: count: {}", .{previous_archive.assets.len});
+        log.info("Previous archive exists: count: {}", .{previous_archive.assets.len});
     }
 
     // defer if (previous_exists) previous_archive.decodeFree(allocator);
 
     const asset_compilers = [_]compiler.AssetCompilerInfo{
-        compiler.AssetCompilerInfo.fromType(frontends.gltf.Import),
-        compiler.AssetCompilerInfo.fromType(CubeMap),
-        compiler.AssetCompilerInfo.fromType(frontends.png.Import),
+        // compiler.AssetCompilerInfo.fromType(frontends.gltf.Import),
+        // compiler.AssetCompilerInfo.fromType(CubeMap),
+        // compiler.AssetCompilerInfo.fromType(frontends.png.Import),
         compiler.AssetCompilerInfo.fromType(frontends.aseprite.Import),
     };
 
@@ -138,29 +138,33 @@ pub fn main() !void {
     sub_directory.close();
 
     for (context.assets.items, 0..) |asset_desc, i| {
-        std.log.info("Asset[{}]: size = {}, content_hash = 0x{x}", .{
+        log.info("Asset[{}]: size = {}, content_hash = 0x{x}", .{
             i,
             asset_desc.mapped_data_size,
             asset_desc.content_hash,
         });
     }
 
-    std.log.info("Recompiled {} assets", .{context.compiled_asset_count});
+    log.info("Recompiled {} assets", .{context.compiled_asset_count});
 
     const asset_archive = try Archive.encode(std.heap.page_allocator, context.assets.items);
 
     try asset_archive_file.setEndPos(0);
     try asset_archive_file.seekTo(0);
 
-    std.log.info("length of asset archive = {}", .{asset_archive.len});
+    log.info("length of asset archive = {}", .{asset_archive.len});
 
     try asset_archive_file.writeAll(asset_archive);
 }
 
+pub const std_options: std.Options = .{
+    .log_level = .err,
+};
+
 const std = @import("std");
 const quanta = @import("quanta");
 const compiler = quanta.asset.compiler;
-const zon = quanta.zon;
 const frontends = quanta.asset.frontends;
 const CubeMap = quanta.asset.CubeMap;
+const log = quanta.log;
 const Archive = quanta.asset.Archive;

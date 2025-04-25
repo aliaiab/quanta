@@ -38,7 +38,7 @@ pub const CompilerContext = struct {
         const metadata_file_path = try std.mem.concat(self.allocator, u8, &.{ path, ".zon" });
         defer self.allocator.free(metadata_file_path);
 
-        std.log.info("metadata: {any}", .{meta_data_raw});
+        log.info("metadata: {any}", .{meta_data_raw});
 
         for (self.compilers) |compiler| {
             if (std.mem.eql(u8, compiler.file_extension, extension)) {
@@ -53,19 +53,19 @@ pub const CompilerContext = struct {
 
                 const hash = self.hasher.finalInt();
 
-                std.log.info("New Hash = 0x{x}", .{hash});
+                log.info("New Hash = 0x{x}", .{hash});
 
                 const name = try std.fs.path.relative(self.allocator, self.directory_path, path);
 
-                std.log.info("Name = {s}", .{name});
+                log.info("Name = {s}", .{name});
 
-                std.log.info("prev archive: asset_count = {}", .{self.previous_archive.asset_name_hashes.len});
+                log.info("prev archive: asset_count = {}", .{self.previous_archive.asset_name_hashes.len});
 
                 //handle when the asset doesn't exist in the prev archive (the asset is new)
                 const old_asset_index = self.previous_archive.getAssetIndexFromName(name) orelse null;
 
                 if (old_asset_index == null) {
-                    std.log.info("asset doesn't exist in previous archive. The asset is new", .{});
+                    log.info("asset doesn't exist in previous archive. The asset is new", .{});
                 }
 
                 const old_asset_content_hash = if (old_asset_index != null) self.previous_archive.asset_content_hashes[old_asset_index.?] else null;
@@ -73,7 +73,7 @@ pub const CompilerContext = struct {
                 //The asset contents are the same, don't compile---use the old one
                 if (old_asset_content_hash != null and old_asset_content_hash.? == hash) {
                     //Cache hit
-                    std.log.info("Cache hit: Hash = 0x{x}", .{old_asset_content_hash.?});
+                    log.info("Cache hit: Hash = 0x{x}", .{old_asset_content_hash.?});
 
                     const previous_asset_header = self.previous_archive.assets[old_asset_index.?];
 
@@ -185,4 +185,5 @@ pub const CompressionMode = enum {
 const std = @import("std");
 const quanta = @import("quanta");
 const Archive = quanta.asset.Archive;
+const log = quanta.log;
 const Hasher = std.Build.Cache.Hasher;
