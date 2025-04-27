@@ -67,6 +67,20 @@ pub fn build(builder: *Build) !void {
         },
         .flags = &[_][]const u8{},
     });
+
+    const test_step = builder.step("test", "Run the tests");
+
+    const quanta_test = builder.addTest(.{
+        .name = "test",
+        .root_module = quanta_imgui_module,
+        .optimize = .Debug,
+        .link_libc = true,
+        .use_llvm = false,
+    });
+
+    const run_quanta_tests = builder.addRunArtifact(quanta_test);
+
+    test_step.dependOn(&run_quanta_tests.step);
 }
 
 const std = @import("std");

@@ -306,16 +306,13 @@ optional_extensions: OptionalExtensions,
 pub const RequiredExtensions = struct {
     khr_swapchain: [:0]const u8 = vk.extensions.khr_swapchain.name,
     khr_spirv_1_4: [:0]const u8 = vk.extensions.khr_spirv_1_4.name,
-    // ext_surface_maintenance_1: [:0]const u8 = vk.extensions.ext_surface_maintenance_1.name,
-    ext_swapchain_maintenance_1: [:0]const u8 = vk.extensions.ext_swapchain_maintenance_1.name,
-    //TODO: for future implementation of descriptor buffer
-    // ext_descriptor_buffer: [:0]const u8 = vk.extensions.ext_descriptor_buffer.name,
 };
 
 ///Optional *device* extensions
 ///If the extension is supported at runtime, it is kept as non-null, otherwise it's set to null
 pub const OptionalExtensions = struct {
     ext_memory_budget: ?[:0]const u8 = vk.extensions.ext_memory_budget.name,
+    ext_swapchain_maintenance_1: ?[:0]const u8 = vk.extensions.ext_swapchain_maintenance_1.name,
 };
 
 pub fn init(
@@ -530,14 +527,14 @@ pub fn init(
         .draw_indirect_count = vk.TRUE,
         .scalar_block_layout = vk.TRUE,
         .buffer_device_address = vk.TRUE,
-        .shader_input_attachment_array_dynamic_indexing = vk.TRUE,
+        // .shader_input_attachment_array_dynamic_indexing = vk.TRUE,
         .shader_uniform_texel_buffer_array_dynamic_indexing = vk.TRUE,
         .shader_storage_texel_buffer_array_dynamic_indexing = vk.TRUE,
         .shader_uniform_buffer_array_non_uniform_indexing = vk.TRUE,
         .shader_sampled_image_array_non_uniform_indexing = vk.TRUE,
         .shader_storage_buffer_array_non_uniform_indexing = vk.TRUE,
         .shader_storage_image_array_non_uniform_indexing = vk.TRUE,
-        .shader_input_attachment_array_non_uniform_indexing = vk.TRUE,
+        // .shader_input_attachment_array_non_uniform_indexing = vk.FALSE,
         .shader_uniform_texel_buffer_array_non_uniform_indexing = vk.TRUE,
         .shader_storage_texel_buffer_array_non_uniform_indexing = vk.TRUE,
         .descriptor_binding_uniform_buffer_update_after_bind = vk.TRUE,
@@ -666,6 +663,8 @@ pub fn init(
 
                 if (surface_supported == vk.TRUE) {
                     self.present_family_index = @as(u32, @intCast(queue_family_index));
+                } else {
+                    std.log.info("Suface properties: cap: {} fmt: {} are not supported by the device", .{ self.surface_capabilities, self.surface_format });
                 }
             }
 
@@ -738,14 +737,20 @@ pub fn init(
                 }
             }
 
-            if (self.physical_device_properties.device_type == .discrete_gpu and
-                self.physical_device_features.geometry_shader == 1 and
+            //If there's only one gpu, use it even if it's integrated
+            const use_integrated = physical_devices.len == 1;
+
+            if (self.physical_device_features.geometry_shader == 1 and
                 self.graphics_family_index != null and
                 self.present_family_index != null and
                 self.compute_family_index != null and
                 self.transfer_family_index != null and
                 supports_extentions)
             {
+                if (!use_integrated and self.physical_device_properties.device_type != .discrete_gpu) {
+                    break;
+                }
+
                 self.physical_device = physical_device;
                 found_suitable_device = true;
 
@@ -836,19 +841,6 @@ pub fn init(
         };
 
         self.device = try self.vki.createDevice(self.physical_device, &device_create_info, self.allocation_callbacks);
-
-        //debug the failing command
-        {
-            inline for (std.meta.fields(DeviceDispatch.Dispatch)) |field| {
-                const name: [*:0]const u8 = @ptrCast(field.name ++ "\x00");
-                const cmd_ptr = self.vki.dispatch.vkGetDeviceProcAddr(self.device, name) orelse blk: {
-                    log.info("Failing: {s}", .{name});
-
-                    break :blk undefined;
-                };
-                _ = cmd_ptr; // autofix
-            }
-        }
 
         //TODO: handle failures again
         self.vkd = DeviceDispatch.loadNoFail(self.device, self.vki.dispatch.vkGetDeviceProcAddr);

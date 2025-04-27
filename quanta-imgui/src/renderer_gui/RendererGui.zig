@@ -131,9 +131,10 @@ pub fn renderToGraph(
 
         const pipeline = graph.createRasterPipeline(
             @src(),
-            .{ .code = @alignCast(@embedFile("mesh.vert.spv")) },
-            .{ .code = @alignCast(@embedFile("mesh.frag.spv")) },
             .{
+                .vertex_module = .{ .code = @alignCast(@embedFile("mesh.vert.spv")) },
+                .fragment_module = .{ .code = @alignCast(@embedFile("mesh.frag.spv")) },
+                .push_constant_size = @sizeOf(MeshPipelinePushData),
                 .attachment_formats = &.{
                     graph.imageGetFormat(target.*),
                 },
@@ -149,7 +150,6 @@ pub fn renderToGraph(
                     .blend_enabled = true,
                 },
             },
-            @sizeOf(MeshPipelinePushData),
         );
 
         graph.setRasterPipeline(pipeline);
@@ -165,14 +165,23 @@ pub fn renderToGraph(
             .mag_filter = .linear,
         });
 
+        const general_image_sampler = graph.createSampler(@src(), .{
+            .min_filter = .nearest,
+            .mag_filter = .nearest,
+        });
+
+        var image_sampler_bump: u32 = 0;
+
         //Do we really need bindless for this?
         graph.setRasterPipelineImageSampler(
             pipeline,
             1,
-            0,
+            image_sampler_bump,
             font_atlas.font_image,
             font_sampler,
         );
+
+        image_sampler_bump += 1;
 
         graph.setViewport(
             0,
@@ -213,9 +222,29 @@ pub fn renderToGraph(
             for (0..@intCast(command_list.CmdBuffer.Size)) |command_index| {
                 const command: imgui.ImDrawCmd = command_list.CmdBuffer.Data[command_index];
 
+                var texture_index: u32 = 1;
+
+                if (command.TextureId != null) {
+                    const image_handle: quanta.rendering.graph.ImageHandle = @enumFromInt(@intFromPtr(command.TextureId.?));
+                    defer image_sampler_bump += 1;
+
+                    const image = graph.imageFromPersistantHandle(image_handle);
+                    //TODO: only set this once
+
+                    graph.setRasterPipelineImageSampler(
+                        pipeline,
+                        1,
+                        image_sampler_bump,
+                        image.*,
+                        general_image_sampler,
+                    );
+
+                    texture_index = image_sampler_bump + 1;
+                }
+
                 graph.setPushData(MeshPipelinePushData, .{
                     .projection = ortho,
-                    .texture_index = 1,
+                    .texture_index = texture_index,
                 });
 
                 const window_width = @as(f32, @floatFromInt(target_width));
@@ -243,9 +272,12 @@ pub fn renderToGraph(
     }
 }
 
+test {
+    _ = renderToGraph;
+}
+
 const RendererGui = @This();
 const std = @import("std");
 const quanta = @import("quanta");
-const zalgebra = quanta.math.zalgebra;
 const imgui = @import("../root.zig").cimgui;
 const Image = quanta.rendering.graph.Image;

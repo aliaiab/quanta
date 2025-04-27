@@ -24,6 +24,12 @@ void main()
     if (push_constants.texture_index != 0)
     {
         texture_sample = texture(textures[nonuniformEXT(push_constants.texture_index - 1)], in_data.uv);
+
+        if (push_constants.texture_index > 1) {
+            texture_sample.r = pow(texture_sample.r, 1 / 2.2);
+            texture_sample.g = pow(texture_sample.g, 1 / 2.2);
+            texture_sample.b = pow(texture_sample.b, 1 / 2.2);
+        }
     }
     else 
     {

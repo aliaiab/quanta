@@ -115,7 +115,7 @@ pub fn viewer(name: [:0]const u8) void {
 ///Call this to send a log message to the log viewer
 pub fn logMessage(
     comptime message_level: std.log.Level,
-    comptime scope: @Type(.EnumLiteral),
+    comptime scope: @Type(.enum_literal),
     comptime format: []const u8,
     args: anytype,
 ) !void {

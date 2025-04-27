@@ -2,6 +2,8 @@ pub fn build(builder: *std.Build) !void {
     const target = builder.standardTargetOptions(.{});
     const optimize = builder.standardOptimizeOption(.{});
 
+    const check = builder.step("check", "Check if the project compiles");
+
     const vk_gen = builder.dependency("vulkan_zig", .{}).artifact("vulkan-zig-generator");
     const vk_generate_cmd = builder.addRunArtifact(vk_gen);
 
@@ -117,6 +119,26 @@ pub fn build(builder: *std.Build) !void {
         const run_quanta_tests = builder.addRunArtifact(quanta_test);
 
         test_step.dependOn(&run_quanta_tests.step);
+    }
+
+    {
+        const exe_check = builder.addExecutable(.{
+            .name = "checked_bin",
+            .root_module = quanta_module,
+            .use_llvm = false,
+        });
+
+        if (true) {
+            const maybe_zigwin32 = builder.lazyDependency("zigwin32", .{});
+
+            if (maybe_zigwin32) |zigwin32| {
+                quanta_module.addAnonymousImport("win32", .{
+                    .root_source_file = zigwin32.path("win32.zig"),
+                });
+            }
+        }
+
+        check.dependOn(&exe_check.step);
     }
 }
 

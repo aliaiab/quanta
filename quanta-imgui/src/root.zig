@@ -6,3 +6,7 @@ pub const entity_editor = @import("imgui/entity_editor.zig");
 pub const render_graph_debug = @import("imgui/render_graph_debug.zig");
 pub const log = @import("imgui/log.zig");
 pub const RendererGui = @import("renderer_gui/RendererGui.zig");
+
+test {
+    _ = RendererGui;
+}

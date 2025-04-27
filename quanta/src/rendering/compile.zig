@@ -386,6 +386,10 @@ pub const Context = struct {
                         );
 
                         result.value_ptr.usage.sampled_bit = true;
+
+                        if (result.value_ptr.usage.depth_stencil_attachment_bit) {
+                            result.value_ptr.usage.input_attachment_bit = true;
+                        }
                     },
                     .draw_indexed_indirect_count => |command_data| {
                         const draw_buffer = try buffer_usages.getOrPutValue(
@@ -575,7 +579,9 @@ pub const Context = struct {
                     continue;
                 }
 
-                const image_usage = image_usages.get(handle).?;
+                var image_usage = image_usages.get(handle).?;
+
+                image_usage.usage.sampled_bit = true;
 
                 get_or_put_res.value_ptr.*.image = try graphics.Image.init(
                     .@"2d",

@@ -1,7 +1,5 @@
 zig-out/
 zig-cache/
 .zig-cache/
-quanta/src/gpu/
-quanta/src/gpu.zig
 
 *.blend1

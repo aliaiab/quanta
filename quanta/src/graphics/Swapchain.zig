@@ -62,7 +62,7 @@ pub fn initRecycle(
     };
 
     const handle = try Context.self.vkd.createSwapchainKHR(Context.self.device, &.{
-        .p_next = &present_scaling_info,
+        .p_next = if (Context.self.optional_extensions.ext_swapchain_maintenance_1 != null) &present_scaling_info else null,
         .flags = .{
             //TODO: look into why this doesn't work. Currently returns a timeout on acquire image and I have no idea why
             .deferred_memory_allocation_bit_ext = false,
