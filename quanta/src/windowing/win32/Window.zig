@@ -89,7 +89,7 @@ pub fn deinit(
     self.* = undefined;
 }
 
-pub fn pollEvents(self: *Window) !void {
+pub fn pollEvents(self: *Window, out_input: *input.State) !void {
     var message: win32.ui.windows_and_messaging.MSG = undefined;
 
     const window_state: *State = self.window_system.window_states.getPtr(self.hwnd).?;
@@ -123,12 +123,20 @@ pub fn pollEvents(self: *Window) !void {
 
     window_state.cursor_pos_x = @intCast(cursor_pos.x - window_rect.left);
     window_state.cursor_pos_y = @intCast(cursor_pos.y - window_rect.top);
+
+    out_input.cursor_position = .{ window_state.cursor_pos_x, window_state.cursor_pos_y };
+
+    for (std.enums.values(input.MouseButton)) |button| {
+        out_input.buttons_mouse.set(button, self.getMouseButton(button));
+    }
+
+    for (std.enums.values(input.KeyboardKey)) |button| {
+        _ = button; // autofix
+        // out_input.buttons_keyboard.set(button, self.getKey(button));
+    }
 }
 
 pub fn shouldClose(self: *Window) bool {
-    //TODO: application currently depends on shouldClose implicitly polling events, it shouldn't work like this in future
-    self.pollEvents() catch @panic("Polly events failed");
-
     return self.window_system.window_states.get(self.hwnd).?.should_close;
 }
 
@@ -140,13 +148,7 @@ pub fn getHeight(self: Window) u16 {
     return self.window_system.window_states.getPtr(self.hwnd).?.height;
 }
 
-pub fn getKey(self: Window, key: windowing.Key) windowing.Action {
-    _ = self; // autofix
-    _ = key; // autofix
-    return .release;
-}
-
-pub fn getMouseButton(self: Window, key: windowing.MouseButton) windowing.Action {
+fn getMouseButton(self: Window, key: input.MouseButton) input.ButtonAction {
     const state = self.window_system.window_states.getPtr(self.hwnd).?;
 
     if (!state.mouse_button_state.get(key) and state.previous_mouse_button_state.get(key)) {
@@ -160,20 +162,10 @@ pub fn getMouseButton(self: Window, key: windowing.MouseButton) windowing.Action
     return .release;
 }
 
-pub fn getMouseMotion(self: Window) @Vector(2, i16) {
-    _ = self; // autofix
-    return .{ 0, 0 };
-}
-
 pub fn getCursorPosition(self: Window) @Vector(2, i16) {
     const window_state = self.window_system.window_states.getPtr(self.hwnd).?;
 
     return .{ window_state.cursor_pos_x, window_state.cursor_pos_y };
-}
-
-pub fn getCursorMotion(self: Window) @Vector(2, i16) {
-    _ = self; // autofix
-    return .{ 0, 0 };
 }
 
 pub fn captureCursor(self: *Window) void {
@@ -205,11 +197,6 @@ pub fn isCursorHidden(self: Window) bool {
 pub fn isFocused(self: Window) bool {
     _ = self; // autofix
     return false;
-}
-
-pub fn getMouseScroll(self: Window) i32 {
-    _ = self; // autofix
-    return 0;
 }
 
 pub fn getUtf8Input(self: Window) []const u8 {
@@ -274,13 +261,13 @@ fn wndProc(
             window_state.height = @intCast(@abs(rect.yTop - rect.yBottom));
         },
         win32.ui.windows_and_messaging.WM_LBUTTONDOWN => {
-            window_state.mouse_button_state.set(windowing.MouseButton.left, true);
+            window_state.mouse_button_state.set(.left, true);
         },
         win32.ui.windows_and_messaging.WM_RBUTTONDOWN => {
-            window_state.mouse_button_state.set(windowing.MouseButton.right, true);
+            window_state.mouse_button_state.set(.right, true);
         },
         win32.ui.windows_and_messaging.WM_MBUTTONDOWN => {
-            window_state.mouse_button_state.set(windowing.MouseButton.middle, true);
+            window_state.mouse_button_state.set(.middle, true);
         },
         else => {},
     }
@@ -300,8 +287,8 @@ pub const State = struct {
     height: u16 = 0,
     cursor_pos_x: i16 = 0,
     cursor_pos_y: i16 = 0,
-    mouse_button_state: std.EnumArray(windowing.MouseButton, bool) = .initFill(false),
-    previous_mouse_button_state: std.EnumArray(windowing.MouseButton, bool) = .initFill(false),
+    mouse_button_state: std.EnumArray(input.MouseButton, bool) = .initFill(false),
+    previous_mouse_button_state: std.EnumArray(input.MouseButton, bool) = .initFill(false),
 };
 
 const win32 = @import("win32");
@@ -309,4 +296,5 @@ const std = @import("std");
 const Window = @This();
 const WindowSystem = @import("WindowSystem.zig");
 const windowing = @import("../../windowing.zig");
+const input = @import("../../input.zig");
 const log = @import("../../log.zig").log;

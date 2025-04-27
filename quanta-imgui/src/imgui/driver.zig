@@ -24,7 +24,7 @@ pub fn deinit() void {
     // }
 }
 
-pub fn begin(window: *Window) !void {
+pub fn begin(window: *Window, input_state: quanta.input.State) !void {
     const io: *imgui.ImGuiIO = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
     const width = @as(f32, @floatFromInt(window.getWidth()));
@@ -44,12 +44,15 @@ pub fn begin(window: *Window) !void {
 
     imgui.ImGuiIO_AddFocusEvent(io, window.isFocused());
 
-    updateInputs(window);
+    updateInputs(window, input_state);
 }
 
 pub fn end() void {}
 
-fn updateInputs(window: *Window) void {
+fn updateInputs(
+    window: *Window,
+    input: quanta.input.State,
+) void {
     const io = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
     if (io.WantCaptureMouse) {} else {}
@@ -66,7 +69,7 @@ fn updateInputs(window: *Window) void {
         imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Alt, false);
         imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Super, false);
 
-        for (std.enums.values(windowing.Key)) |key| {
+        for (std.enums.values(quanta.input.KeyboardKey)) |key| {
             imgui.ImGuiIO_AddKeyEvent(io, quantaToImGuiKey(key), false);
         }
 
@@ -83,17 +86,17 @@ fn updateInputs(window: *Window) void {
         window.unhideCursor();
     }
 
-    const mouse_pos = window.getCursorPosition();
+    const mouse_pos = input.getCursorPosition();
 
     imgui.ImGuiIO_AddMousePosEvent(io, @as(f32, @floatFromInt(mouse_pos[0])), @as(f32, @floatFromInt(mouse_pos[1])));
 
-    imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Ctrl, window.getKey(.left_control) == .down or window.getKey(.right_control) == .down);
-    imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Shift, window.getKey(.left_shift) == .down or window.getKey(.right_shift) == .down);
-    imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Alt, window.getKey(.left_alt) == .down or window.getKey(.right_alt) == .down);
-    imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Super, window.getKey(.left_super) == .down or window.getKey(.right_super) == .down);
+    imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Ctrl, input.getKeyboardKey(.left_control) == .down or input.getKeyboardKey(.right_control) == .down);
+    imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Shift, input.getKeyboardKey(.left_shift) == .down or input.getKeyboardKey(.right_shift) == .down);
+    imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Alt, input.getKeyboardKey(.left_alt) == .down or input.getKeyboardKey(.right_alt) == .down);
+    imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Super, input.getKeyboardKey(.left_super) == .down or input.getKeyboardKey(.right_super) == .down);
 
-    for (std.enums.values(windowing.Key)) |key| {
-        imgui.ImGuiIO_AddKeyEvent(io, quantaToImGuiKey(key), window.getKey(key) != .release);
+    for (std.enums.values(quanta.input.KeyboardKey)) |key| {
+        imgui.ImGuiIO_AddKeyEvent(io, quantaToImGuiKey(key), input.getKeyboardKey(key) != .release);
     }
 
     const input_text = window.getUtf8Input();
@@ -104,14 +107,14 @@ fn updateInputs(window: *Window) void {
         imgui.ImGuiIO_AddInputCharactersUTF8(io, &string);
     }
 
-    imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Left, window.getMouseButton(.left) == .down);
-    imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Right, window.getMouseButton(.right) == .down);
-    imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Middle, window.getMouseButton(.middle) == .down);
+    imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Left, input.getMouseButton(.left) == .down);
+    imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Right, input.getMouseButton(.right) == .down);
+    imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Middle, input.getMouseButton(.middle) == .down);
 
-    imgui.ImGuiIO_AddMouseWheelEvent(io, 0, @floatFromInt(window.getMouseScroll()));
+    imgui.ImGuiIO_AddMouseWheelEvent(io, 0, @floatFromInt(input.getMouseScroll()));
 }
 
-fn quantaToImGuiKey(key: windowing.Key) c_uint {
+fn quantaToImGuiKey(key: quanta.input.KeyboardKey) c_uint {
     return switch (key) {
         .tab => imgui.ImGuiKey_Tab,
         .left => imgui.ImGuiKey_LeftArrow,

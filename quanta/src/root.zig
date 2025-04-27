@@ -7,6 +7,7 @@ pub const gpu_program = @import("gpu_progam.zig");
 pub const init = @import("init.zig");
 pub const renderer_3d = @import("renderer_3d.zig");
 pub const math = @import("math.zig");
+pub const input = @import("input.zig");
 pub const log = @import("log.zig").log;
 pub const reflect = @import("reflect/reflect.zig");
 pub const physics = @import("physics.zig");

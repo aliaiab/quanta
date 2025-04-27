@@ -12,13 +12,13 @@ xkb_context: *xkbcommon_loader.Context,
 xkb_state: *xkbcommon_loader.State,
 xkb_keymap: *xkbcommon_loader.Keymap,
 hidden_cursor: xcb_loader.Cursor,
-key_map: [std.enums.values(windowing.Key).len]bool,
-key_press_timestamps: [std.enums.values(windowing.Key).len]u32,
-previous_key_map: [std.enums.values(windowing.Key).len]bool,
-mouse_map: [std.enums.values(windowing.MouseButton).len]bool,
-previous_mouse_map: [std.enums.values(windowing.MouseButton).len]bool,
-mouse_position: @Vector(2, i16) = .{ 0, 0 },
-last_mouse_position: @Vector(2, i16) = .{ 0, 0 },
+key_map: [std.enums.values(input.KeyboardKey).len]bool,
+key_press_timestamps: [std.enums.values(input.KeyboardKey).len]u32,
+previous_key_map: [std.enums.values(input.KeyboardKey).len]bool,
+mouse_map: [std.enums.values(input.MouseButton).len]bool,
+previous_mouse_map: [std.enums.values(input.MouseButton).len]bool,
+cursor_position: @Vector(2, i16) = .{ 0, 0 },
+last_cursor_position: @Vector(2, i16) = .{ 0, 0 },
 cursor_grabbed: bool = false,
 cursor_hidden: bool = false,
 //'raw' mouse motion
@@ -26,6 +26,7 @@ mouse_motion: @Vector(2, i16) = .{ 0, 0 },
 text_buffer: [256]u8 = undefined,
 text_len: usize = 0,
 mouse_scroll: i32 = 0,
+should_close: bool = false,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -45,11 +46,11 @@ pub fn init(
         .xkb_context = undefined,
         .xkb_state = undefined,
         .xkb_keymap = undefined,
-        .key_map = std.mem.zeroes([std.enums.values(windowing.Key).len]bool),
-        .key_press_timestamps = std.mem.zeroes([std.enums.values(windowing.Key).len]u32),
-        .previous_key_map = std.mem.zeroes([std.enums.values(windowing.Key).len]bool),
-        .mouse_map = std.mem.zeroes([std.enums.values(windowing.MouseButton).len]bool),
-        .previous_mouse_map = std.mem.zeroes([std.enums.values(windowing.MouseButton).len]bool),
+        .key_map = std.mem.zeroes([std.enums.values(input.KeyboardKey).len]bool),
+        .key_press_timestamps = std.mem.zeroes([std.enums.values(input.KeyboardKey).len]u32),
+        .previous_key_map = std.mem.zeroes([std.enums.values(input.KeyboardKey).len]bool),
+        .mouse_map = std.mem.zeroes([std.enums.values(input.MouseButton).len]bool),
+        .previous_mouse_map = std.mem.zeroes([std.enums.values(input.MouseButton).len]bool),
         .hidden_cursor = undefined,
         .xcb_library = &window_system.xcb_library,
         .xkbcommon_library = &window_system.xkbcommon_library,
@@ -191,15 +192,15 @@ pub fn deinit(self: *XcbWindow, allocator: std.mem.Allocator) void {
 }
 
 ///return false if we need to close
-pub fn pollEvents(self: *XcbWindow) !bool {
+pub fn pollEvents(self: *XcbWindow, out_input: *input.State) !void {
     self.previous_key_map = self.key_map;
     self.previous_mouse_map = self.mouse_map;
-    self.last_mouse_position = self.mouse_position;
+    self.last_cursor_position = self.cursor_position;
 
     const query_pointer = self.xcb_library.queryPointer(self.connection, self.window);
 
-    self.mouse_position[0] = query_pointer.win_x;
-    self.mouse_position[1] = query_pointer.win_y;
+    self.cursor_position[0] = query_pointer.win_x;
+    self.cursor_position[1] = query_pointer.win_y;
 
     @memset(&self.text_buffer, 0);
 
@@ -212,15 +213,25 @@ pub fn pollEvents(self: *XcbWindow) !bool {
         @memset(&self.mouse_map, false);
     }
 
+    out_input.buttons_mouse = .initFill(.release);
+
     while (self.xcb_library.pollForEvent(self.connection)) |event| {
         switch (event) {
             .button_press => |button_press| {
                 if (!self.isFocused()) continue;
 
                 switch (button_press.detail) {
-                    .index_1 => self.mouse_map[@intFromEnum(windowing.MouseButton.left)] = true,
-                    .index_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = true,
-                    .index_3 => self.mouse_map[@intFromEnum(windowing.MouseButton.right)] = true,
+                    .index_1 => {
+                        switch (out_input.buttons_mouse.get(.left)) {
+                            .release, .down, .press => {
+                                out_input.buttons_mouse.set(.left, .down);
+                            },
+                        }
+
+                        self.mouse_map[@intFromEnum(input.MouseButton.left)] = true;
+                    },
+                    .index_2 => self.mouse_map[@intFromEnum(input.MouseButton.middle)] = true,
+                    .index_3 => self.mouse_map[@intFromEnum(input.MouseButton.right)] = true,
                     else => {},
                 }
             },
@@ -228,9 +239,21 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                 if (!self.isFocused()) continue;
 
                 switch (button_release.detail) {
-                    .index_1 => self.mouse_map[@intFromEnum(windowing.MouseButton.left)] = false,
-                    .index_2 => self.mouse_map[@intFromEnum(windowing.MouseButton.middle)] = false,
-                    .index_3 => self.mouse_map[@intFromEnum(windowing.MouseButton.right)] = false,
+                    .index_1 => {
+                        switch (out_input.buttons_mouse.get(.left)) {
+                            .release => {},
+                            .press => {
+                                out_input.buttons_mouse.set(.left, .release);
+                            },
+                            .down => {
+                                out_input.buttons_mouse.set(.left, .press);
+                            },
+                        }
+
+                        self.mouse_map[@intFromEnum(input.MouseButton.left)] = false;
+                    },
+                    .index_2 => self.mouse_map[@intFromEnum(input.MouseButton.middle)] = false,
+                    .index_3 => self.mouse_map[@intFromEnum(input.MouseButton.right)] = false,
                     .index_4 => {
                         self.mouse_scroll += 1;
                     },
@@ -310,7 +333,7 @@ pub fn pollEvents(self: *XcbWindow) !bool {
                 const x: i16 = enter_notify.event_x;
                 const y: i16 = enter_notify.event_y;
 
-                self.last_mouse_position = .{ x, y };
+                self.last_cursor_position = .{ x, y };
             },
             .leave_notify => {},
             .configure_notify => |configure_notify| {
@@ -318,7 +341,9 @@ pub fn pollEvents(self: *XcbWindow) !bool {
             },
             .client_message => |client_message| {
                 if (client_message.data.data32[0] == @intFromEnum(self.wm_delete_window_atom)) {
-                    return true;
+                    self.should_close = true;
+
+                    return;
                 }
             },
             .xinput_motion_event => |motion| {
@@ -331,13 +356,22 @@ pub fn pollEvents(self: *XcbWindow) !bool {
         }
     }
 
-    self.mouse_motion = self.mouse_position -% self.last_mouse_position;
+    self.mouse_motion = self.cursor_position -% self.last_cursor_position;
+    out_input.cursor_motion = self.mouse_motion;
+    out_input.cursor_position = self.cursor_position;
+    out_input.mouse_scroll = self.mouse_scroll;
 
-    return false;
+    for (std.enums.values(input.MouseButton)) |button| {
+        out_input.buttons_mouse.set(button, self.getMouseButton(button));
+    }
+
+    for (std.enums.values(input.KeyboardKey)) |button| {
+        out_input.buttons_keyboard.set(button, self.getKey(button));
+    }
 }
 
 pub fn shouldClose(self: *XcbWindow) bool {
-    return self.pollEvents() catch unreachable;
+    return self.should_close;
 }
 
 pub fn getWidth(self: XcbWindow) u16 {
@@ -412,11 +446,22 @@ pub fn isCursorHidden(self: XcbWindow) bool {
     return self.cursor_hidden;
 }
 
-pub fn getCursorPosition(self: XcbWindow) @Vector(2, i16) {
-    return self.mouse_position;
+pub fn isFocused(self: XcbWindow) bool {
+    const focus = self.xcb_library.getInputFocus(self.connection);
+
+    return self.window == focus.focus;
 }
 
-pub fn getKey(self: XcbWindow, key: windowing.Key) windowing.Action {
+pub fn getUtf8Input(self: *const XcbWindow) []const u8 {
+    return self.text_buffer[0..self.text_len];
+}
+
+fn eventFocusOut(self: *XcbWindow) void {
+    @memset(&self.key_map, false);
+    @memset(&self.mouse_map, false);
+}
+
+fn getKey(self: XcbWindow, key: input.KeyboardKey) input.ButtonAction {
     const index = @intFromEnum(key);
 
     if (!self.key_map[index] and self.previous_key_map[index]) {
@@ -430,7 +475,7 @@ pub fn getKey(self: XcbWindow, key: windowing.Key) windowing.Action {
     return .release;
 }
 
-pub fn getMouseButton(self: XcbWindow, key: windowing.MouseButton) windowing.Action {
+fn getMouseButton(self: XcbWindow, key: input.MouseButton) input.ButtonAction {
     const index = @intFromEnum(key);
 
     if (!self.mouse_map[index] and self.previous_mouse_map[index]) {
@@ -444,36 +489,17 @@ pub fn getMouseButton(self: XcbWindow, key: windowing.MouseButton) windowing.Act
     return .release;
 }
 
-pub fn getMouseMotion(self: XcbWindow) @Vector(2, i16) {
+fn getMouseMotion(self: XcbWindow) @Vector(2, i16) {
     //TODO: use raw motion
     return self.mouse_motion;
 }
 
-pub fn getCursorMotion(self: XcbWindow) @Vector(2, i16) {
+fn getCursorMotion(self: XcbWindow) @Vector(2, i16) {
     return self.mouse_motion;
 }
 
-pub fn isFocused(self: XcbWindow) bool {
-    const focus = self.xcb_library.getInputFocus(self.connection);
-
-    return self.window == focus.focus;
-}
-
-pub fn getUtf8Input(self: *const XcbWindow) []const u8 {
-    return self.text_buffer[0..self.text_len];
-}
-
-pub fn getMouseScroll(self: XcbWindow) i32 {
-    return self.mouse_scroll;
-}
-
-fn eventFocusOut(self: *XcbWindow) void {
-    @memset(&self.key_map, false);
-    @memset(&self.mouse_map, false);
-}
-
 ///Convert xkb key symbol to windowing.Key
-fn xkbKeyToQuantaKey(keysym: xkbcommon_loader.KeySym) ?windowing.Key {
+fn xkbKeyToQuantaKey(keysym: xkbcommon_loader.KeySym) ?input.KeyboardKey {
     return switch (keysym) {
         .space => .space,
         .apostrophe => .apostrophe,
@@ -603,8 +629,9 @@ const XcbWindow = @This();
 const XcbWindowSystem = @import("WindowSystem.zig");
 const std = @import("std");
 const windowing = @import("../../windowing.zig");
-const Key = windowing.Key;
-const Action = windowing.Action;
+const input = @import("../../input.zig");
+const Key = input.KeyboardKey;
+const Action = input.ButtonAction;
 const xcb = @import("xcb.zig");
 const xcb_input = @import("xinput.zig");
 const xcb_loader = @import("xcb_loader.zig");
