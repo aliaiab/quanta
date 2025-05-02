@@ -29,11 +29,11 @@ mouse_scroll: i32 = 0,
 should_close: bool = false,
 
 pub fn init(
-    allocator: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     window_system: *XcbWindowSystem,
     options: windowing.WindowSystem.CreateWindowOptions,
 ) !XcbWindow {
-    _ = allocator;
+    _ = gpa;
 
     var self = XcbWindow{
         .window_system = window_system,
@@ -195,7 +195,7 @@ pub fn deinit(self: *XcbWindow, allocator: std.mem.Allocator) void {
 pub fn pollEvents(self: *XcbWindow, out_input: *input.State) !void {
     self.previous_key_map = self.key_map;
     self.previous_mouse_map = self.mouse_map;
-    self.last_cursor_position = self.cursor_position;
+    // self.last_cursor_position = self.cursor_position;
 
     const query_pointer = self.xcb_library.queryPointer(self.connection, self.window);
 
@@ -301,9 +301,47 @@ pub fn pollEvents(self: *XcbWindow, out_input: *input.State) !void {
                 }
             },
             .motion_notify => |motion_notify| {
-                _ = motion_notify; // autofix
                 // const last_mouse_position = self.mouse_position;
                 // self.last_mouse_position = last_mouse_position;
+                std.log.info("{} motion_notify = {}, {}, rt: {}, {}", .{
+                    std.time.timestamp(),
+                    motion_notify.event_x,
+                    motion_notify.event_y,
+                    motion_notify.root_x,
+                    motion_notify.root_y,
+                });
+
+                const new_cursor_pos: @Vector(2, i16) = .{ motion_notify.event_x, motion_notify.event_y };
+
+                const raw_cursor_delta = new_cursor_pos - self.last_cursor_position;
+
+                std.log.info("last_pos = {}", .{self.last_cursor_position});
+                std.log.info("new_pos = {}", .{new_cursor_pos});
+                std.log.info("raw_cursor_delta = {}", .{raw_cursor_delta});
+
+                if (self.cursor_grabbed) {
+                    if (motion_notify.event_x == 0) {
+                        self.xcb_library.warpPointer(
+                            self.connection,
+                            self.window,
+                            self.window,
+                            motion_notify.event_x,
+                            motion_notify.event_y,
+                            self.getWidth(),
+                            self.getHeight(),
+                            @intCast(self.getWidth() - 1),
+                            motion_notify.event_y,
+                        );
+
+                        out_input.cursor_motion = .{ -1, raw_cursor_delta[1] };
+                    } else {
+                        out_input.cursor_motion = raw_cursor_delta;
+                    }
+                }
+
+                std.log.info("out_motion = {}, {}", .{ out_input.cursor_motion[0], out_input.cursor_motion[1] });
+
+                self.last_cursor_position = new_cursor_pos;
             },
             .focus_in => |focus_in| {
                 if (focus_in.mode == xcb.XCB_NOTIFY_MODE_GRAB or focus_in.mode == xcb.XCB_NOTIFY_MODE_UNGRAB) {
@@ -356,8 +394,10 @@ pub fn pollEvents(self: *XcbWindow, out_input: *input.State) !void {
         }
     }
 
-    self.mouse_motion = self.cursor_position -% self.last_cursor_position;
-    out_input.cursor_motion = self.mouse_motion;
+    if (!self.cursor_grabbed) {
+        out_input.cursor_motion = self.cursor_position -% self.last_cursor_position;
+    }
+
     out_input.cursor_position = self.cursor_position;
     out_input.mouse_scroll = self.mouse_scroll;
 

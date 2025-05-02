@@ -1,8 +1,8 @@
 impl: Impl,
 
-pub fn deinit(self: *Window, allocator: std.mem.Allocator) void {
+pub fn deinit(self: *Window, gpa: std.mem.Allocator) void {
     defer self.* = undefined;
-    defer self.impl.deinit(allocator);
+    defer self.impl.deinit(gpa);
 }
 
 ///Polls window events and reads inputs relevent to that window into out_input

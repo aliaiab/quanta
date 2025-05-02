@@ -18,6 +18,11 @@ pub const Options = struct {
     ///Api validation, turn off at your own risk
     ///Disabled by default in ReleaseFast
     api_validation: bool = @import("builtin").mode != .ReleaseFast and @import("builtin").mode != .ReleaseSafe,
+    ///If true, the first validation error will cause a panic
+    panic_on_validation_error: bool = false,
+    ///A blacklist of validation error VUID names.
+    ///Entries in this list will not cause a panic
+    validation_error_id_blacklist: []const []const u8 = &.{},
     ///If true, the underlying graphics API will use the zig allocators passed in to Context.init
     ///This allows for use of debug allocators like std.heap.GeneralPurposeAllocator
     ///Disabled by default in ReleaseFast

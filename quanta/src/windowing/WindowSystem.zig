@@ -2,7 +2,7 @@
 
 impl: Impl,
 
-pub inline fn init() !WindowSystem {
+pub fn init() !WindowSystem {
     const self = WindowSystem{
         .impl = try Impl.init(),
     };
@@ -10,7 +10,7 @@ pub inline fn init() !WindowSystem {
     return self;
 }
 
-pub inline fn deinit(self: *WindowSystem) void {
+pub fn deinit(self: *WindowSystem) void {
     self.impl.deinit();
 
     self.* = undefined;
@@ -25,14 +25,14 @@ pub const CreateWindowOptions = struct {
     title: []const u8,
 };
 
-pub inline fn createWindow(
+pub fn createWindow(
     self: *WindowSystem,
-    allocator: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     options: CreateWindowOptions,
 ) !Window {
     const window = Window{
         .impl = try self.impl.createWindow(
-            allocator,
+            gpa,
             options,
         ),
     };

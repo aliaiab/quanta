@@ -4,6 +4,8 @@
 pub const Context = struct {
     gpa: std.mem.Allocator,
     scratch_allocator: std.heap.ArenaAllocator,
+    thread_pool: ?*std.Thread.Pool,
+
     cpu_buffer: [cpu_buffer_count]struct {
         graphics_command_buffer: ?graphics.CommandBuffer = null,
 
@@ -44,10 +46,14 @@ pub const Context = struct {
     pub fn init(
         gpa: std.mem.Allocator,
         arena: std.mem.Allocator,
+        ///Optional thread pool, used for doing async resource creation
+        thread_pool: ?*std.Thread.Pool,
     ) !Context {
         var self: Context = .{
             .gpa = gpa,
             .scratch_allocator = std.heap.ArenaAllocator.init(gpa),
+            .thread_pool = thread_pool,
+
             .cpu_buffer = undefined,
             //TODO: I have no idea why I can't make use of the arena for this, it just crashes
             //This is not a lifetime issue, even if I init at the callsite it just breaks
@@ -175,6 +181,39 @@ pub const Context = struct {
                 // errdefer get_or_put_res.value_ptr.deinit(self.gpa);
             }
         }
+    }
+
+    fn createPipelineTask(
+        gpa: std.mem.Allocator,
+        cmd_output: *CreatePipelineCommand.Output,
+        options: graph.Builder.CreateRasterPipelineOptions,
+    ) void {
+        const vertex_module: graph.RasterModule = options.vertex_module;
+        const fragment_module: graph.RasterModule = options.fragment_module;
+        const push_constant_size = options.push_constant_size;
+        //TODO: FIXME: this is NOT memory safe. We need to make a gpa.dupe of this
+        const attachment_formats = options.attachment_formats;
+        const depth_attachment_format = options.depth_attachment_format;
+
+        cmd_output.pipeline = graphics.GraphicsPipeline.init(
+            gpa,
+            .{
+                .color_attachment_formats = @as([*]const graphics.vulkan.Format, @alignCast(@ptrCast(attachment_formats.ptr)))[0..attachment_formats.len],
+                //TODO: Do explicit format conversion
+                .depth_attachment_format = @enumFromInt(@intFromEnum(depth_attachment_format)),
+                .vertex_shader_binary = @alignCast(vertex_module.code),
+                .fragment_shader_binary = @alignCast(fragment_module.code),
+                .input_assembly_state = options.input_assembly_state,
+                .depth_state = options.depth_state,
+                .rasterisation_state = options.rasterisation_state,
+                .blend_state = options.blend_state,
+            },
+            //TODO: handle vertex layouts (if anyone's using that in 2024)
+            null,
+            push_constant_size,
+        ) catch @panic("Fatal error: Could not create graphics pipeline!");
+
+        cmd_output.is_complete.store(true, .release);
     }
 
     ///Imports and underlying gpu api image and provides a handle that is usable from graph building code
@@ -468,17 +507,23 @@ pub const Context = struct {
 
                 cmd_output.is_complete = .init(false);
 
-                std.log.info("Pushing pipeline creation!!!", .{});
-
                 try self.pending_raster_pipeline_updates.put(self.gpa, pipeline.handle, cmd_output);
 
-                if (!self.create_pipeline_queue.tryPush(.{
-                    .output = cmd_output,
-                    .builder = builder,
-                    //TODO: we already have the data just use it
-                    .options = builder.rasterPipelineGetState(pipeline.handle),
-                })) {
-                    @panic("Failed to push creation of pipeline to thread");
+                std.log.info("Pushing pipeline creation!!!", .{});
+
+                const use_thread_pool = false;
+
+                if (!use_thread_pool) {
+                    if (!self.create_pipeline_queue.tryPush(.{
+                        .output = cmd_output,
+                        .builder = builder,
+                        //TODO: we already have the data just use it
+                        .options = builder.rasterPipelineGetState(pipeline.handle),
+                    })) {
+                        @panic("Failed to push creation of pipeline to thread");
+                    }
+                } else {
+                    try self.thread_pool.?.spawn(createPipelineTask, .{ self.gpa, cmd_output, builder.rasterPipelineGetState(pipeline.handle) });
                 }
             }
 

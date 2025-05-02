@@ -25,10 +25,17 @@ void main()
     {
         texture_sample = texture(textures[nonuniformEXT(push_constants.texture_index - 1)], in_data.uv);
 
-        if (push_constants.texture_index > 1) {
+        //Check if the texture is the font atlas, which is always at texture index 1 right now
+        if (push_constants.texture_index == 1) {
+            //TODO: add component swizzles to quanta images/views
+            texture_sample.a = texture_sample.r;
+            texture_sample.rgb = vec3(1);
+        }
+        else if (push_constants.texture_index > 1) {
             texture_sample.r = pow(texture_sample.r, 1 / 2.2);
             texture_sample.g = pow(texture_sample.g, 1 / 2.2);
             texture_sample.b = pow(texture_sample.b, 1 / 2.2);
+            texture_sample.a = pow(texture_sample.a, 1 / 2.2);
         }
     }
     else 

@@ -49,7 +49,10 @@ pub fn initRecycle(
 
     var present_modes_info = vk.SwapchainPresentModesCreateInfoEXT{
         .present_mode_count = 1,
-        .p_present_modes = &.{vk.PresentModeKHR.mailbox_khr},
+        .p_present_modes = &.{
+            vk.PresentModeKHR.immediate_khr,
+                // vk.PresentModeKHR.mailbox_khr,
+        },
     };
 
     var present_scaling_info = vk.SwapchainPresentScalingCreateInfoEXT{
@@ -62,7 +65,7 @@ pub fn initRecycle(
     };
 
     const handle = try Context.self.vkd.createSwapchainKHR(Context.self.device, &.{
-        .p_next = if (Context.self.optional_extensions.ext_swapchain_maintenance_1 != null) &present_scaling_info else null,
+        .p_next = if (Context.self.optional_extensions.ext_swapchain_maintenance_1 != null and Context.self.optional_extensions.ext_surface_maintenance_1 != null) &present_scaling_info else null,
         .flags = .{
             //TODO: look into why this doesn't work. Currently returns a timeout on acquire image and I have no idea why
             .deferred_memory_allocation_bit_ext = false,
@@ -82,7 +85,10 @@ pub fn initRecycle(
         .queue_family_index_count = qfi.len,
         .p_queue_family_indices = &qfi,
         .pre_transform = caps.current_transform,
-        .composite_alpha = .{ .inherit_bit_khr = true },
+        .composite_alpha = .{
+            // .inherit_bit_khr = true,
+            .opaque_bit_khr = true,
+        },
         .present_mode = present_mode,
         .clipped = vk.TRUE,
         .old_swapchain = old_handle,
@@ -203,6 +209,7 @@ pub fn obtainNextImage(self: *Swapchain) !Image {
     std.debug.assert(result.image_index < self.swap_images.len);
 
     std.mem.swap(Semaphore, &self.swap_images[result.image_index].image_acquired, &self.next_image_acquired);
+
     self.image_index = result.image_index;
 
     if (self.swap_image_views[self.image_index] == .null_handle) {

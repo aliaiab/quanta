@@ -17,14 +17,14 @@ pub fn deinit(self: *WindowSystem) void {
 
 pub fn createWindow(
     self: *WindowSystem,
-    allocator: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     options: windowing.WindowSystem.CreateWindowOptions,
 ) !Window {
     log.info("Creating win32 window! {}", .{options});
 
     var window: Window = undefined;
 
-    try window.init(self, allocator, options);
+    try window.init(self, gpa, options);
 
     return window;
 }

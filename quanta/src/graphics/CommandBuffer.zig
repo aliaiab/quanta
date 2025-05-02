@@ -367,18 +367,19 @@ pub fn submitSemaphore(self: CommandBuffer, fence: Fence, wait_semaphore: Semaph
             .device_mask = 0,
         }},
         .signal_semaphore_info_count = 1,
-        .p_signal_semaphore_infos = &[_]vk.SemaphoreSubmitInfo{.{
-            .semaphore = signal_semaphore.handle,
-            .value = 1,
-            .stage_mask = .{
-                .color_attachment_output_bit = true,
-
-                //TODO: TEMPORARY: don't use this, I just need to set the right stage masks...
-                //This proves my semaphore signalling is correct otherwise
-                .all_commands_bit = true,
+        .p_signal_semaphore_infos = &[_]vk.SemaphoreSubmitInfo{
+            .{
+                .semaphore = signal_semaphore.handle,
+                .value = 1,
+                .stage_mask = .{
+                    .color_attachment_output_bit = true,
+                    //TODO: TEMPORARY: don't use this, I just need to set the right stage masks...
+                    //This proves my semaphore signalling is correct otherwise
+                    .all_commands_bit = true,
+                },
+                .device_index = 0,
             },
-            .device_index = 0,
-        }},
+        },
     }}, fence.handle);
 }
 

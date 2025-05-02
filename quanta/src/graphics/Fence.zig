@@ -1,9 +1,3 @@
-const Fence = @This();
-
-const std = @import("std");
-const vk = @import("vulkan");
-const Context = @import("Context.zig");
-
 handle: vk.Fence,
 
 pub fn init() !Fence {
@@ -27,7 +21,13 @@ pub fn deinit(self: *Fence) void {
 }
 
 pub fn wait(self: Fence) void {
-    _ = Context.self.vkd.waitForFences(Context.self.device, 1, @as([*]const vk.Fence, @ptrCast(&self.handle)), vk.TRUE, std.math.maxInt(u64)) catch unreachable;
+    _ = Context.self.vkd.waitForFences(
+        Context.self.device,
+        1,
+        @as([*]const vk.Fence, @ptrCast(&self.handle)),
+        vk.TRUE,
+        std.math.maxInt(u64),
+    ) catch unreachable;
 }
 
 ///Returns true if the fence is signaled, otherwise it returns false
@@ -40,3 +40,8 @@ pub fn getStatus(self: Fence) bool {
 pub fn reset(self: Fence) void {
     Context.self.vkd.resetFences(Context.self.device, 1, @as([*]const vk.Fence, @ptrCast(&self.handle))) catch unreachable;
 }
+
+const Fence = @This();
+const std = @import("std");
+const vk = @import("vulkan");
+const Context = @import("Context.zig");

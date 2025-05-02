@@ -167,13 +167,22 @@ fn debugUtilsMessengerCallback(
 
     //I don't know if a message can have multiple severity bits set, but I don't even know what that would mean semantically
     if (message_severity.error_bit_ext) {
-        log.err("(vulkan_validation):\n\n{s} {s}\n\n", .{
+        log.err("(vulkan_validation):\n\n({s}): {s}\n\n", .{
             p_callback_data.?.p_message_id_name orelse "",
             p_callback_data.?.p_message.?,
         });
 
-        //This is inherently supposed to be unrecoverable: The prorgam is in an invalid state: fix it
-        // @panic("(vulkan_validation): Validation Error");
+        if (quanta_options.graphics.panic_on_validation_error) blk: {
+            const message_id_name = std.mem.span(p_callback_data.?.p_message_id_name.?);
+
+            for (quanta_options.graphics.validation_error_id_blacklist) |blacklisted_id| {
+                if (std.mem.eql(u8, message_id_name, blacklisted_id)) {
+                    break :blk;
+                }
+            }
+
+            @panic("(vulkan_validation): Validation Error");
+        }
     } else if (message_severity.warning_bit_ext) {
         log.warn("(vulkan_validation):\n\n{s} {s}\n\n", .{
             p_callback_data.?.p_message_id_name orelse "",
@@ -313,6 +322,13 @@ pub const RequiredExtensions = struct {
 pub const OptionalExtensions = struct {
     ext_memory_budget: ?[:0]const u8 = vk.extensions.ext_memory_budget.name,
     ext_swapchain_maintenance_1: ?[:0]const u8 = vk.extensions.ext_swapchain_maintenance_1.name,
+    ext_surface_maintenance_1: ?[:0]const u8 = vk.extensions.ext_surface_maintenance_1.name,
+};
+
+pub const InitOptions = struct {
+    ///Specify the preferred physical device to use
+    ///a value of null indicates that a device selection algorithm should be used
+    preferred_device_index: ?u32 = null,
 };
 
 pub fn init(
@@ -320,6 +336,7 @@ pub fn init(
     arena: std.mem.Allocator,
     window: *Window,
     pipeline_cache_data: []const u8,
+    init_options: InitOptions,
 ) !void {
     self.gpa = gpa;
     self.arena = arena;
@@ -594,7 +611,7 @@ pub fn init(
             });
         }
 
-        for (physical_devices, 0..) |physical_device, i| {
+        for (physical_devices, 0..) |physical_device, device_index| {
             var subgroup_properties: vk.PhysicalDeviceSubgroupProperties = .{
                 .subgroup_size = 0,
                 .supported_stages = .{},
@@ -615,7 +632,7 @@ pub fn init(
             log.info("Device Subgroup size: {}", .{subgroup_properties.subgroup_size});
 
             log.info("Device [{}] {s}: api_version: {}.{}.{}.{}", .{
-                i,
+                device_index,
                 self.physical_device_properties.device_name,
                 vk.apiVersionMajor(self.physical_device_properties.api_version),
                 vk.apiVersionMinor(self.physical_device_properties.api_version),
@@ -737,6 +754,14 @@ pub fn init(
                 }
             }
 
+            if (init_options.preferred_device_index) |preferred_device_index| {
+                if (preferred_device_index == device_index) {
+                    //TODO: check that the preferred device supports everything
+                    self.physical_device = physical_device;
+                    found_suitable_device = true;
+                }
+            }
+
             //If there's only one gpu, use it even if it's integrated
             const use_integrated = physical_devices.len == 1;
 
@@ -746,9 +771,15 @@ pub fn init(
                 self.compute_family_index != null and
                 self.transfer_family_index != null and
                 supports_extentions)
-            {
+            blk: {
                 if (!use_integrated and self.physical_device_properties.device_type != .discrete_gpu) {
-                    break;
+                    break :blk;
+                }
+
+                if (init_options.preferred_device_index) |preferred_index| {
+                    if (device_index != preferred_index) {
+                        break :blk;
+                    }
                 }
 
                 self.physical_device = physical_device;
@@ -765,26 +796,57 @@ pub fn init(
 
     //Create queue command pools
     {
-        const queue_create_infos = [_]vk.DeviceQueueCreateInfo{
-            .{
+        var queue_family_indices: [4]usize = undefined;
+
+        var queue_create_info_buffer: [4]vk.DeviceQueueCreateInfo = undefined;
+        var queue_create_info_count: usize = 0;
+
+        if (self.graphics_family_index) |queue_idx| add_queue_family: {
+            if (std.mem.indexOfScalar(usize, queue_family_indices[0..queue_create_info_count], queue_idx)) |_| {
+                break :add_queue_family;
+            }
+
+            queue_family_indices[queue_create_info_count] = queue_idx;
+            queue_create_info_buffer[queue_create_info_count] = .{
                 .flags = .{},
-                .queue_family_index = self.graphics_family_index.?,
+                .queue_family_index = queue_idx,
                 .queue_count = 1,
                 .p_queue_priorities = @as([*]const f32, @ptrCast(&@as(f32, 1.0))),
-            },
-            .{
+            };
+            queue_create_info_count += 1;
+        }
+
+        if (self.compute_family_index) |queue_idx| add_queue_family: {
+            if (std.mem.indexOfScalar(usize, queue_family_indices[0..queue_create_info_count], queue_idx)) |_| {
+                break :add_queue_family;
+            }
+
+            queue_family_indices[queue_create_info_count] = queue_idx;
+            queue_create_info_buffer[queue_create_info_count] = .{
                 .flags = .{},
-                .queue_family_index = self.compute_family_index.?,
+                .queue_family_index = queue_idx,
                 .queue_count = 1,
                 .p_queue_priorities = @as([*]const f32, @ptrCast(&@as(f32, 1.0))),
-            },
-            .{
+            };
+            queue_create_info_count += 1;
+        }
+
+        if (self.transfer_family_index) |queue_idx| add_queue_family: {
+            if (std.mem.indexOfScalar(usize, queue_family_indices[0..queue_create_info_count], queue_idx)) |_| {
+                break :add_queue_family;
+            }
+
+            queue_family_indices[queue_create_info_count] = queue_idx;
+            queue_create_info_buffer[queue_create_info_count] = .{
                 .flags = .{},
-                .queue_family_index = self.transfer_family_index.?,
+                .queue_family_index = queue_idx,
                 .queue_count = 1,
                 .p_queue_priorities = @as([*]const f32, @ptrCast(&@as(f32, 1.0))),
-            },
-        };
+            };
+            queue_create_info_count += 1;
+        }
+
+        const queue_create_infos = queue_create_info_buffer[0..queue_create_info_count];
 
         log.info("self.graphics_family_index = {?}", .{self.graphics_family_index});
         log.info("self.present_family_index = {?}", .{self.present_family_index});
@@ -831,7 +893,7 @@ pub fn init(
         const device_create_info = vk.DeviceCreateInfo{
             .p_next = &physical_device_features,
             .flags = .{},
-            .p_queue_create_infos = &queue_create_infos,
+            .p_queue_create_infos = queue_create_infos.ptr,
             .queue_create_info_count = @as(u32, @intCast(queue_create_infos.len)),
             .p_enabled_features = null,
             .enabled_extension_count = @as(u32, @intCast(device_extension_count)),

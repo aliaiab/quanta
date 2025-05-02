@@ -17,7 +17,7 @@ pub fn renderToGraph(
         var height: c_int = 0;
         var out_bytes_per_pixel: c_int = 0;
 
-        imgui.ImFontAtlas_GetTexDataAsRGBA32(
+        imgui.ImFontAtlas_GetTexDataAsAlpha8(
             io.Fonts,
             &pixel_pointer,
             &width,
@@ -25,12 +25,12 @@ pub fn renderToGraph(
             &out_bytes_per_pixel,
         );
 
-        const image_contents_size: usize = @as(usize, @intCast(width)) * @as(usize, @intCast(height)) * @sizeOf(u32);
+        const image_contents_size: usize = @as(usize, @intCast(width)) * @as(usize, @intCast(height)) * @sizeOf(u8);
 
         var font_image = graph.createImage(
             @src(),
             .{
-                .format = .r8g8b8a8_srgb,
+                .format = .r8_unorm,
                 .width = @intCast(width),
                 .height = @intCast(height),
                 .depth = 1,
@@ -110,6 +110,10 @@ pub fn renderToGraph(
             .index_buffer = index_buffer,
         };
     };
+
+    if (draw_data.CmdListsCount == 0 or !draw_data.Valid) {
+        // return;
+    }
 
     //Drawing
     {

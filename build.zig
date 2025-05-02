@@ -11,7 +11,9 @@ pub fn build(builder: *std.Build) !void {
 
     vk_generate_cmd.addFileArg(registry);
 
-    const glslang_zig = builder.dependency("glslang_zig", .{});
+    const glslang_zig = builder.dependency("glslang_zig", .{
+        .target = builder.graph.host,
+    });
 
     const glsl_compiler = builder.addExecutable(.{
         .name = "glsl_compiler",
