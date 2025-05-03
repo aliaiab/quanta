@@ -733,10 +733,17 @@ pub const Context = struct {
                 }
             }
 
+            //Last raster pass
+            var last_pass_data: ?graph.Builder.PassData = null;
+
             for (dependencies.items) |*dependency| {
                 const pass_index = dependency.pass_index;
                 const pass_handle = builder.passes.items(.handle)[pass_index];
                 const pass_data: graph.Builder.PassData = builder.passes.items(.data)[pass_index];
+
+                defer if (pass_data == .raster) {
+                    last_pass_data = pass_data;
+                };
 
                 var current_pipline: ?*graphics.GraphicsPipeline = null;
 
@@ -901,6 +908,66 @@ pub const Context = struct {
                     }
                 }
 
+                //We don't want to emit vkBeginRenderPass calls if we can stay within a previously established render pass
+                var can_reuse_pass: bool = last_pass_data != null and pass_data == .raster and last_pass_data.? == .raster;
+
+                //Render pass reuse is currently broken
+                can_reuse_pass = false;
+
+                if (pass_data == .raster) handle_pass: {
+                    can_reuse_pass = can_reuse_pass and barrier_map.buffer_barriers.len == 0 and barrier_map.image_barriers.len == 0;
+
+                    const x = pass_data.raster.render_offset_x;
+                    const y = pass_data.raster.render_offset_y;
+                    const width = pass_data.raster.render_width;
+                    const height = pass_data.raster.render_height;
+                    const attachments_input = pass_data.raster.attachments;
+
+                    //Check render pass compat
+                    if (last_pass_data) |last_pass| {
+                        can_reuse_pass = can_reuse_pass and last_pass.raster.render_offset_x == x;
+                        can_reuse_pass = can_reuse_pass and last_pass.raster.render_offset_y == y;
+                        can_reuse_pass = can_reuse_pass and last_pass.raster.render_width == width;
+                        can_reuse_pass = can_reuse_pass and last_pass.raster.render_height == height;
+
+                        can_reuse_pass = can_reuse_pass and last_pass.raster.attachments.len == attachments_input.len;
+
+                        if (can_reuse_pass) {
+                            //Boolean xor
+                            can_reuse_pass = can_reuse_pass and (last_pass.raster.depth_attachment == null) == (pass_data.raster.depth_attachment == null);
+
+                            if (last_pass.raster.depth_attachment != null and pass_data.raster.depth_attachment != null) {
+                                can_reuse_pass = can_reuse_pass and last_pass.raster.depth_attachment.?.image == pass_data.raster.depth_attachment.?.image;
+
+                                can_reuse_pass = can_reuse_pass and pass_data.raster.depth_attachment.?.clear == null;
+                            }
+                        }
+
+                        if (can_reuse_pass) {
+                            for (last_pass.raster.attachments, attachments_input) |last_attachment, new_attachment| {
+                                can_reuse_pass = can_reuse_pass and last_attachment.image == new_attachment.image;
+
+                                can_reuse_pass = can_reuse_pass and new_attachment.clear == null;
+                            }
+                        }
+                    }
+
+                    if (can_reuse_pass) {
+                        break :handle_pass;
+                    }
+
+                    if (last_pass_data != null and last_pass_data.? == .raster) {
+                        //End the last pass
+                        command_buffer.endRenderPass();
+                    }
+                }
+
+                if (last_pass_data != null and last_pass_data.? == .raster and (pass_data != .raster)) {
+                    //End the last pass
+                    command_buffer.endRenderPass();
+                    last_pass_data = null;
+                }
+
                 command_buffer.debugLabelBegin("(quanta): pre_raster_pass: Flush barriers");
 
                 try barrier_map.flushBarriers(command_buffer);
@@ -913,7 +980,7 @@ pub const Context = struct {
                     command_buffer.debugLabelBegin(pass_name);
                 }
 
-                if (pass_data == .raster) {
+                if (pass_data == .raster and !can_reuse_pass) {
                     const x = pass_data.raster.render_offset_x;
                     const y = pass_data.raster.render_offset_y;
                     const width = pass_data.raster.render_width;
@@ -921,7 +988,6 @@ pub const Context = struct {
                     const attachments_input = pass_data.raster.attachments;
 
                     const attachments = try self.scratch_allocator.allocator().alloc(graphics.CommandBuffer.Attachment, attachments_input.len);
-                    defer self.scratch_allocator.allocator().free(attachments);
 
                     for (attachments_input, attachments) |input, *output| {
                         output.image = &self.images.getPtr(input.image).?.image;
@@ -948,13 +1014,12 @@ pub const Context = struct {
                     command_buffer.debugLabelEnd();
                 };
 
-                defer if (pass_data == .raster) {
-                    command_buffer.endRenderPass();
-                };
-
                 current_pipline = null;
 
                 command_iter = builder.passCommandIterator(pass_index);
+
+                var current_viewport: @FieldType(graph.Command, "set_viewport") = undefined;
+                var current_scissor: @FieldType(graph.Command, "set_scissor") = undefined;
 
                 //encode final commands
                 while (command_iter.next()) |command| {
@@ -1122,46 +1187,7 @@ pub const Context = struct {
                             });
                         },
                         .set_raster_pipeline => |set_raster_pipeline| {
-                            if (self.pending_raster_pipeline_updates.get(set_raster_pipeline.pipeline)) |pending_update| {
-                                const wait: bool = self.raster_pipelines.getPtr(set_raster_pipeline.pipeline.id) == null;
-
-                                if (wait) {
-                                    while (pending_update.is_complete.load(.acquire) == false) {}
-
-                                    try self.raster_pipelines.put(self.gpa, set_raster_pipeline.pipeline.id, pending_update.pipeline);
-
-                                    self.gpa.destroy(pending_update);
-
-                                    std.debug.assert(self.pending_raster_pipeline_updates.swapRemove(set_raster_pipeline.pipeline));
-                                } else {
-                                    if (pending_update.is_complete.load(.acquire)) {
-                                        try self.raster_pipelines.put(self.gpa, set_raster_pipeline.pipeline.id, pending_update.pipeline);
-
-                                        self.gpa.destroy(pending_update);
-
-                                        std.debug.assert(self.pending_raster_pipeline_updates.swapRemove(set_raster_pipeline.pipeline));
-
-                                        var update_state_index: ?usize = null;
-
-                                        for (builder.raster_pipeline_updates.items(.raster_pipeline), 0..) |potential_pipeline, update_index| {
-                                            if (potential_pipeline == set_raster_pipeline.pipeline) {
-                                                update_state_index = update_index;
-                                            }
-                                        }
-
-                                        std.debug.assert(update_state_index != null);
-
-                                        if (update_state_index != null) {
-                                            const state_ptr = builder.raster_pipeline_state.getPtr(set_raster_pipeline.pipeline).?;
-
-                                            state_ptr.* = builder.raster_pipeline_updates.items(.new_state)[update_state_index.?];
-
-                                            //TODO: completely fucking broken, this will invalidate operation ids
-                                            builder.raster_pipeline_updates.swapRemove(update_state_index.?);
-                                        }
-                                    }
-                                }
-                            }
+                            try self.waitForPipelineCreation(builder, set_raster_pipeline.pipeline);
 
                             const pipeline = self.raster_pipelines.getPtr(set_raster_pipeline.pipeline.id).?;
 
@@ -1170,6 +1196,8 @@ pub const Context = struct {
                             current_pipline = pipeline;
                         },
                         .set_raster_pipeline_resource_buffer => |command_data| {
+                            try self.waitForPipelineCreation(builder, command_data.pipeline);
+
                             const pipeline = self.raster_pipelines.getPtr(command_data.pipeline.id).?;
                             const buffer = self.buffers.getPtr(command_data.buffer).?;
 
@@ -1182,6 +1210,8 @@ pub const Context = struct {
                             barrier_map.releaseBuffer(buffer);
                         },
                         .set_raster_pipeline_image_sampler => |command_data| {
+                            try self.waitForPipelineCreation(builder, command_data.pipeline);
+
                             const pipeline = self.raster_pipelines.getPtr(command_data.pipeline.id).?;
 
                             const image = &self.images.getPtr(command_data.image).?.image;
@@ -1197,7 +1227,13 @@ pub const Context = struct {
 
                             barrier_map.releaseImage(.{ .image = image });
                         },
-                        .set_viewport => |command_data| {
+                        .set_viewport => |command_data| set_viewport: {
+                            if (std.meta.eql(current_viewport, command_data)) {
+                                break :set_viewport;
+                            }
+
+                            current_viewport = command_data;
+
                             command_buffer.setViewport(
                                 command_data.x,
                                 command_data.y,
@@ -1207,7 +1243,13 @@ pub const Context = struct {
                                 command_data.max_depth,
                             );
                         },
-                        .set_scissor => |command_data| {
+                        .set_scissor => |command_data| set_scissor: {
+                            if (std.meta.eql(current_scissor, command_data)) {
+                                break :set_scissor;
+                            }
+
+                            current_scissor = command_data;
+
                             command_buffer.setScissor(
                                 command_data.x,
                                 command_data.y,
@@ -1291,6 +1333,12 @@ pub const Context = struct {
                         },
                     }
                 }
+            }
+
+            if (last_pass_data != null and last_pass_data.? == .raster) {
+                //End the last pass
+                command_buffer.endRenderPass();
+                last_pass_data = null;
             }
 
             var image_iter = self.images.iterator();
@@ -1441,6 +1489,53 @@ pub const Context = struct {
             .mapped_region = (frame_data.staging_buffer_mapping + frame_data.staging_buffer_offset)[0..size],
             .offset = frame_data.staging_buffer_offset,
         };
+    }
+
+    fn waitForPipelineCreation(
+        self: *Context,
+        builder: *graph.Builder,
+        pipeline: graph.RasterPipeline,
+    ) !void {
+        if (self.pending_raster_pipeline_updates.get(pipeline)) |pending_update| {
+            const wait: bool = self.raster_pipelines.getPtr(pipeline.id) == null;
+
+            if (wait) {
+                while (pending_update.is_complete.load(.acquire) == false) {}
+
+                try self.raster_pipelines.put(self.gpa, pipeline.id, pending_update.pipeline);
+
+                self.gpa.destroy(pending_update);
+
+                std.debug.assert(self.pending_raster_pipeline_updates.swapRemove(pipeline));
+            } else {
+                if (pending_update.is_complete.load(.acquire)) {
+                    try self.raster_pipelines.put(self.gpa, pipeline.id, pending_update.pipeline);
+
+                    self.gpa.destroy(pending_update);
+
+                    std.debug.assert(self.pending_raster_pipeline_updates.swapRemove(pipeline));
+
+                    var update_state_index: ?usize = null;
+
+                    for (builder.raster_pipeline_updates.items(.raster_pipeline), 0..) |potential_pipeline, update_index| {
+                        if (potential_pipeline == pipeline) {
+                            update_state_index = update_index;
+                        }
+                    }
+
+                    std.debug.assert(update_state_index != null);
+
+                    if (update_state_index != null) {
+                        const state_ptr = builder.raster_pipeline_state.getPtr(pipeline).?;
+
+                        state_ptr.* = builder.raster_pipeline_updates.items(.new_state)[update_state_index.?];
+
+                        //TODO: completely fucking broken, this will invalidate operation ids
+                        builder.raster_pipeline_updates.swapRemove(update_state_index.?);
+                    }
+                }
+            }
+        }
     }
 
     const CompilerContext = @This();
