@@ -29,10 +29,12 @@ mouse_scroll: i32 = 0,
 should_close: bool = false,
 
 pub fn init(
+    arena: std.mem.Allocator,
     gpa: std.mem.Allocator,
     window_system: *XcbWindowSystem,
     options: windowing.WindowSystem.CreateWindowOptions,
 ) !XcbWindow {
+    _ = arena; // autofix
     _ = gpa;
 
     var self = XcbWindow{
@@ -85,8 +87,8 @@ pub fn init(
         self.screen.root,
         xcb.XCB_COPY_FROM_PARENT,
         xcb.XCB_COPY_FROM_PARENT,
-        options.preferred_width orelse self.screen.width_in_pixels * 2 / 3,
-        options.preferred_height orelse self.screen.height_in_pixels * 2 / 3,
+        options.preferred_width orelse self.screen.width_in_pixels,
+        options.preferred_height orelse self.screen.height_in_pixels,
         xcb.XCB_COPY_FROM_PARENT,
         xcb.XCB_WINDOW_CLASS_INPUT_OUTPUT,
         self.screen.root_visual,
@@ -105,15 +107,12 @@ pub fn init(
         },
     };
 
-    //TODO: FIXME: This is currently crashing in release fast and I don't know why
-    if (@import("builtin").mode != .ReleaseFast) {
-        self.xcb_xinput_library.xiSelectEventsChecked(
-            self.connection,
-            self.window,
-            1,
-            @ptrCast(&input_mask.head),
-        );
-    }
+    self.xcb_xinput_library.xiSelectEventsChecked(
+        self.connection,
+        self.window,
+        1,
+        @ptrCast(&input_mask.head),
+    );
 
     _ = self.xcb_library.changeProperty(
         self.connection,
@@ -182,8 +181,8 @@ pub fn init(
     return self;
 }
 
-pub fn deinit(self: *XcbWindow, allocator: std.mem.Allocator) void {
-    _ = allocator;
+pub fn deinit(self: *XcbWindow, gpa: std.mem.Allocator) void {
+    _ = gpa;
     self.xkbcommon_library.contextUnref(self.xkb_context);
     self.xkbcommon_library.stateUnref(self.xkb_state);
     self.xkbcommon_library.keymapUnref(self.xkb_keymap);
@@ -370,10 +369,10 @@ pub fn pollEvents(self: *XcbWindow, out_input: *input.State) !void {
                 }
             },
             .xinput_motion_event => |motion| {
-                _ = motion; // autofix
+                std.log.info("x_input_motion: {}, {}", .{ motion.event_x, motion.event_y });
             },
             .xinput_raw_mouse_motion => |raw_mouse_motion| {
-                _ = raw_mouse_motion; // autofix
+                std.log.info("x_input_raw_mouse_motion: {}", .{raw_mouse_motion.time});
             },
             else => {},
         }
@@ -645,8 +644,6 @@ fn xkbKeyToQuantaKey(keysym: xkbcommon_loader.KeySym) ?input.KeyboardKey {
         else => null,
     };
 }
-
-test {}
 
 const XcbWindow = @This();
 const XcbWindowSystem = @import("WindowSystem.zig");

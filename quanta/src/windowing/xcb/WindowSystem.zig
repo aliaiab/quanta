@@ -3,7 +3,12 @@ xcb_xinput_library: xcb_xinput_loader.Library,
 xkbcommon_library: xkbcommon_loader.Library,
 connection: *xcb_loader.Connection,
 
-pub fn init() !WindowSystem {
+pub fn init(
+    arena: std.mem.Allocator,
+    gpa: std.mem.Allocator,
+) !WindowSystem {
+    _ = gpa; // autofix
+    _ = arena; // autofix
     var self = WindowSystem{
         .xcb_library = try xcb_loader.Library.load(),
         .xkbcommon_library = try xkbcommon_loader.load(),
@@ -17,7 +22,11 @@ pub fn init() !WindowSystem {
     return self;
 }
 
-pub fn deinit(self: *WindowSystem) void {
+pub fn deinit(
+    self: *WindowSystem,
+    gpa: std.mem.Allocator,
+) void {
+    _ = gpa; // autofix
     self.xcb_library.disconnect(self.connection);
     self.xcb_library.unload();
     self.xcb_xinput_library.unload();
@@ -26,17 +35,28 @@ pub fn deinit(self: *WindowSystem) void {
 
 pub fn createWindow(
     self: *WindowSystem,
-    allocator: std.mem.Allocator,
+    arena: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     options: windowing.WindowSystem.CreateWindowOptions,
 ) !Window {
     return Window.init(
-        allocator,
+        arena,
+        gpa,
         self,
         options,
     );
 }
 
-test {}
+pub fn destroyWindow(
+    self: *WindowSystem,
+    window: *Window,
+    gpa: std.mem.Allocator,
+) void {
+    _ = self; // autofix
+    return window.deinit(
+        gpa,
+    );
+}
 
 const WindowSystem = @This();
 const Window = @import("Window.zig");

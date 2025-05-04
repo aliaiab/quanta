@@ -4,12 +4,13 @@ window_system: *WindowSystem,
 pub fn init(
     self: *Window,
     window_system: *WindowSystem,
+    arena: std.mem.Allocator,
     gpa: std.mem.Allocator,
     options: windowing.WindowSystem.CreateWindowOptions,
 ) !void {
-    const title_z = try gpa.dupeZ(u8, options.title);
-    //Are we allowed to free this?
-    defer gpa.free(title_z);
+    var title_alloc = std.heap.stackFallback(16, arena);
+
+    const title_z = try title_alloc.get().dupeZ(u8, options.title);
 
     const window_class_name = "Test";
 
@@ -48,12 +49,12 @@ pub fn init(
         win32.ui.windows_and_messaging.WS_OVERLAPPEDWINDOW,
         win32.ui.windows_and_messaging.CW_USEDEFAULT,
         win32.ui.windows_and_messaging.CW_USEDEFAULT,
-        @truncate(options.preferred_width orelse win32.ui.windows_and_messaging.CW_USEDEFAULT),
-        @truncate(options.preferred_height orelse win32.ui.windows_and_messaging.CW_USEDEFAULT),
+        options.preferred_width orelse win32.ui.windows_and_messaging.CW_USEDEFAULT,
+        options.preferred_height orelse win32.ui.windows_and_messaging.CW_USEDEFAULT,
         null,
         null,
         window_system.instance,
-        null,
+        window_system,
     );
 
     if (maybe_window_handle == null) {
@@ -63,28 +64,26 @@ pub fn init(
     self.hwnd = maybe_window_handle.?;
     self.window_system = window_system;
 
-    try window_system.window_states.put(gpa, self.hwnd, .{
-        .width = 0,
-        .height = 0,
-    });
+    var window_rect: win32.foundation.RECT = undefined;
 
-    _ = win32.windowlongptr.SetWindowLongPtrA(maybe_window_handle.?, .P_USERDATA, @bitCast(@intFromPtr(window_system)));
+    _ = win32.ui.windows_and_messaging.GetWindowRect(self.hwnd, &window_rect);
+
+    try window_system.window_states.put(gpa, self.hwnd, .{
+        .width = @truncate(@abs(window_rect.right - window_rect.left)),
+        .height = @truncate(@abs(window_rect.top - window_rect.bottom)),
+    });
 
     //TODO: we need to pass in the show cmd from win main, or some other way of getting it
     //This ensures that the user can control whether a window starts off 'shown' or not
     _ = win32.ui.windows_and_messaging.ShowWindow(maybe_window_handle.?, win32.ui.windows_and_messaging.SW_SHOWNORMAL);
     _ = win32.graphics.gdi.UpdateWindow(self.hwnd);
-
-    var window_rect: win32.foundation.RECT = undefined;
-
-    _ = win32.ui.windows_and_messaging.GetWindowRect(self.hwnd, &window_rect);
 }
 
 pub fn deinit(
     self: *Window,
-    allocator: std.mem.Allocator,
+    gpa: std.mem.Allocator,
 ) void {
-    _ = allocator; // autofix
+    _ = gpa; // autofix
     _ = self.window_system.window_states.swapRemove(self.hwnd);
 
     self.* = undefined;
@@ -99,8 +98,6 @@ pub fn pollEvents(self: *Window, out_input: *input.State) !void {
     window_state.previous_mouse_button_state = window_state.mouse_button_state;
 
     window_state.mouse_button_state = .initFill(false);
-
-    // _ = win32.graphics.gdi.UpdateWindow(self.hwnd);
 
     //Get message is a blocking, use peek message for polling
     while (win32.ui.windows_and_messaging.PeekMessageA(
@@ -130,15 +127,15 @@ pub fn pollEvents(self: *Window, out_input: *input.State) !void {
 
     _ = win32.ui.windows_and_messaging.GetWindowRect(self.hwnd, &window_rect);
 
-    window_state.width = @intCast(@abs(window_rect.right - window_rect.left));
-    window_state.height = @intCast(@abs(window_rect.top - window_rect.bottom));
+    window_state.width = @truncate(@abs(window_rect.right - window_rect.left));
+    window_state.height = @truncate(@abs(window_rect.top - window_rect.bottom));
 
     var cursor_pos: win32.foundation.POINT = undefined;
 
     _ = win32.ui.windows_and_messaging.GetCursorPos(&cursor_pos);
 
-    window_state.cursor_pos_x = @intCast(cursor_pos.x - window_rect.left);
-    window_state.cursor_pos_y = @intCast(cursor_pos.y - window_rect.top);
+    window_state.cursor_pos_x = @truncate(cursor_pos.x - window_rect.left);
+    window_state.cursor_pos_y = @truncate(cursor_pos.y - window_rect.top);
 
     out_input.cursor_position = .{ window_state.cursor_pos_x, window_state.cursor_pos_y };
 
@@ -227,23 +224,44 @@ fn wndProc(
     wparam: win32.foundation.WPARAM,
     lparam: win32.foundation.LPARAM,
 ) callconv(@import("std").os.windows.WINAPI) win32.foundation.LRESULT {
+    std.debug.print("wndproc msg = {}\n", .{msg});
+
+    switch (msg) {
+        win32.ui.windows_and_messaging.WM_GETMINMAXINFO => {
+            return 1;
+        },
+        win32.ui.windows_and_messaging.WM_NCCREATE => {
+            return 1;
+        },
+        win32.ui.windows_and_messaging.WM_NCCALCSIZE => {
+            return 1;
+        },
+        win32.ui.windows_and_messaging.WM_CREATE => {
+            const CreateStruct = win32.ui.windows_and_messaging.CREATESTRUCTA;
+
+            const create_struct: *CreateStruct = @ptrFromInt(@as(usize, @bitCast(lparam)));
+
+            const window_system: *WindowSystem = @ptrCast(@alignCast(create_struct.lpCreateParams));
+
+            _ = win32.windowlongptr.SetWindowLongPtrA(wnd, .P_USERDATA, @bitCast(@intFromPtr(window_system)));
+
+            return 1;
+        },
+        else => {},
+    }
+
     const user_data = win32.windowlongptr.GetWindowLongPtrA(wnd, .P_USERDATA);
 
     const user_data_ptr: ?*anyopaque = @ptrFromInt(@as(usize, @bitCast(user_data)));
 
     if (user_data_ptr == null) {
-        std.log.info("user_data_ptr == null", .{});
-        return win32.ui.windows_and_messaging.DefWindowProcA(
-            wnd,
-            msg,
-            wparam,
-            lparam,
-        );
+        @panic("GetWindowLongPtrA returned null");
     }
 
     const window_system: *WindowSystem = @alignCast(@ptrCast(user_data_ptr.?));
 
     if (window_system.window_states.getPtr(wnd) == null) {
+        std.debug.print("window state is null\n", .{});
         return win32.ui.windows_and_messaging.DefWindowProcA(
             wnd,
             msg,

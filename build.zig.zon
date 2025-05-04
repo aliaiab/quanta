@@ -20,12 +20,6 @@
             .url = "git+https://github.com/zigimg/zigimg#159bae9fa46c596b9bae4aff5f8a8d7accbef333",
             .hash = "zigimg-0.1.0-AAAAAFTfEQAJC62NPfMQ4nom7AOE3HJmaIMwzAVTOqg6",
         },
-        //TODO: use github version
-        .spvine = .{
-            // .url = "https://github.com/zkburke/spvine/archive/1c22435b0034d5ea46dee0da14f7ad7ce6a9d2e6.tar.gz",
-            // .hash = "1220858951e403f3a8f5644239aa9dd883f9f02c1d608a912b7bd93ae5aadefa3448",
-            .path = "../spvine/",
-        },
         .zgltf = .{
             .url = "git+https://github.com/kooparse/zgltf/#b6579c3887c7ab0eef5f1eda09abbbc1f04d76ce",
             .hash = "zgltf-0.1.0-sX6QAqIKAgAfb7yQlVrdsLwCNc6Fx8wFOLIQRaEGJnVC",
@@ -33,6 +27,10 @@
         .glslang_zig = .{
             .url = "git+https://github.com/zkburke/glslang-zig.git#8c78cb3278dad47e1beb6a6bb7e19a6ba7e48ac8",
             .hash = "glslang_zig-0.0.0-V29wT6AxAADnNraYD2-LC6DdTUU2t_b52WszwcAZUGZ5",
+        },
+        .spvine = .{
+            .url = "git+https://github.com/zkburke/spvine#a739be5a9036f73d2ffa0bed2a99282f087f2e79",
+            .hash = "spvine-0.0.0-AAAAAKmwAgD00imV6UCn0ng62O0sSlNN12PwX_p45mq8",
         },
     },
     .paths = .{

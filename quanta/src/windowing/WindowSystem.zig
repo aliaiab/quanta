@@ -1,17 +1,21 @@
-//!Windowing context which contains information about all windows created, monitors, cursors ect..
+//! Represents a windowing context from which windows can be created.
+//! It is a logical connection to the underlying operating system window manager
 
 impl: Impl,
 
-pub fn init() !WindowSystem {
+pub fn init(
+    arena: std.mem.Allocator,
+    gpa: std.mem.Allocator,
+) !WindowSystem {
     const self = WindowSystem{
-        .impl = try Impl.init(),
+        .impl = try Impl.init(arena, gpa),
     };
 
     return self;
 }
 
-pub fn deinit(self: *WindowSystem) void {
-    self.impl.deinit();
+pub fn deinit(self: *WindowSystem, gpa: std.mem.Allocator) void {
+    self.impl.deinit(gpa);
 
     self.* = undefined;
 }
@@ -27,17 +31,27 @@ pub const CreateWindowOptions = struct {
 
 pub fn createWindow(
     self: *WindowSystem,
+    arena: std.mem.Allocator,
     gpa: std.mem.Allocator,
     options: CreateWindowOptions,
 ) !Window {
     const window = Window{
         .impl = try self.impl.createWindow(
+            arena,
             gpa,
             options,
         ),
     };
 
     return window;
+}
+
+pub fn destroyWindow(
+    self: *WindowSystem,
+    window: *Window,
+    gpa: std.mem.Allocator,
+) void {
+    return self.impl.destroyWindow(&window.impl, gpa);
 }
 
 ///Implementation structure

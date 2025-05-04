@@ -1,9 +1,7 @@
-impl: Impl,
+//! Represents a graphical window
+//! Has no observable notion of positioning and most state is left to the underlying window system to control (the operating system/window manager)
 
-pub fn deinit(self: *Window, gpa: std.mem.Allocator) void {
-    defer self.* = undefined;
-    defer self.impl.deinit(gpa);
-}
+impl: Impl,
 
 ///Polls window events and reads inputs relevent to that window into out_input
 pub fn pollEvents(
