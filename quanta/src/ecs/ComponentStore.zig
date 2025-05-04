@@ -1584,6 +1584,10 @@ fn archetypeAddRow(
 
     entities[entities.len - 1] = entity;
 
+    if (true) {
+        std.log.info("Hello world", .{});
+    }
+
     const entity_description = self.entity_map.get(entity).?;
 
     const row = RowLocation{

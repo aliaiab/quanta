@@ -12,6 +12,8 @@ pub fn build(builder: *Build) !void {
         .source_directory = builder.pathFromRoot("src/renderer_gui/shaders.zon"),
     });
 
+    // const cimgui_translate = builder.addTranslateC(.{});
+
     const quanta_imgui_module = builder.addModule("quanta_imgui", .{
         .root_source_file = builder.path("src/root.zig"),
         .imports = &.{
