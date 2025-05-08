@@ -1,6 +1,7 @@
 //! The input module
 
 pub const State = @import("input/State.zig");
+pub const Viewport = @import("input/Viewport.zig");
 pub const capture = @import("input/capture.zig");
 
 pub const KeyboardKey = enum(u8) {

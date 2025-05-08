@@ -137,7 +137,7 @@ pub fn pollEvents(self: *Window, out_input: *input.State) !void {
     window_state.cursor_pos_x = @truncate(cursor_pos.x - window_rect.left);
     window_state.cursor_pos_y = @truncate(cursor_pos.y - window_rect.top);
 
-    out_input.cursor_position = .{ window_state.cursor_pos_x, window_state.cursor_pos_y };
+    out_input.mouse_position = .{ window_state.cursor_pos_x, window_state.cursor_pos_y };
 
     for (std.enums.values(input.MouseButton)) |button| {
         out_input.buttons_mouse.set(button, self.getMouseButton(button));

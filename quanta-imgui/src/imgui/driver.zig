@@ -1,34 +1,22 @@
 var time: i64 = 0;
 
-// var cursors: [imgui.ImGuiMouseCursor_COUNT]glfw.Cursor = undefined;
-
 pub fn init() !void {
     const io: *imgui.ImGuiIO = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
     io.ConfigFlags |= imgui.ImGuiConfigFlags_DockingEnable;
-
-    // cursors[imgui.ImGuiMouseCursor_Arrow] = glfw.Cursor.createStandard(glfw.Cursor.Shape.arrow) orelse return error.FailedToCreateCursor;
-    // cursors[imgui.ImGuiMouseCursor_ResizeAll] = glfw.Cursor.createStandard(glfw.Cursor.Shape.resize_all) orelse return error.FailedToCreateCursor;
-    // cursors[imgui.ImGuiMouseCursor_ResizeEW] = glfw.Cursor.createStandard(glfw.Cursor.Shape.resize_ew) orelse return error.FailedToCreateCursor;
-    // cursors[imgui.ImGuiMouseCursor_ResizeNS] = glfw.Cursor.createStandard(glfw.Cursor.Shape.resize_ns) orelse return error.FailedToCreateCursor;
-    // cursors[imgui.ImGuiMouseCursor_ResizeNESW] = glfw.Cursor.createStandard(glfw.Cursor.Shape.resize_nesw) orelse return error.FailedToCreateCursor;
-    // cursors[imgui.ImGuiMouseCursor_ResizeNWSE] = glfw.Cursor.createStandard(glfw.Cursor.Shape.resize_nwse) orelse return error.FailedToCreateCursor;
-    // cursors[imgui.ImGuiMouseCursor_Hand] = glfw.Cursor.createStandard(glfw.Cursor.Shape.pointing_hand) orelse return error.FailedToCreateCursor;
-    // cursors[imgui.ImGuiMouseCursor_TextInput] = glfw.Cursor.createStandard(glfw.Cursor.Shape.ibeam) orelse return error.FailedToCreateCursor;
-    // cursors[imgui.ImGuiMouseCursor_NotAllowed] = glfw.Cursor.createStandard(glfw.Cursor.Shape.not_allowed) orelse return error.FailedToCreateCursor;
 }
 
-pub fn deinit() void {
-    // for (cursors) |cursor| {
-    //     cursor.destroy();
-    // }
-}
+pub fn deinit() void {}
 
-pub fn begin(window: *Window, input_state: quanta.input.State) !void {
+pub fn begin(
+    window: *Window,
+    input_state: quanta.input.State,
+    viewport: quanta.input.Viewport,
+) !void {
     const io: *imgui.ImGuiIO = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
-    const width = @as(f32, @floatFromInt(window.getWidth()));
-    const height = @as(f32, @floatFromInt(window.getHeight()));
+    const width = @as(f32, @floatFromInt(viewport.width));
+    const height = @as(f32, @floatFromInt(viewport.height));
 
     io.DisplaySize = imgui.ImVec2{
         .x = width,
@@ -44,7 +32,7 @@ pub fn begin(window: *Window, input_state: quanta.input.State) !void {
 
     imgui.ImGuiIO_AddFocusEvent(io, window.isFocused());
 
-    updateInputs(window, input_state);
+    updateInputs(window, input_state, viewport);
 }
 
 pub fn end() void {}
@@ -52,11 +40,13 @@ pub fn end() void {}
 fn updateInputs(
     window: *Window,
     input: quanta.input.State,
+    viewport: quanta.input.Viewport,
 ) void {
     const io = @as(*imgui.ImGuiIO, @ptrCast(imgui.igGetIO()));
 
     if (io.WantCaptureMouse) {} else {}
 
+    //Allow calling code to handle cursor capture (now possible with quanta.input)
     if (io.ConfigFlags & imgui.ImGuiConfigFlags_NoMouseCursorChange == 1 or window.isCursorCaptured()) {
         imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Left, false);
         imgui.ImGuiIO_AddMouseButtonEvent(io, imgui.ImGuiMouseButton_Right, false);
@@ -86,9 +76,11 @@ fn updateInputs(
         window.unhideCursor();
     }
 
-    const mouse_pos = input.getCursorPosition();
-
-    imgui.ImGuiIO_AddMousePosEvent(io, @as(f32, @floatFromInt(mouse_pos[0])), @as(f32, @floatFromInt(mouse_pos[1])));
+    imgui.ImGuiIO_AddMousePosEvent(
+        io,
+        @as(f32, @floatFromInt(viewport.cursor_position[0])),
+        @as(f32, @floatFromInt(viewport.cursor_position[1])),
+    );
 
     imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Ctrl, input.getKeyboardKey(.left_control) == .down or input.getKeyboardKey(.right_control) == .down);
     imgui.ImGuiIO_AddKeyEvent(io, imgui.ImGuiMod_Shift, input.getKeyboardKey(.left_shift) == .down or input.getKeyboardKey(.right_shift) == .down);
@@ -222,117 +214,6 @@ fn quantaToImGuiKey(key: quanta.input.KeyboardKey) c_uint {
         .F11 => imgui.ImGuiKey_F11,
         .F12 => imgui.ImGuiKey_F12,
         else => imgui.ImGuiKey_None,
-    };
-}
-
-fn quantaKeyToUtf8(key: windowing.Key) ?u8 {
-    return switch (key) {
-        .tab => null,
-        .left => null,
-        .right => null,
-        .up => null,
-        .down => null,
-        .page_up => null,
-        .page_down => null,
-        .home => null,
-        .end => null,
-        .insert => null,
-        .delete => null,
-        .backspace => null,
-        .space => ' ',
-        .enter => '\n',
-        .escape => null,
-        .apostrophe => '\'',
-        .comma => ',',
-        .minus => '-',
-        .period => '.',
-        .slash => '/',
-        .semicolon => ';',
-        .equal => '=',
-        .left_bracket => '[',
-        .backslash => '\\',
-        .right_bracket => ']',
-        .grave_accent => '`',
-        .caps_lock => null,
-        .scroll_lock => null,
-        .num_lock => null,
-        .print_screen => null,
-        .pause => null,
-        .kp_0 => '0',
-        .kp_1 => '1',
-        .kp_2 => '2',
-        .kp_3 => '3',
-        .kp_4 => '4',
-        .kp_5 => '5',
-        .kp_6 => '6',
-        .kp_7 => '7',
-        .kp_8 => '8',
-        .kp_9 => '9',
-        .kp_decimal => null,
-        .kp_divide => null,
-        .kp_multiply => null,
-        .kp_subtract => null,
-        .kp_add => null,
-        .kp_enter => null,
-        .kp_equal => null,
-        .left_shift => null,
-        .left_control => null,
-        .left_alt => null,
-        .left_super => null,
-        .right_shift => null,
-        .right_control => null,
-        .right_alt => null,
-        .right_super => null,
-        .menu => null,
-        .zero => '0',
-        .one => '1',
-        .two => '2',
-        .three => '3',
-        .four => '4',
-        .five => '5',
-        .six => '6',
-        .seven => '7',
-        .eight => '8',
-        .nine => '9',
-        .a => 'a',
-        .b => 'b',
-        .c => 'c',
-        .d => 'd',
-        .e => 'e',
-        .f => 'f',
-        .g => 'g',
-        .h => 'h',
-        .i => 'i',
-        .j => 'j',
-        .k => 'k',
-        .l => 'l',
-        .m => 'm',
-        .n => 'n',
-        .o => 'o',
-        .p => 'p',
-        .q => 'q',
-        .r => 'r',
-        .s => 's',
-        .t => 't',
-        .u => 'u',
-        .v => 'v',
-        .w => 'w',
-        .x => 'x',
-        .y => 'y',
-        .z => 'z',
-        .F1 => null,
-        .F2 => null,
-        .F3 => null,
-        .F4 => null,
-        .F5 => null,
-        .F6 => null,
-        .F7 => null,
-        .F8 => null,
-        .F9 => null,
-        .F10 => null,
-        .F11 => null,
-        .F12 => null,
-        else => null,
     };
 }
 

@@ -191,7 +191,11 @@ pub fn deinit(self: *XcbWindow, gpa: std.mem.Allocator) void {
 }
 
 ///return false if we need to close
-pub fn pollEvents(self: *XcbWindow, out_input: *input.State) !void {
+pub fn pollEvents(
+    self: *XcbWindow,
+    out_input: *input.State,
+    out_viewport: *input.Viewport,
+) !void {
     self.previous_key_map = self.key_map;
     self.previous_mouse_map = self.mouse_map;
     self.last_cursor_position = self.cursor_position;
@@ -305,6 +309,8 @@ pub fn pollEvents(self: *XcbWindow, out_input: *input.State) !void {
                 const raw_cursor_delta = new_cursor_pos - self.last_cursor_position;
                 _ = raw_cursor_delta; // autofix
 
+                out_viewport.cursor_position = .{ new_cursor_pos[0], new_cursor_pos[1] };
+
                 if (self.cursor_grabbed) {
                     if (motion_notify.event_x == 0) {
                         self.xcb_library.warpPointer(
@@ -313,9 +319,10 @@ pub fn pollEvents(self: *XcbWindow, out_input: *input.State) !void {
                             self.window,
                             motion_notify.event_x,
                             motion_notify.event_y,
-                            self.getWidth(),
-                            self.getHeight(),
-                            @intCast(self.getWidth() - 1),
+                            //TODO: make sure these are initialized first
+                            out_viewport.width,
+                            out_viewport.height,
+                            @intCast(out_viewport.width - 1),
                             motion_notify.event_y,
                         );
 
@@ -359,7 +366,8 @@ pub fn pollEvents(self: *XcbWindow, out_input: *input.State) !void {
             },
             .leave_notify => {},
             .configure_notify => |configure_notify| {
-                _ = configure_notify; // autofix
+                out_viewport.width = configure_notify.width;
+                out_viewport.height = configure_notify.height;
             },
             .client_message => |client_message| {
                 if (client_message.data.data32[0] == @intFromEnum(self.wm_delete_window_atom)) {
@@ -378,10 +386,10 @@ pub fn pollEvents(self: *XcbWindow, out_input: *input.State) !void {
         }
     }
 
-    out_input.cursor_motion = self.cursor_position -% self.last_cursor_position;
-
-    out_input.cursor_position = self.cursor_position;
+    out_input.mouse_motion = self.cursor_position -% self.last_cursor_position;
     out_input.mouse_scroll = self.mouse_scroll;
+
+    out_viewport.cursor_motion = out_input.mouse_motion;
 
     for (std.enums.values(input.MouseButton)) |button| {
         out_input.buttons_mouse.set(button, self.getMouseButton(button));
@@ -394,18 +402,6 @@ pub fn pollEvents(self: *XcbWindow, out_input: *input.State) !void {
 
 pub fn shouldClose(self: *XcbWindow) bool {
     return self.should_close;
-}
-
-pub fn getWidth(self: XcbWindow) u16 {
-    const reply = self.xcb_library.getGeometry(self.connection, @enumFromInt(@intFromEnum(self.window)));
-
-    return reply.width;
-}
-
-pub fn getHeight(self: XcbWindow) u16 {
-    const reply = self.xcb_library.getGeometry(self.connection, @enumFromInt(@intFromEnum(self.window)));
-
-    return reply.height;
 }
 
 pub fn captureCursor(self: *XcbWindow) void {

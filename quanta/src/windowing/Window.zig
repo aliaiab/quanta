@@ -8,23 +8,18 @@ pub fn pollEvents(
     self: *Window,
     ///Inputs from the window are written into here
     out_input: *input.State,
+    ///The viewport inputs are written to here
+    out_viewport: *input.Viewport,
 ) !void {
-    return self.impl.pollEvents(out_input);
+    return self.impl.pollEvents(
+        out_input,
+        out_viewport,
+    );
 }
 
 ///Returns true if the user requested to close the window
 pub fn shouldClose(self: *Window) bool {
     return self.impl.shouldClose();
-}
-
-///Get the current width of the window
-pub fn getWidth(self: Window) u16 {
-    return self.impl.getWidth();
-}
-
-///Get the current height of the window
-pub fn getHeight(self: Window) u16 {
-    return self.impl.getHeight();
 }
 
 ///Confines the cursor to the bounds of the window and hides it
