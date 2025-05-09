@@ -12,6 +12,16 @@ cursor_motion: [2]i16 = @splat(0),
 ///A default input state will not result in any actions in well behaved code
 pub const default_inert: Viewport = .{};
 
+pub fn slice(
+    old_viewport: Viewport,
+    new_width: u16,
+    new_height: u16,
+) Viewport {
+    _ = old_viewport; // autofix
+    _ = new_width; // autofix
+    _ = new_height; // autofix
+}
+
 ///Returns the aspect ratio of the viewport as a floating point type T
 pub fn aspectRatio(self: @This(), comptime T: type) T {
     const width: T = @floatFromInt(self.width);

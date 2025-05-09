@@ -73,10 +73,7 @@ pub fn init(
         .height = @truncate(@abs(window_rect.top - window_rect.bottom)),
     });
 
-    //TODO: we need to pass in the show cmd from win main, or some other way of getting it
-    //This ensures that the user can control whether a window starts off 'shown' or not
     _ = win32.ui.windows_and_messaging.ShowWindow(maybe_window_handle.?, win32.ui.windows_and_messaging.SW_SHOWNORMAL);
-    _ = win32.graphics.gdi.UpdateWindow(self.hwnd);
 }
 
 pub fn deinit(
@@ -89,7 +86,11 @@ pub fn deinit(
     self.* = undefined;
 }
 
-pub fn pollEvents(self: *Window, out_input: *input.State) !void {
+pub fn pollEvents(
+    self: *Window,
+    out_input: *input.State,
+    out_viewport: *input.Viewport,
+) !void {
     var message: win32.ui.windows_and_messaging.MSG = undefined;
     @memset(std.mem.asBytes(&message), 0);
 
@@ -113,10 +114,6 @@ pub fn pollEvents(self: *Window, out_input: *input.State) !void {
         _ = win32.ui.windows_and_messaging.TranslateMessage(&message);
         _ = win32.ui.windows_and_messaging.DispatchMessageA(&message);
 
-        if (message.message == win32.ui.windows_and_messaging.WM_PAINT) {
-            break;
-        }
-
         if (message.message == win32.ui.windows_and_messaging.WM_QUIT) {
             window_state.should_close = true;
             break;
@@ -137,7 +134,10 @@ pub fn pollEvents(self: *Window, out_input: *input.State) !void {
     window_state.cursor_pos_x = @truncate(cursor_pos.x - window_rect.left);
     window_state.cursor_pos_y = @truncate(cursor_pos.y - window_rect.top);
 
-    out_input.mouse_position = .{ window_state.cursor_pos_x, window_state.cursor_pos_y };
+    out_viewport.width = window_state.width;
+    out_viewport.height = window_state.height;
+
+    out_viewport.cursor_position = .{ window_state.cursor_pos_x, window_state.cursor_pos_y };
 
     for (std.enums.values(input.MouseButton)) |button| {
         out_input.buttons_mouse.set(button, self.getMouseButton(button));
@@ -151,14 +151,6 @@ pub fn pollEvents(self: *Window, out_input: *input.State) !void {
 
 pub fn shouldClose(self: *Window) bool {
     return self.window_system.window_states.get(self.hwnd).?.should_close;
-}
-
-pub fn getWidth(self: Window) u16 {
-    return self.window_system.window_states.getPtr(self.hwnd).?.width;
-}
-
-pub fn getHeight(self: Window) u16 {
-    return self.window_system.window_states.getPtr(self.hwnd).?.height;
 }
 
 pub fn captureCursor(self: *Window) void {
@@ -223,18 +215,34 @@ fn wndProc(
     msg: u32,
     wparam: win32.foundation.WPARAM,
     lparam: win32.foundation.LPARAM,
-) callconv(@import("std").os.windows.WINAPI) win32.foundation.LRESULT {
-    std.debug.print("wndproc msg = {}\n", .{msg});
-
+) callconv(.winapi) win32.foundation.LRESULT {
     switch (msg) {
         win32.ui.windows_and_messaging.WM_GETMINMAXINFO => {
-            return 1;
+            return win32.ui.windows_and_messaging.DefWindowProcA(
+                wnd,
+                msg,
+                wparam,
+                lparam,
+            );
         },
         win32.ui.windows_and_messaging.WM_NCCREATE => {
+            const CreateStruct = win32.ui.windows_and_messaging.CREATESTRUCTA;
+
+            const create_struct: *CreateStruct = @ptrFromInt(@as(usize, @bitCast(lparam)));
+
+            const window_system: *WindowSystem = @ptrCast(@alignCast(create_struct.lpCreateParams));
+
+            _ = win32.windowlongptr.SetWindowLongPtrA(wnd, .P_USERDATA, @bitCast(@intFromPtr(window_system)));
+
             return 1;
         },
         win32.ui.windows_and_messaging.WM_NCCALCSIZE => {
-            return 1;
+            return win32.ui.windows_and_messaging.DefWindowProcA(
+                wnd,
+                msg,
+                wparam,
+                lparam,
+            );
         },
         win32.ui.windows_and_messaging.WM_CREATE => {
             const CreateStruct = win32.ui.windows_and_messaging.CREATESTRUCTA;
@@ -255,7 +263,7 @@ fn wndProc(
     const user_data_ptr: ?*anyopaque = @ptrFromInt(@as(usize, @bitCast(user_data)));
 
     if (user_data_ptr == null) {
-        @panic("GetWindowLongPtrA returned null");
+        @panic("user_data_ptr == null");
     }
 
     const window_system: *WindowSystem = @alignCast(@ptrCast(user_data_ptr.?));

@@ -172,7 +172,6 @@ pub fn run() !void {
     const shader = glslang_c.glslang_shader_create(@ptrCast(&input)) orelse return error.FailedToCreateShader;
     defer glslang_c.glslang_shader_delete(shader);
 
-    // glslang_c.glslang_shader_set_preamble(shader, "#extension GL_GOOGLE_include_directive : enable\n");
     glslang_c.glslang_shader_set_options(shader, glslang_c.GLSLANG_SHADER_AUTO_MAP_LOCATIONS);
 
     errdefer {

@@ -1,5 +1,99 @@
 //! Hand maintained imgui bindings
 
+pub fn createContext(
+    options: struct {},
+) *Context {
+    _ = options; // autofix
+    return @ptrCast(cimgui.igCreateContext(null));
+}
+
+pub fn getIO() *IO {
+    return @ptrCast(cimgui.igGetIO());
+}
+
+pub fn showDemoWindow(options: struct {}) void {
+    _ = options; // autofix
+    cimgui.igShowDemoWindow(null);
+}
+
+pub fn dockSpace(
+    id: Id,
+    options: struct {},
+) void {
+    _ = options; // autofix
+    _ = cimgui.igDockSpace(@bitCast(id.value), .{ .x = 0, .y = 0 }, 0, null);
+}
+
+pub fn separator(
+    options: struct {},
+) void {
+    _ = options; // autofix
+    cimgui.igSeparator();
+}
+
+pub fn newLine() void {
+    cimgui.igNewLine();
+}
+
+pub fn beginMenuBar() bool {
+    return cimgui.igBeginMenuBar();
+}
+
+pub fn endMenuBar() void {
+    cimgui.igEndMenuBar();
+}
+
+pub fn beginMenu(
+    label: [:0]const u8,
+    options: struct {
+        enabled: bool = true,
+    },
+) bool {
+    return cimgui.igBeginMenu(label.ptr, options.enabled);
+}
+
+pub fn endMenu() void {
+    return cimgui.igEndMenu();
+}
+
+pub fn menuItem(
+    label: [:0]const u8,
+    options: struct {
+        shortcut: ?[:0]const u8 = null,
+        selected: bool = false,
+        enabled: bool = true,
+    },
+) bool {
+    return cimgui.igMenuItem_Bool(
+        label.ptr,
+        if (options.shortcut != null) options.shortcut.?.ptr else null,
+        options.selected,
+        options.enabled,
+    );
+}
+
+///Push and id value, can be an integer, pointer or a string
+pub fn pushId(value: anytype) void {
+    const T = @TypeOf(value);
+
+    switch (@typeInfo(T)) {
+        .int => |int_info| {
+            const cint: c_int = switch (int_info.signedness) {
+                .signed => @intCast(value),
+                //TODO: handle unsigned ints differently
+                .unsigned => @intCast(value),
+            };
+
+            cimgui.igPushID_Int(cint);
+        },
+        else => @compileError("type of value not supported for id creation!"),
+    }
+}
+
+pub fn popId() void {
+    cimgui.igPopID();
+}
+
 pub fn begin(
     name: [:0]const u8,
     options: struct {
@@ -150,7 +244,7 @@ pub fn render() void {
     cimgui.igRender();
 }
 
-pub fn getDrawData() *cimgui.ImDrawData {
+pub fn getDrawData() *DrawData {
     return @ptrCast(cimgui.igGetDrawData());
 }
 
@@ -251,6 +345,10 @@ pub const SliderFlags = packed struct(u32) {
 
     _: u28 = 0,
 };
+
+pub const Context = cimgui.ImGuiContext;
+pub const DrawData = cimgui.ImDrawData;
+pub const IO = cimgui.ImGuiIO;
 
 fn userImageToImTextureID(
     user_image: anytype,
