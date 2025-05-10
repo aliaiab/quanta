@@ -10,14 +10,29 @@ pub fn pollEvents(
     out_viewport: *input.Viewport,
     out_surface_region: *windowing.SurfaceRegion,
 ) !void {
-    _ = out_input; // autofix
+    self.listener_state.out_input_state = out_input;
+    self.listener_state.out_viewport_state = out_viewport;
+
     if (self.window_system.display.roundtrip() != .SUCCESS) return error.RoundtripFailed;
 
     out_viewport.width = @intCast(self.listener_state.width);
     out_viewport.height = @intCast(self.listener_state.height);
 
+    if (self.window_system.listener_state.focus_window_state != self.listener_state) {
+        out_viewport.cursor_position = @splat(-1);
+        out_viewport.cursor_motion = @splat(0);
+    }
+
     out_surface_region.width = @intCast(self.listener_state.width);
     out_surface_region.height = @intCast(self.listener_state.height);
+}
+
+fn pollSingle(fd: i32, events: i16, timeout: i32) !usize {
+    var poll_fds: [1]std.posix.pollfd = .{
+        .{ .fd = fd, .events = events, .revents = 0 },
+    };
+
+    return try std.posix.poll(&poll_fds, timeout);
 }
 
 pub fn shouldClose(self: *Window) bool {
@@ -64,6 +79,9 @@ pub const ListenerState = struct {
     surface: *wl.Surface,
     running: bool,
 
+    out_input_state: ?*input.State = null,
+    out_viewport_state: ?*input.Viewport = null,
+
     width: i32 = -1,
     height: i32 = -1,
 };
@@ -80,8 +98,10 @@ pub fn xdgSurfaceListener(xdg_surface: *xdg.Surface, event: xdg.Surface.Event, s
 pub fn xdgToplevelListener(_: *xdg.Toplevel, event: xdg.Toplevel.Event, state: *ListenerState) void {
     switch (event) {
         .configure => |configure| {
-            state.width = configure.width;
-            state.height = configure.height;
+            if (configure.width != 0 and configure.height != 0) {
+                state.width = configure.width;
+                state.height = configure.height;
+            }
         },
         .close => state.running = false,
     }

@@ -4,11 +4,34 @@ pub const Library = struct {
         context_unref: *const fn (context: *Context) callconv(.c) void,
         state_new: *const fn (keymap: *Keymap) callconv(.c) *State,
         state_unref: *const fn (state: *State) callconv(.c) void,
-        keymap_new_from_names: *const fn (context: *Context, names: ?*const RuleNames, flags: KeymapCompileFlags) callconv(.c) *Keymap,
+        keymap_new_from_names: *const fn (
+            context: *Context,
+            names: ?*const RuleNames,
+            flags: KeymapCompileFlags,
+        ) callconv(.c) *Keymap,
+        keymap_new_from_buffer: *const fn (
+            context: *Context,
+            buffer: [*]const u8,
+            length: usize,
+            format: KeymapFormat,
+            flags: KeymapCompileFlags,
+        ) callconv(.c) ?*Keymap,
         keymap_unref: *const fn (keymap: *Keymap) callconv(.c) void,
-        state_key_get_one_sym: *const fn (state: *State, key: KeyCode) callconv(.c) KeySym,
-        state_key_get_utf8: *const fn (state: *State, key: KeyCode, buffer: [*]u8, size: usize) callconv(.c) u32,
-        state_update_key: *const fn (state: *State, key: KeyCode, direction: KeyDirection) callconv(.c) StateComponent,
+        state_key_get_one_sym: *const fn (
+            state: *State,
+            key: KeyCode,
+        ) callconv(.c) KeySym,
+        state_key_get_utf8: *const fn (
+            state: *State,
+            key: KeyCode,
+            buffer: [*]u8,
+            size: usize,
+        ) callconv(.c) u32,
+        state_update_key: *const fn (
+            state: *State,
+            key: KeyCode,
+            direction: KeyDirection,
+        ) callconv(.c) StateComponent,
     },
 
     dynamic_library: std.DynLib,
@@ -40,6 +63,10 @@ pub const Library = struct {
 
     pub inline fn keymapNewFromNames(self: Library, context: *Context, names: ?*const RuleNames, flags: KeymapCompileFlags) *Keymap {
         return self.functions.keymap_new_from_names(context, names, flags);
+    }
+
+    pub inline fn keymapNewFromBuffer(self: Library, context: *Context, buffer: [*]const u8, length: usize, format: KeymapFormat, flags: KeymapCompileFlags) ?*Keymap {
+        return self.functions.keymap_new_from_buffer(context, buffer, length, format, flags);
     }
 
     pub inline fn keymapUnref(self: Library, keymap: *Keymap) void {
@@ -136,5 +163,9 @@ pub const ContextFlags = packed struct(u32) {
 pub const Context = opaque {};
 pub const Keymap = opaque {};
 pub const State = opaque {};
+
+pub const KeymapFormat = enum(u32) {
+    text_v1 = 1,
+};
 
 const std = @import("std");

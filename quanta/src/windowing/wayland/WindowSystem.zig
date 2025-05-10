@@ -3,13 +3,14 @@ registry: *wl.Registry,
 compositor: *wl.Compositor,
 wm_base: *xdg.WmBase,
 seat: *wl.Seat,
+pointer: ?*wl.Pointer,
 decoration_manager: ?*zxdg.DecorationManagerV1,
+listener_state: *ListenerState,
 
 pub fn init(
     arena: std.mem.Allocator,
     gpa: std.mem.Allocator,
 ) !WindowSystem {
-    _ = arena; // autofix
     _ = gpa; // autofix
 
     const display = try wl.Display.connect(null);
@@ -29,7 +30,15 @@ pub fn init(
         return error.WmBaseNull;
     }
 
-    registry_context.seat.?.setListener(?*anyopaque, &seatListener, null);
+    const listener_state = try arena.create(ListenerState);
+
+    listener_state.* = .{};
+
+    registry_context.seat.?.setListener(*ListenerState, &seatListener, listener_state);
+
+    const pointer = try registry_context.seat.?.getPointer();
+
+    pointer.setListener(*ListenerState, &pointerListener, listener_state);
 
     return .{
         .display = display,
@@ -37,15 +46,23 @@ pub fn init(
         .compositor = registry_context.compositor.?,
         .wm_base = registry_context.wm_base.?,
         .seat = registry_context.seat.?,
+        .pointer = pointer,
         .decoration_manager = registry_context.decoration_manager,
+        .listener_state = listener_state,
     };
 }
 
 pub fn deinit(self: *WindowSystem, gpa: std.mem.Allocator) void {
     _ = gpa; // autofix
 
+    _ = self.display.roundtrip();
+
     if (self.decoration_manager) |decoration_manager| {
         decoration_manager.destroy();
+    }
+
+    if (self.pointer) |pointer| {
+        pointer.destroy();
     }
 
     self.seat.destroy();
@@ -77,6 +94,8 @@ pub fn createWindow(
         .running = true,
         .surface = surface,
     };
+
+    try self.listener_state.window_listener_states.put(arena, surface, listener_state);
 
     xdg_surface.setListener(*Window.ListenerState, Window.xdgSurfaceListener, listener_state);
     toplevel.setListener(*Window.ListenerState, Window.xdgToplevelListener, listener_state);
@@ -129,6 +148,7 @@ const RegistryHandlerContext = struct {
     wm_base: ?*xdg.WmBase,
     decoration_manager: ?*zxdg.DecorationManagerV1,
     seat: ?*wl.Seat,
+    pointer: ?*wl.Pointer,
 };
 
 fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *RegistryHandlerContext) void {
@@ -150,16 +170,85 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *
     }
 }
 
-fn seatListener(seat: *wl.Seat, event: wl.Seat.Event, data: ?*anyopaque) void {
+fn seatListener(seat: *wl.Seat, event: wl.Seat.Event, state: *ListenerState) void {
+    _ = state; // autofix
     _ = seat; // autofix
     _ = event; // autofix
-    _ = data; // autofix
 }
+
+fn pointerListener(pointer: *wl.Pointer, event: wl.Pointer.Event, state: *ListenerState) void {
+    _ = pointer; // autofix
+    switch (event) {
+        .enter => |enter_event| {
+            state.focus_window_state = state.window_listener_states.get(enter_event.surface.?).?;
+        },
+        .leave => |leave_event| {
+            _ = leave_event; // autofix
+            state.focus_window_state = null;
+
+            if (state.focus_window_state == null) return;
+
+            if (state.focus_window_state.?.out_input_state == null) return;
+
+            const input_state = state.focus_window_state.?.out_input_state.?;
+            _ = input_state; // autofix
+            const input_viewport = state.focus_window_state.?.out_viewport_state.?;
+
+            input_viewport.cursor_position = @splat(-1);
+            input_viewport.cursor_motion = @splat(0);
+        },
+        .motion => |motion_event| {
+            if (state.focus_window_state == null) return;
+
+            if (state.focus_window_state.?.out_input_state == null) return;
+
+            const input_state = state.focus_window_state.?.out_input_state.?;
+            const input_viewport = state.focus_window_state.?.out_viewport_state.?;
+            _ = input_state; // autofix
+
+            input_viewport.cursor_position = .{
+                @intCast(motion_event.surface_x.toInt()),
+                @intCast(motion_event.surface_y.toInt()),
+            };
+        },
+        .button => |button_event| {
+            if (state.focus_window_state == null) return;
+
+            if (state.focus_window_state.?.out_input_state == null) return;
+
+            const linux_mouse_input_code_offset = 0x110;
+
+            const input_state = state.focus_window_state.?.out_input_state.?;
+
+            const button_code = button_event.button - linux_mouse_input_code_offset;
+
+            std.log.info("button_code = {}", .{button_code});
+            std.log.info("state = {}", .{button_event.state});
+
+            switch (button_event.state) {
+                .released => {
+                    input_state.buttons_mouse.set(@enumFromInt(button_code), .release);
+                },
+                .pressed => {
+                    input_state.buttons_mouse.set(@enumFromInt(button_code), .down);
+                },
+                else => {},
+            }
+        },
+        else => {},
+    }
+}
+
+const ListenerState = struct {
+    focus_window_state: ?*Window.ListenerState = null,
+    window_listener_states: std.AutoArrayHashMapUnmanaged(*wl.Surface, *Window.ListenerState) = .{},
+};
 
 const std = @import("std");
 const zxdg = wayland.client.zxdg;
 const xdg = wayland.client.xdg;
 const wl = wayland.client.wl;
+const input = @import("../../input.zig");
 const wayland = @import("wayland");
 const windowing = @import("../../windowing.zig");
 const WindowSystem = @This();

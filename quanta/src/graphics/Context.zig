@@ -158,9 +158,11 @@ fn getInstanceProcAddress(instance: vk.Instance, name: [*:0]const u8) vk.PfnVoid
     var result = vkGetInstanceProcAddr(instance, name);
 
     if (quanta_options.windowing.preferred_backend == .branch_wayland_xcb) {
+        //Handles the windowing combinatorial backend for wayland+xcb
+        //In that case, we will choose either wayland or xcb, but not both
         if (std.mem.eql(u8, std.mem.span(name), "vkCreateXcbSurfaceKHR") or std.mem.eql(u8, std.mem.span(name), "vkCreateWaylandSurfaceKHR")) {
             if (result == null) {
-                result = undefined;
+                result = @ptrFromInt(1);
             }
         }
     }
@@ -424,6 +426,7 @@ pub fn init(
 
     if (enable_khronos_validation) {
         requested_layers = requested_layers ++ &[_][*:0]const u8{"VK_LAYER_KHRONOS_validation"};
+        //TODO: this is only needed if the underlying device does not implement sync 2
         requested_layers = requested_layers ++ &[_][*:0]const u8{"VK_LAYER_KHRONOS_synchronization2"};
     }
 

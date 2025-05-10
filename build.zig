@@ -100,7 +100,9 @@ pub fn build(builder: *std.Build) !void {
                 quanta_module.addImport("wayland", wayland_module);
             }
 
-            quanta_module.linkSystemLibrary("wayland-client", .{});
+            quanta_module.linkSystemLibrary("wayland-client", .{
+                .weak = true,
+            });
         },
         .windows => {
             const maybe_zigwin32 = builder.lazyDependency("zigwin32", .{});

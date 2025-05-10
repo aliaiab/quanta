@@ -187,6 +187,9 @@ pub fn recreate(
     const gpa = self.gpa;
     const arena = self.arena;
     const old_handle = self.handle;
+
+    Context.self.vkd.deviceWaitIdle(Context.self.device) catch @panic("");
+
     self.deinitExceptSwapchain();
     self.* = try initRecycle(
         gpa,
@@ -227,6 +230,10 @@ pub fn obtainNextImage(
             },
         }
     };
+
+    if (result.result == .suboptimal_khr) {
+        self.need_to_recreate = true;
+    }
 
     if (result.image_index >= self.swap_images.len) {
         log.info("res.image_index = 0x{x}", .{result.image_index});
