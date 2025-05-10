@@ -1,14 +1,14 @@
 pub const Library = struct {
     functions: struct {
-        context_new: *const fn (flags: ContextFlags) callconv(.C) *Context,
-        context_unref: *const fn (context: *Context) callconv(.C) void,
-        state_new: *const fn (keymap: *Keymap) callconv(.C) *State,
-        state_unref: *const fn (state: *State) callconv(.C) void,
-        keymap_new_from_names: *const fn (context: *Context, names: ?*const RuleNames, flags: KeymapCompileFlags) callconv(.C) *Keymap,
-        keymap_unref: *const fn (keymap: *Keymap) callconv(.C) void,
-        state_key_get_one_sym: *const fn (state: *State, key: KeyCode) callconv(.C) KeySym,
-        state_key_get_utf8: *const fn (state: *State, key: KeyCode, buffer: [*]u8, size: usize) callconv(.C) u32,
-        state_update_key: *const fn (state: *State, key: KeyCode, direction: KeyDirection) callconv(.C) StateComponent,
+        context_new: *const fn (flags: ContextFlags) callconv(.c) *Context,
+        context_unref: *const fn (context: *Context) callconv(.c) void,
+        state_new: *const fn (keymap: *Keymap) callconv(.c) *State,
+        state_unref: *const fn (state: *State) callconv(.c) void,
+        keymap_new_from_names: *const fn (context: *Context, names: ?*const RuleNames, flags: KeymapCompileFlags) callconv(.c) *Keymap,
+        keymap_unref: *const fn (keymap: *Keymap) callconv(.c) void,
+        state_key_get_one_sym: *const fn (state: *State, key: KeyCode) callconv(.c) KeySym,
+        state_key_get_utf8: *const fn (state: *State, key: KeyCode, buffer: [*]u8, size: usize) callconv(.c) u32,
+        state_update_key: *const fn (state: *State, key: KeyCode, direction: KeyDirection) callconv(.c) StateComponent,
     },
 
     dynamic_library: std.DynLib,

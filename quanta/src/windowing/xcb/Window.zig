@@ -31,7 +31,7 @@ pub fn init(
     gpa: std.mem.Allocator,
     window_system: *XcbWindowSystem,
     options: windowing.WindowSystem.CreateWindowOptions,
-) !XcbWindow {
+) !struct { XcbWindow, windowing.SurfaceRegion } {
     _ = arena; // autofix
     _ = gpa;
 
@@ -174,7 +174,12 @@ pub fn init(
 
     _ = self.xcb_library.flush(self.connection);
 
-    return self;
+    const window_geometry = self.xcb_library.getGeometry(self.connection, @enumFromInt(@intFromEnum(self.window)));
+
+    return .{
+        self,
+        .{ .width = window_geometry.width, .height = window_geometry.height },
+    };
 }
 
 pub fn deinit(self: *XcbWindow, gpa: std.mem.Allocator) void {
@@ -191,6 +196,7 @@ pub fn pollEvents(
     self: *XcbWindow,
     out_input: *input.State,
     out_viewport: *input.Viewport,
+    out_surface_region: *windowing.SurfaceRegion,
 ) !void {
     self.previous_key_map = self.key_map;
     self.previous_mouse_map = self.mouse_map;
@@ -277,7 +283,7 @@ pub fn pollEvents(
 
                 self.text_len += text_len;
 
-                if (xkbKeyToQuantaKey(keysym)) |key| {
+                if (xkb_keys.xkbKeyToQuantaKey(keysym)) |key| {
                     const time_difference = key_press.time - self.key_press_timestamps[@intFromEnum(key)];
 
                     if (time_difference == key_press.time or
@@ -295,7 +301,7 @@ pub fn pollEvents(
 
                 _ = self.xkbcommon_library.stateUpdateKey(self.xkb_state, @enumFromInt(key_release.detail), .up);
 
-                if (xkbKeyToQuantaKey(keysym)) |key| {
+                if (xkb_keys.xkbKeyToQuantaKey(keysym)) |key| {
                     self.key_map[@intFromEnum(key)] = false;
                 }
             },
@@ -381,6 +387,14 @@ pub fn pollEvents(
             else => {},
         }
     }
+
+    const window_geometry = self.xcb_library.getGeometry(self.connection, @enumFromInt(@intFromEnum(self.window)));
+
+    out_viewport.width = window_geometry.width;
+    out_viewport.height = window_geometry.height;
+
+    out_surface_region.height = window_geometry.width;
+    out_surface_region.height = window_geometry.height;
 
     out_input.mouse_motion = self.cursor_position -% self.last_cursor_position;
     out_input.mouse_scroll = self.mouse_scroll;
@@ -512,131 +526,6 @@ fn getCursorMotion(self: XcbWindow) @Vector(2, i16) {
     return self.mouse_motion;
 }
 
-///Convert xkb key symbol to windowing.Key
-fn xkbKeyToQuantaKey(keysym: xkbcommon_loader.KeySym) ?input.KeyboardKey {
-    return switch (keysym) {
-        .space => .space,
-        .apostrophe => .apostrophe,
-        .comma => .comma,
-        .minus => .minus,
-        .period => .period,
-        .slash => .slash,
-        .@"0" => .zero,
-        .@"1" => .one,
-        .@"2" => .two,
-        .@"3" => .three,
-        .@"4" => .four,
-        .@"5" => .five,
-        .@"6" => .six,
-        .@"7" => .seven,
-        .@"8" => .eight,
-        .@"9" => .nine,
-        .semicolon => .semicolon,
-        .equal => .equal,
-        .A, .a => .a,
-        .B, .b => .b,
-        .C, .c => .c,
-        .D, .d => .d,
-        .E, .e => .e,
-        .F, .f => .f,
-        .G, .g => .g,
-        .H, .h => .h,
-        .I, .i => .i,
-        .J, .j => .j,
-        .K, .k => .k,
-        .L, .l => .l,
-        .M, .m => .m,
-        .N, .n => .n,
-        .O, .o => .o,
-        .P, .p => .p,
-        .Q, .q => .q,
-        .R, .r => .r,
-        .S, .s => .s,
-        .T, .t => .t,
-        .U, .u => .u,
-        .V, .v => .v,
-        .W, .w => .w,
-        .X, .x => .x,
-        .Y, .y => .y,
-        .Z, .z => .z,
-        .botleftsqbracket => .left_bracket,
-        .backslash => .backslash,
-        .botrightsqbracket => .right_bracket,
-        .grave => .grave_accent,
-        .Escape => .escape,
-        .Return => .enter,
-        .Tab => .tab,
-        .BackSpace => .backspace,
-        .Insert => .insert,
-        .Delete => .delete,
-        .Right => .right,
-        .Left => .left,
-        .Down => .down,
-        .Up => .up,
-        .Page_Up => .page_up,
-        .Page_Down => .page_down,
-        .Home => .home,
-        .End => .end,
-        .Caps_Lock => .caps_lock,
-        .Scroll_Lock => .scroll_lock,
-        .Num_Lock => .num_lock,
-        .Print => .print_screen,
-        .Pause => .pause,
-        .F1 => .F1,
-        .F2 => .F2,
-        .F3 => .F3,
-        .F4 => .F4,
-        .F5 => .F5,
-        .F6 => .F6,
-        .F7 => .F7,
-        .F8 => .F8,
-        .F9 => .F9,
-        .F10 => .F10,
-        .F11 => .F11,
-        .F12 => .F12,
-        .F13 => .F13,
-        .F14 => .F14,
-        .F15 => .F15,
-        .F16 => .F16,
-        .F17 => .F17,
-        .F18 => .F18,
-        .F19 => .F19,
-        .F20 => .F20,
-        .F21 => .F21,
-        .F22 => .F22,
-        .F23 => .F23,
-        .F24 => .F24,
-        .F25 => .F25,
-        .KP_0 => .kp_0,
-        .KP_1 => .kp_1,
-        .KP_2 => .kp_2,
-        .KP_3 => .kp_3,
-        .KP_4 => .kp_4,
-        .KP_5 => .kp_5,
-        .KP_6 => .kp_6,
-        .KP_7 => .kp_7,
-        .KP_8 => .kp_8,
-        .KP_9 => .kp_9,
-        .KP_Decimal => .kp_decimal,
-        .KP_Divide => .kp_divide,
-        .KP_Multiply => .kp_multiply,
-        .KP_Subtract => .kp_subtract,
-        .KP_Add => .kp_add,
-        .KP_Enter => .kp_enter,
-        .KP_Equal => .kp_equal,
-        .Shift_L => .left_shift,
-        .Control_L => .left_control,
-        .Alt_L => .left_alt,
-        .Super_L => .left_super,
-        .Shift_R => .right_shift,
-        .Control_R => .right_control,
-        .Alt_R => .right_alt,
-        .Super_R => .right_super,
-        .Menu => .menu,
-        else => null,
-    };
-}
-
 const XcbWindow = @This();
 const XcbWindowSystem = @import("WindowSystem.zig");
 const std = @import("std");
@@ -647,5 +536,6 @@ const Action = input.ButtonAction;
 const xcb = @import("xcb.zig");
 const xcb_input = @import("xinput.zig");
 const xcb_loader = @import("xcb_loader.zig");
-const xkbcommon_loader = @import("xkbcommon_loader.zig");
+const xkbcommon_loader = @import("../common/xkbcommon_loader.zig");
+const xkb_keys = @import("../common/xkb_keys.zig");
 const xcb_xinput_loader = @import("xcb_xinput_loader.zig");

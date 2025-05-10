@@ -29,21 +29,20 @@ pub const CreateWindowOptions = struct {
     title: []const u8,
 };
 
+///Creates and configures a new window, returning the window and its initial surface region
 pub fn createWindow(
     self: *WindowSystem,
     arena: std.mem.Allocator,
     gpa: std.mem.Allocator,
     options: CreateWindowOptions,
-) !Window {
-    const window = Window{
-        .impl = try self.impl.createWindow(
-            arena,
-            gpa,
-            options,
-        ),
-    };
+) !struct { Window, windowing.SurfaceRegion } {
+    const backend_window, const surface_region = try self.impl.createWindow(
+        arena,
+        gpa,
+        options,
+    );
 
-    return window;
+    return .{ .{ .impl = backend_window }, surface_region };
 }
 
 pub fn destroyWindow(
@@ -56,7 +55,8 @@ pub fn destroyWindow(
 
 ///Implementation structure
 const Impl = switch (quanta_options.windowing.preferred_backend) {
-    .wayland => @compileError("Wayland not yet supported"),
+    .branch_wayland_xcb => @import("branch_wayland_xcb.zig").WindowSystem,
+    .wayland => @import("wayland/WindowSystem.zig"),
     .xcb => @import("xcb/WindowSystem.zig"),
     .win32 => @import("win32/WindowSystem.zig"),
 };
@@ -70,5 +70,6 @@ test {
 const WindowSystem = @This();
 const Window = @import("Window.zig");
 const windowing = @import("../windowing.zig");
+const branch_backend = @import("branch_backend.zig");
 const std = @import("std");
 const quanta_options = @import("../root.zig").quanta_options;

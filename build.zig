@@ -78,7 +78,30 @@ pub fn build(builder: *std.Build) !void {
         .linux,
         .openbsd,
         .freebsd,
-        => {},
+        => {
+            const maybe_wayland = builder.lazyDependency("wayland", .{});
+
+            if (maybe_wayland) |wayland| {
+                _ = wayland; // autofix
+
+                const Scanner = @import("wayland").Scanner;
+
+                const scanner = Scanner.create(builder, .{});
+
+                const wayland_module = builder.createModule(.{ .root_source_file = scanner.result });
+
+                scanner.addSystemProtocol("stable/xdg-shell/xdg-shell.xml");
+                scanner.addSystemProtocol("unstable/xdg-decoration/xdg-decoration-unstable-v1.xml");
+                scanner.generate("wl_compositor", 1);
+                scanner.generate("wl_seat", 1);
+                scanner.generate("xdg_wm_base", 3);
+                scanner.generate("zxdg_decoration_manager_v1", 1);
+
+                quanta_module.addImport("wayland", wayland_module);
+            }
+
+            quanta_module.linkSystemLibrary("wayland-client", .{});
+        },
         .windows => {
             const maybe_zigwin32 = builder.lazyDependency("zigwin32", .{});
 

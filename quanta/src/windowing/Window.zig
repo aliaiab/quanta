@@ -10,10 +10,13 @@ pub fn pollEvents(
     out_input: *input.State,
     ///The viewport inputs are written to here
     out_viewport: *input.Viewport,
+    ///The physical size of the window surface
+    out_surface_region: *windowing.SurfaceRegion,
 ) !void {
     return self.impl.pollEvents(
         out_input,
         out_viewport,
+        out_surface_region,
     );
 }
 
@@ -60,7 +63,8 @@ pub fn getUtf8Input(self: Window) []const u8 {
 
 ///Implementation structure
 const Impl = switch (quanta_options.windowing.preferred_backend) {
-    .wayland => @compileError("Wayland not supported"),
+    .branch_wayland_xcb => @import("branch_wayland_xcb.zig").Window,
+    .wayland => @import("wayland/Window.zig"),
     .xcb => @import("xcb/Window.zig"),
     .win32 => @import("win32/Window.zig"),
 };

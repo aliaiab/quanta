@@ -32,6 +32,11 @@
             .url = "git+https://github.com/zkburke/spvine#a739be5a9036f73d2ffa0bed2a99282f087f2e79",
             .hash = "spvine-0.0.0-AAAAAKmwAgD00imV6UCn0ng62O0sSlNN12PwX_p45mq8",
         },
+        .wayland = .{
+            .url = "git+https://codeberg.org/ifreund/zig-wayland#f3c5d503e540ada8cbcb056420de240af0c094f7",
+            .hash = "wayland-0.4.0-dev-lQa1kjfIAQCmhhQu3xF0KH-94-TzeMXOqfnP0-Dg6Wyy",
+            .lazy = true,
+        },
     },
     .paths = .{
         "",

@@ -29,12 +29,8 @@ pub fn createWindow(
     arena: std.mem.Allocator,
     gpa: std.mem.Allocator,
     options: windowing.WindowSystem.CreateWindowOptions,
-) !Window {
-    var window: Window = undefined;
-
-    try window.init(self, arena, gpa, options);
-
-    return window;
+) !struct { Window, windowing.SurfaceRegion } {
+    return Window.init(self, arena, gpa, options);
 }
 
 pub fn destroyWindow(

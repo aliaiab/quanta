@@ -10,13 +10,21 @@ swap_image_handles: []vk.Image,
 swap_image_views: []vk.ImageView,
 image_index: u32,
 next_image_acquired: Semaphore,
+need_to_recreate: bool = false,
 
 pub fn init(
     gpa: std.mem.Allocator,
     arena: std.mem.Allocator,
     surface: vk.SurfaceKHR,
+    actual_extent: vk.Extent2D,
 ) !Swapchain {
-    return try initRecycle(gpa, arena, surface, .null_handle);
+    return try initRecycle(
+        gpa,
+        arena,
+        surface,
+        .null_handle,
+        actual_extent,
+    );
 }
 
 pub fn initRecycle(
@@ -24,13 +32,15 @@ pub fn initRecycle(
     arena: std.mem.Allocator,
     surface: vk.SurfaceKHR,
     old_handle: vk.SwapchainKHR,
+    actual_extent: vk.Extent2D,
 ) !Swapchain {
     const caps = try Context.self.vki.getPhysicalDeviceSurfaceCapabilitiesKHR(Context.self.physical_device, surface);
-    const actual_extent = caps.current_extent;
 
     if (actual_extent.width == 0 or actual_extent.height == 0) {
         return error.InvalidSurfaceDimensions;
     }
+
+    std.debug.assert(actual_extent.width != std.math.maxInt(u32));
 
     const surface_format = try findSurfaceFormat(surface, gpa);
     const present_mode = try findPresentMode(surface, gpa);
@@ -63,6 +73,14 @@ pub fn initRecycle(
         .present_gravity_x = .{ .centered_bit_ext = true },
         .present_gravity_y = .{ .centered_bit_ext = true },
     };
+
+    const extent = .{
+        //I'm not even sure how this is even possible but x11 certainly found a way to do this, so thanks for that X.
+        .width = std.math.clamp(actual_extent.width, caps.min_image_extent.width, caps.max_image_extent.width),
+        .height = std.math.clamp(actual_extent.height, caps.min_image_extent.height, caps.max_image_extent.height),
+    };
+
+    std.log.info("{}", .{extent});
 
     const handle = try Context.self.vkd.createSwapchainKHR(Context.self.device, &.{
         .p_next = if (Context.self.optional_extensions.ext_swapchain_maintenance_1 != null and Context.self.optional_extensions.ext_surface_maintenance_1 != null) &present_scaling_info else null,
@@ -162,12 +180,21 @@ pub fn deinit(self: *Swapchain) void {
     Context.self.vkd.destroySwapchainKHR(Context.self.device, self.handle, null);
 }
 
-pub fn recreate(self: *Swapchain) !void {
+pub fn recreate(
+    self: *Swapchain,
+    actual_extent: vk.Extent2D,
+) !void {
     const gpa = self.gpa;
     const arena = self.arena;
     const old_handle = self.handle;
     self.deinitExceptSwapchain();
-    self.* = try initRecycle(gpa, arena, self.surface, old_handle);
+    self.* = try initRecycle(
+        gpa,
+        arena,
+        self.surface,
+        old_handle,
+        actual_extent,
+    );
 }
 
 pub fn currentImage(self: Swapchain) vk.Image {
@@ -179,7 +206,9 @@ pub fn currentSwapImage(self: Swapchain) *const SwapImage {
 }
 
 ///Obtain the next image for presentation
-pub fn obtainNextImage(self: *Swapchain) !Image {
+pub fn obtainNextImage(
+    self: *Swapchain,
+) !?Image {
     const result = Context.self.vkd.acquireNextImage2KHR(Context.self.device, &vk.AcquireNextImageInfoKHR{
         .swapchain = self.handle,
         .semaphore = self.next_image_acquired.handle,
@@ -189,11 +218,9 @@ pub fn obtainNextImage(self: *Swapchain) !Image {
     }) catch |e| {
         switch (e) {
             error.OutOfDateKHR => {
-                try Context.self.vkd.queueWaitIdle(Context.self.graphics_queue);
+                self.need_to_recreate = true;
 
-                try self.recreate();
-
-                return try self.obtainNextImage();
+                return null;
             },
             else => {
                 return e;
@@ -254,21 +281,13 @@ pub fn obtainNextImage(self: *Swapchain) !Image {
     return color_image;
 }
 
-pub fn present(self: *Swapchain) !void {
+pub fn present(
+    self: *Swapchain,
+) !void {
     const image_index = self.image_index;
     const image = self.swap_images[image_index];
 
-    const surface_capabilities = try Context.self.vki.getPhysicalDeviceSurfaceCapabilitiesKHR(Context.self.physical_device, self.surface);
-
-    if (self.extent.width != surface_capabilities.current_extent.width or self.extent.height != surface_capabilities.current_extent.height) {
-        try Context.self.vkd.queueWaitIdle(Context.self.graphics_queue);
-
-        try self.recreate();
-
-        return;
-    }
-
-    _ = Context.self.vkd.queuePresentKHR(Context.self.graphics_queue, &.{
+    const present_result = Context.self.vkd.queuePresentKHR(Context.self.graphics_queue, &.{
         .wait_semaphore_count = 1,
         .p_wait_semaphores = @as([*]const vk.Semaphore, @ptrCast(&image.render_finished)),
         .swapchain_count = 1,
@@ -278,15 +297,23 @@ pub fn present(self: *Swapchain) !void {
     }) catch |e| {
         switch (e) {
             error.OutOfDateKHR => {
-                try Context.self.vkd.queueWaitIdle(Context.self.graphics_queue);
+                self.need_to_recreate = true;
 
-                try self.recreate();
+                std.log.info("OUT OF DATE", .{});
+                return;
             },
             else => {
                 return e;
             },
         }
     };
+
+    switch (present_result) {
+        .suboptimal_khr => {
+            self.need_to_recreate = true;
+        },
+        else => {},
+    }
 }
 
 pub const SwapImage = struct {

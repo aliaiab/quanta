@@ -38,7 +38,7 @@ pub fn createWindow(
     arena: std.mem.Allocator,
     gpa: std.mem.Allocator,
     options: windowing.WindowSystem.CreateWindowOptions,
-) !Window {
+) !struct { Window, windowing.SurfaceRegion } {
     return Window.init(
         arena,
         gpa,
@@ -63,5 +63,5 @@ const Window = @import("Window.zig");
 const windowing = @import("../../windowing.zig");
 const xcb_loader = @import("xcb_loader.zig");
 const xcb_xinput_loader = @import("xcb_xinput_loader.zig");
-const xkbcommon_loader = @import("xkbcommon_loader.zig");
+const xkbcommon_loader = @import("../common/xkbcommon_loader.zig");
 const std = @import("std");

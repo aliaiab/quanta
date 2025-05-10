@@ -31,7 +31,9 @@ pub const vk_apis: []const vk.ApiInfo = &.{
             .getPhysicalDeviceFeatures = true,
             .createDebugUtilsMessengerEXT = enable_debug_messenger,
             .destroyDebugUtilsMessengerEXT = enable_debug_messenger,
-            .createXcbSurfaceKHR = quanta_options.windowing.preferred_backend == .xcb,
+            .createXcbSurfaceKHR = quanta_options.windowing.preferred_backend == .xcb or quanta_options.windowing.preferred_backend == .branch_wayland_xcb,
+            //TODO: should we load both functions if we're on the branch, what if one of them isn't available? Branch backends make this complicated
+            .createWaylandSurfaceKHR = quanta_options.windowing.preferred_backend == .wayland or quanta_options.windowing.preferred_backend == .branch_wayland_xcb,
             .createWin32SurfaceKHR = quanta_options.windowing.preferred_backend == .win32,
         },
         .device_commands = .{
@@ -153,7 +155,17 @@ var vkGetInstanceProcAddr: vk.PfnGetInstanceProcAddr = undefined;
 fn getInstanceProcAddress(instance: vk.Instance, name: [*:0]const u8) vk.PfnVoidFunction {
     log.info("Loading {s}", .{name});
 
-    return vkGetInstanceProcAddr(instance, name);
+    var result = vkGetInstanceProcAddr(instance, name);
+
+    if (quanta_options.windowing.preferred_backend == .branch_wayland_xcb) {
+        if (std.mem.eql(u8, std.mem.span(name), "vkCreateXcbSurfaceKHR") or std.mem.eql(u8, std.mem.span(name), "vkCreateWaylandSurfaceKHR")) {
+            if (result == null) {
+                result = undefined;
+            }
+        }
+    }
+
+    return result;
 }
 
 fn debugUtilsMessengerCallback(
@@ -372,26 +384,41 @@ pub fn init(
 
     self.vkb = try BaseDispatch.load(getInstanceProcAddress);
 
-    comptime var instance_extentions: []const [*:0]const u8 = &.{};
+    var instance_extension_alloc_instance = std.heap.stackFallback(16, arena);
+    const instance_extension_alloc = instance_extension_alloc_instance.get();
+
+    var instance_extentions: std.ArrayListUnmanaged([*:0]const u8) = .empty;
 
     if (enable_debug_messenger) {
-        instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extensions.ext_debug_utils.name};
+        try instance_extentions.append(instance_extension_alloc, vk.extensions.ext_debug_utils.name);
     }
 
-    instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extensions.khr_surface.name};
+    try instance_extentions.append(instance_extension_alloc, vk.extensions.khr_surface.name);
 
     switch (quanta_options.windowing.preferred_backend) {
         .xcb => {
-            instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extensions.khr_xcb_surface.name};
+            try instance_extentions.append(instance_extension_alloc, vk.extensions.khr_xcb_surface.name);
         },
         .win32 => {
-            instance_extentions = instance_extentions ++ [_][*:0]const u8{vk.extensions.khr_win_32_surface.name};
+            try instance_extentions.append(instance_extension_alloc, vk.extensions.khr_win_32_surface.name);
         },
-        else => @compileError("Windowing backend not supported by vulkan"),
+        .wayland => {
+            try instance_extentions.append(instance_extension_alloc, vk.extensions.khr_wayland_surface.name);
+        },
+        .branch_wayland_xcb => {
+            switch (window.impl.impl) {
+                .xcb => {
+                    try instance_extentions.append(instance_extension_alloc, vk.extensions.khr_xcb_surface.name);
+                },
+                .wayland => {
+                    try instance_extentions.append(instance_extension_alloc, vk.extensions.khr_wayland_surface.name);
+                },
+            }
+        },
     }
 
     log.info("Vulkan Version: {}", .{vulkan_version});
-    log.info("Vulkan Instance Extentions: {s}", .{instance_extentions});
+    log.info("Vulkan Instance Extentions: {s}", .{instance_extentions.items});
 
     comptime var requested_layers: []const [*:0]const u8 = &.{};
 
@@ -498,8 +525,8 @@ pub fn init(
         },
         .enabled_layer_count = @as(u32, @intCast(layers.len)),
         .pp_enabled_layer_names = requested_layers.ptr,
-        .enabled_extension_count = @as(u32, @intCast(instance_extentions.len)),
-        .pp_enabled_extension_names = instance_extentions.ptr,
+        .enabled_extension_count = @as(u32, @intCast(instance_extentions.items.len)),
+        .pp_enabled_extension_names = instance_extentions.items.ptr,
     }, self.allocation_callbacks);
 
     self.vki = try InstanceDispatch.load(self.instance, getInstanceProcAddress);

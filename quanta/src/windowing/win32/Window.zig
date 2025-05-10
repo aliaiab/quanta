@@ -2,12 +2,11 @@ hwnd: win32.foundation.HWND,
 window_system: *WindowSystem,
 
 pub fn init(
-    self: *Window,
     window_system: *WindowSystem,
     arena: std.mem.Allocator,
     gpa: std.mem.Allocator,
     options: windowing.WindowSystem.CreateWindowOptions,
-) !void {
+) !struct { Window, windowing.SurfaceRegion } {
     var title_alloc = std.heap.stackFallback(16, arena);
 
     const title_z = try title_alloc.get().dupeZ(u8, options.title);
@@ -61,19 +60,27 @@ pub fn init(
         return error.Win32WindowCreateFailed;
     }
 
-    self.hwnd = maybe_window_handle.?;
-    self.window_system = window_system;
-
     var window_rect: win32.foundation.RECT = undefined;
 
-    _ = win32.ui.windows_and_messaging.GetWindowRect(self.hwnd, &window_rect);
+    _ = win32.ui.windows_and_messaging.GetWindowRect(maybe_window_handle.?, &window_rect);
 
-    try window_system.window_states.put(gpa, self.hwnd, .{
+    try window_system.window_states.put(gpa, maybe_window_handle.?, .{
         .width = @truncate(@abs(window_rect.right - window_rect.left)),
         .height = @truncate(@abs(window_rect.top - window_rect.bottom)),
     });
 
     _ = win32.ui.windows_and_messaging.ShowWindow(maybe_window_handle.?, win32.ui.windows_and_messaging.SW_SHOWNORMAL);
+
+    return .{
+        .{
+            .hwnd = maybe_window_handle.?,
+            .window_system = window_system,
+        },
+        .{
+            .width = @truncate(@abs(window_rect.right - window_rect.left)),
+            .height = @truncate(@abs(window_rect.top - window_rect.bottom)),
+        },
+    };
 }
 
 pub fn deinit(
@@ -90,6 +97,7 @@ pub fn pollEvents(
     self: *Window,
     out_input: *input.State,
     out_viewport: *input.Viewport,
+    out_surface_region: *windowing.SurfaceRegion,
 ) !void {
     var message: win32.ui.windows_and_messaging.MSG = undefined;
     @memset(std.mem.asBytes(&message), 0);
@@ -136,6 +144,9 @@ pub fn pollEvents(
 
     out_viewport.width = window_state.width;
     out_viewport.height = window_state.height;
+
+    out_surface_region.width = window_state.width;
+    out_surface_region.height = window_state.height;
 
     out_viewport.cursor_position = .{ window_state.cursor_pos_x, window_state.cursor_pos_y };
 

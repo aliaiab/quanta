@@ -20,7 +20,40 @@ pub fn init(window: *windowing.Window) !WindowSurface {
                 .hwnd = @ptrCast(window.impl.hwnd),
             }, Context.self.allocation_callbacks);
         },
-        else => @compileError("Backend unsupported"),
+        .wayland => {
+            self.surface = try Context.self.vki.createWaylandSurfaceKHR(
+                Context.self.instance,
+                &vk.WaylandSurfaceCreateInfoKHR{
+                    .display = @ptrCast(window.impl.window_system.display),
+                    .surface = @ptrCast(window.impl.surface),
+                },
+                Context.self.allocation_callbacks,
+            );
+        },
+        .branch_wayland_xcb => {
+            switch (window.impl.impl) {
+                .xcb => {
+                    self.surface = try Context.self.vki.createXcbSurfaceKHR(
+                        Context.self.instance,
+                        &vk.XcbSurfaceCreateInfoKHR{
+                            .connection = @ptrCast(window.impl.impl.xcb.connection),
+                            .window = @intFromEnum(window.impl.impl.xcb.window),
+                        },
+                        Context.self.allocation_callbacks,
+                    );
+                },
+                .wayland => {
+                    self.surface = try Context.self.vki.createWaylandSurfaceKHR(
+                        Context.self.instance,
+                        &vk.WaylandSurfaceCreateInfoKHR{
+                            .display = @ptrCast(window.impl.impl.wayland.window_system.display),
+                            .surface = @ptrCast(window.impl.impl.wayland.surface),
+                        },
+                        Context.self.allocation_callbacks,
+                    );
+                },
+            }
+        },
     }
 
     return self;
