@@ -15,12 +15,16 @@ pub fn build(builder: *std.Build) !void {
         .target = builder.graph.host,
     });
 
-    const glsl_compiler = builder.addExecutable(.{
-        .name = "glsl_compiler",
+    const glsl_compiler_module = builder.createModule(.{
         .root_source_file = builder.path("quanta/src/asset/build_steps/glsl_compiler.zig"),
         .target = builder.graph.host,
         .optimize = .Debug,
         .sanitize_thread = true,
+    });
+
+    const glsl_compiler = builder.addExecutable(.{
+        .name = "glsl_compiler",
+        .root_module = glsl_compiler_module,
         .use_llvm = true,
     });
 
@@ -92,10 +96,12 @@ pub fn build(builder: *std.Build) !void {
 
                 scanner.addSystemProtocol("stable/xdg-shell/xdg-shell.xml");
                 scanner.addSystemProtocol("unstable/xdg-decoration/xdg-decoration-unstable-v1.xml");
+                scanner.addSystemProtocol("unstable/relative-pointer/relative-pointer-unstable-v1.xml");
                 scanner.generate("wl_compositor", 1);
                 scanner.generate("wl_seat", 1);
                 scanner.generate("xdg_wm_base", 3);
                 scanner.generate("zxdg_decoration_manager_v1", 1);
+                scanner.generate("zwp_relative_pointer_manager_v1", 1);
 
                 quanta_module.addImport("wayland", wayland_module);
             }
@@ -119,11 +125,15 @@ pub fn build(builder: *std.Build) !void {
     }
 
     //TODO: allow user to override asset compiler
-    const asset_compiler = builder.addExecutable(.{
-        .name = "asset_compiler",
+    const asset_compiler_module = builder.createModule(.{
         .root_source_file = builder.path("quanta/src/asset/compiler_main.zig"),
         .target = builder.graph.host,
         .optimize = .Debug,
+    });
+
+    const asset_compiler = builder.addExecutable(.{
+        .name = "asset_compiler",
+        .root_module = asset_compiler_module,
         .use_llvm = false,
     });
 
@@ -138,8 +148,6 @@ pub fn build(builder: *std.Build) !void {
         const quanta_test = builder.addTest(.{
             .name = "test",
             .root_module = quanta_module,
-            .optimize = .Debug,
-            .link_libc = true,
             .use_llvm = false,
         });
 

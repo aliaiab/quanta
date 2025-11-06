@@ -3,15 +3,24 @@ registry: *wl.Registry,
 compositor: *wl.Compositor,
 wm_base: *xdg.WmBase,
 seat: *wl.Seat,
+keyboard: ?*wl.Keyboard,
 pointer: ?*wl.Pointer,
+relative_pointer_manager: ?*wayland.client.zwp.RelativePointerManagerV1,
+relative_pointer: ?*wayland.client.zwp.RelativePointerV1,
 decoration_manager: ?*zxdg.DecorationManagerV1,
 listener_state: *ListenerState,
+xkb_library: xkb_common_loader.Library,
+xkb_context: *xkb_common_loader.Context,
 
 pub fn init(
     arena: std.mem.Allocator,
     gpa: std.mem.Allocator,
 ) !WindowSystem {
     _ = gpa; // autofix
+
+    const xkb_library = try xkb_common_loader.load();
+
+    const xkb_context = xkb_library.contextNew(.{});
 
     const display = try wl.Display.connect(null);
     const registry = try display.getRegistry();
@@ -32,13 +41,24 @@ pub fn init(
 
     const listener_state = try arena.create(ListenerState);
 
-    listener_state.* = .{};
+    listener_state.* = .{
+        .xkb_library = xkb_library,
+        .xkb_context = xkb_context,
+    };
 
     registry_context.seat.?.setListener(*ListenerState, &seatListener, listener_state);
 
     const pointer = try registry_context.seat.?.getPointer();
 
     pointer.setListener(*ListenerState, &pointerListener, listener_state);
+
+    const keyboard = try registry_context.seat.?.getKeyboard();
+
+    keyboard.setListener(*ListenerState, &keyboardListener, listener_state);
+
+    const relative_pointer = try registry_context.relative_pointer_manager.?.getRelativePointer(pointer);
+
+    relative_pointer.setListener(*ListenerState, &relativePointerListener, listener_state);
 
     return .{
         .display = display,
@@ -47,8 +67,13 @@ pub fn init(
         .wm_base = registry_context.wm_base.?,
         .seat = registry_context.seat.?,
         .pointer = pointer,
+        .keyboard = keyboard,
+        .relative_pointer_manager = registry_context.relative_pointer_manager,
+        .relative_pointer = relative_pointer,
         .decoration_manager = registry_context.decoration_manager,
         .listener_state = listener_state,
+        .xkb_library = xkb_library,
+        .xkb_context = xkb_context,
     };
 }
 
@@ -65,11 +90,26 @@ pub fn deinit(self: *WindowSystem, gpa: std.mem.Allocator) void {
         pointer.destroy();
     }
 
+    if (self.keyboard) |keyboard| {
+        keyboard.destroy();
+    }
+
+    if (self.relative_pointer_manager) |relative_pointer_manager| {
+        relative_pointer_manager.destroy();
+    }
+
+    if (self.relative_pointer) |relative_pointer| {
+        relative_pointer.destroy();
+    }
+
     self.seat.destroy();
     self.wm_base.destroy();
     self.compositor.destroy();
     self.registry.destroy();
     self.display.disconnect();
+
+    self.xkb_library.contextUnref(self.xkb_context);
+    self.xkb_library.dynamic_library.close();
 
     self.* = undefined;
 }
@@ -149,6 +189,7 @@ const RegistryHandlerContext = struct {
     decoration_manager: ?*zxdg.DecorationManagerV1,
     seat: ?*wl.Seat,
     pointer: ?*wl.Pointer,
+    relative_pointer_manager: ?*wayland.client.zwp.RelativePointerManagerV1,
 };
 
 fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *RegistryHandlerContext) void {
@@ -164,6 +205,8 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *
                 context.decoration_manager = registry.bind(global.name, zxdg.DecorationManagerV1, 1) catch return;
             } else if (mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
                 context.seat = registry.bind(global.name, wl.Seat, 1) catch return;
+            } else if (mem.orderZ(u8, global.interface, wayland.client.zwp.RelativePointerManagerV1.interface.name) == .eq) {
+                context.relative_pointer_manager = registry.bind(global.name, wayland.client.zwp.RelativePointerManagerV1, 1) catch return;
             }
         },
         .global_remove => {},
@@ -174,13 +217,17 @@ fn seatListener(seat: *wl.Seat, event: wl.Seat.Event, state: *ListenerState) voi
     _ = state; // autofix
     _ = seat; // autofix
     _ = event; // autofix
+
 }
 
 fn pointerListener(pointer: *wl.Pointer, event: wl.Pointer.Event, state: *ListenerState) void {
     _ = pointer; // autofix
+
     switch (event) {
         .enter => |enter_event| {
-            state.focus_window_state = state.window_listener_states.get(enter_event.surface.?).?;
+            if (enter_event.surface == null) return;
+
+            state.focus_window_state = state.window_listener_states.get(enter_event.surface.?) orelse return;
         },
         .leave => |leave_event| {
             _ = leave_event; // autofix
@@ -239,9 +286,88 @@ fn pointerListener(pointer: *wl.Pointer, event: wl.Pointer.Event, state: *Listen
     }
 }
 
+fn relativePointerListener(
+    relative_pointer: *wayland.client.zwp.RelativePointerV1,
+    event: wayland.client.zwp.RelativePointerV1.Event,
+    listener_state: *ListenerState,
+) void {
+    _ = relative_pointer; // autofix
+
+    if (listener_state.focus_window_state == null) return;
+
+    const focus_window_state = listener_state.focus_window_state.?;
+
+    focus_window_state.out_viewport_state.?.cursor_motion[0] = @intCast(event.relative_motion.dx.toInt());
+    focus_window_state.out_viewport_state.?.cursor_motion[1] = @intCast(event.relative_motion.dy.toInt());
+
+    focus_window_state.out_input_state.?.mouse_motion = focus_window_state.out_viewport_state.?.cursor_motion;
+}
+
+fn keyboardListener(
+    keyboard: *wl.Keyboard,
+    event: wl.Keyboard.Event,
+    listener_state: *ListenerState,
+) void {
+    _ = keyboard; // autofix
+
+    switch (event) {
+        .keymap => |keymap_event| {
+            defer std.posix.close(keymap_event.fd);
+
+            const buffer = std.posix.mmap(null, keymap_event.size, std.posix.PROT.READ, .{
+                .TYPE = .PRIVATE,
+            }, keymap_event.fd, 0) catch @panic("oom");
+            defer std.posix.munmap(buffer);
+
+            std.debug.assert(keymap_event.format == .xkb_v1);
+
+            listener_state.xkb_keymap = listener_state.xkb_library.keymapNewFromBuffer(
+                listener_state.xkb_context,
+                buffer.ptr,
+                buffer.len,
+                .text_v1,
+                .{},
+            );
+
+            listener_state.xkb_state = listener_state.xkb_library.stateNew(listener_state.xkb_keymap.?);
+        },
+        .key => |key_event| {
+            if (listener_state.focus_window_state == null) return;
+
+            const focus_window_state = listener_state.focus_window_state.?;
+
+            if (listener_state.xkb_state == null) return;
+
+            const xkb_state = listener_state.xkb_state.?;
+
+            const scancode = key_event.key + 8;
+
+            const keysym = listener_state.xkb_library.stateKeyGetOneSym(xkb_state, @enumFromInt(scancode));
+
+            if (xkb_keys.xkbKeyToQuantaKey(keysym)) |key| {
+                if (key_event.state == .pressed) {
+                    _ = listener_state.xkb_library.stateUpdateKey(xkb_state, @enumFromInt(scancode), .down);
+
+                    focus_window_state.out_input_state.?.buttons_keyboard.set(key, .press);
+                } else {
+                    _ = listener_state.xkb_library.stateUpdateKey(xkb_state, @enumFromInt(scancode), .up);
+
+                    focus_window_state.out_input_state.?.buttons_keyboard.set(key, .release);
+                }
+            }
+        },
+        else => {},
+    }
+}
+
 const ListenerState = struct {
     focus_window_state: ?*Window.ListenerState = null,
     window_listener_states: std.AutoArrayHashMapUnmanaged(*wl.Surface, *Window.ListenerState) = .{},
+
+    xkb_library: xkb_common_loader.Library,
+    xkb_context: *xkb_common_loader.Context,
+    xkb_keymap: ?*xkb_common_loader.Keymap = null,
+    xkb_state: ?*xkb_common_loader.State = null,
 };
 
 const std = @import("std");
@@ -254,3 +380,5 @@ const windowing = @import("../../windowing.zig");
 const WindowSystem = @This();
 const Window = @import("Window.zig");
 const CreateWindowOptions = @import("../../windowing.zig").WindowSystem.CreateWindowOptions;
+const xkb_common_loader = @import("../common/xkbcommon_loader.zig");
+const xkb_keys = @import("../common/xkb_keys.zig");

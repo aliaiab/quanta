@@ -3,7 +3,7 @@
 
 const glslang_c = @import("glslang_c");
 
-extern fn glslang_default_resource() callconv(.C) *const glslang_c.glslang_resource_t;
+extern fn glslang_default_resource() callconv(.c) *const glslang_c.glslang_resource_t;
 
 const IncludeContext = struct {
     root_source_directory: []const u8,
@@ -14,7 +14,7 @@ fn glslIncludeLocalFunc(
     header_name: [*c]const u8,
     includer_name: [*c]const u8,
     include_depth: usize,
-) callconv(.C) [*c]glslang_c.glsl_include_result_t {
+) callconv(.c) [*c]glslang_c.glsl_include_result_t {
     const include_context: *const IncludeContext = @alignCast(@ptrCast(context.?));
 
     std.debug.assert(header_name != null);
@@ -60,7 +60,7 @@ fn glslIncludeLocalFunc(
     return result;
 }
 
-fn glslIncludeResultFree(context: ?*anyopaque, glsl_include_result: [*c]glslang_c.glsl_include_result_t) callconv(.C) c_int {
+fn glslIncludeResultFree(context: ?*anyopaque, glsl_include_result: [*c]glslang_c.glsl_include_result_t) callconv(.c) c_int {
     _ = context;
 
     std.heap.c_allocator.destroy(@as(*glslang_c.glsl_include_result_t, @ptrCast(glsl_include_result)));

@@ -12,7 +12,7 @@ pub const Window = @import("windowing/Window.zig");
 pub const WindowSystem = @import("windowing/WindowSystem.zig");
 
 ///Represents the pixel surface of a window
-pub const SurfaceRegion = struct {
+pub const SurfaceRegion = packed struct {
     ///Width in pixels
     width: u32,
     ///Height in pixels
@@ -26,7 +26,7 @@ pub const Options = struct {
         .linux,
         .freebsd,
         .openbsd,
-        => .xcb,
+        => .branch_wayland_xcb,
         .windows => .win32,
         else => @compileError("quanta.windowing not supported on this target"),
     },

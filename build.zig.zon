@@ -2,10 +2,11 @@
     .name = .quanta,
     .fingerprint = 0xf0bb8b0829c7afa5,
     .version = "0.0.0",
+    .minimum_zig_version = "0.15.2",
     .dependencies = .{
         .vulkan_zig = .{
-            .url = "https://github.com/Snektron/vulkan-zig/archive/604416bf44baf95568c428e1aa55499aa8e07607.tar.gz",
-            .hash = "1220129ea1652cc0f8578db3dcba254bc9fbc6fdd195b5e1021bf4da8592ea5dc9fb",
+            .url = "git+https://github.com/Snektron/vulkan-zig#c9c4dae70356766f0954ae7d2b8aba4d1dd53a2a",
+            .hash = "vulkan-0.0.0-r7Ytx6hBAwBUnt0XA-uOkR2hda4fAHFhQITNTgJpnFkY",
         },
         .vulkan_headers = .{
             .url = "https://github.com/KhronosGroup/Vulkan-Headers/archive/v1.4.309.tar.gz",
@@ -17,24 +18,24 @@
             .lazy = true,
         },
         .zigimg = .{
-            .url = "git+https://github.com/zigimg/zigimg#159bae9fa46c596b9bae4aff5f8a8d7accbef333",
-            .hash = "zigimg-0.1.0-AAAAAFTfEQAJC62NPfMQ4nom7AOE3HJmaIMwzAVTOqg6",
+            .url = "git+https://github.com/zigimg/zigimg#f5783e87627cbd9e0b45fad112e9f73503914f36",
+            .hash = "zigimg-0.1.0-8_eo2vBrFQBhsrLpexdcDQY-zrlzkyFZfKuYX-Nry6KN",
         },
         .zgltf = .{
-            .url = "git+https://github.com/kooparse/zgltf/#b6579c3887c7ab0eef5f1eda09abbbc1f04d76ce",
-            .hash = "zgltf-0.1.0-sX6QAqIKAgAfb7yQlVrdsLwCNc6Fx8wFOLIQRaEGJnVC",
+            .url = "git+https://github.com/kooparse/zgltf#ec52d477db346af99d4cdced4e35e67e1670023f",
+            .hash = "zgltf-0.1.0-sX6QAt0SAgDzMQCCG-N181hVbx8JnwFYZ3luQigQpVBM",
         },
         .glslang_zig = .{
-            .url = "git+https://github.com/zkburke/glslang-zig.git#8c78cb3278dad47e1beb6a6bb7e19a6ba7e48ac8",
-            .hash = "glslang_zig-0.0.0-V29wT6AxAADnNraYD2-LC6DdTUU2t_b52WszwcAZUGZ5",
+            .url = "git+https://github.com/aliaiab/glslang-zig#144238250aeff5a50d5d5019c53c9eaf56d76d39",
+            .hash = "glslang_zig-0.0.0-V29wTzsxAACZ0SOSM2YHOepF_z7YdWFxgk3jFbKgUZwF",
         },
         .spvine = .{
-            .url = "git+https://github.com/zkburke/spvine#a739be5a9036f73d2ffa0bed2a99282f087f2e79",
-            .hash = "spvine-0.0.0-AAAAAKmwAgD00imV6UCn0ng62O0sSlNN12PwX_p45mq8",
+            .url = "git+https://github.com/aliaiab/spvine#fc10df3850460b628bfac45ff8e1d36b4622713c",
+            .hash = "spvine-0.0.0-OjlFsTKyAgB2nALTME9lNWoaGWPfAY2M29bg8fk8EbQ-",
         },
         .wayland = .{
-            .url = "git+https://codeberg.org/ifreund/zig-wayland#f3c5d503e540ada8cbcb056420de240af0c094f7",
-            .hash = "wayland-0.4.0-dev-lQa1kjfIAQCmhhQu3xF0KH-94-TzeMXOqfnP0-Dg6Wyy",
+            .url = "git+https://codeberg.org/ifreund/zig-wayland#b2df7eda58badac138faea6fd78c7f08c8ef936a",
+            .hash = "wayland-0.5.0-dev-lQa1ki7XAQA_o7YhtvwJW3DvNwhYkIsH14tWSb08JJHU",
             .lazy = true,
         },
     },

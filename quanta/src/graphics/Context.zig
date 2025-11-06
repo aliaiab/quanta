@@ -146,9 +146,9 @@ pub const vk_apis: []const vk.ApiInfo = &.{
     vk.extensions.khr_swapchain,
 };
 
-pub const BaseDispatch = vk.BaseWrapper(vk_apis);
-pub const InstanceDispatch = vk.InstanceWrapper(vk_apis);
-pub const DeviceDispatch = vk.DeviceWrapper(vk_apis);
+pub const BaseDispatch = vk.BaseWrapper;
+pub const InstanceDispatch = vk.InstanceWrapper;
+pub const DeviceDispatch = vk.DeviceWrapper;
 
 var vkGetInstanceProcAddr: vk.PfnGetInstanceProcAddr = undefined;
 
@@ -209,7 +209,7 @@ fn debugUtilsMessengerCallback(
         log.debug("{s} {s}", .{ p_callback_data.?.p_message_id_name orelse "", p_callback_data.?.p_message.? });
     }
 
-    return vk.FALSE;
+    return .false;
 }
 
 fn vulkanAllocate(
@@ -384,7 +384,7 @@ pub fn init(
     };
     self.allocation_callbacks = if (quanta_options.graphics.use_custom_allocator) &self.allocation_callbacks_data else null;
 
-    self.vkb = try BaseDispatch.load(getInstanceProcAddress);
+    self.vkb = BaseDispatch.load(getInstanceProcAddress);
 
     var instance_extension_alloc_instance = std.heap.stackFallback(16, arena);
     const instance_extension_alloc = instance_extension_alloc_instance.get();
@@ -419,8 +419,8 @@ pub fn init(
         },
     }
 
-    log.info("Vulkan Version: {}", .{vulkan_version});
-    log.info("Vulkan Instance Extentions: {s}", .{instance_extentions.items});
+    log.info("Vulkan Version: {any}", .{vulkan_version});
+    log.info("Vulkan Instance Extentions: {any}", .{instance_extentions.items});
 
     comptime var requested_layers: []const [*:0]const u8 = &.{};
 
@@ -430,7 +430,7 @@ pub fn init(
         requested_layers = requested_layers ++ &[_][*:0]const u8{"VK_LAYER_KHRONOS_synchronization2"};
     }
 
-    log.info("layers: {s}", .{requested_layers});
+    log.info("layers: {any}", .{requested_layers});
 
     var layers_array: [requested_layers.len][*:0]const u8 = undefined;
     var layers: [][*:0]const u8 = layers_array[0..0];
@@ -480,28 +480,28 @@ pub fn init(
             .p_setting_name = "validate_sync",
             .type = vk.LayerSettingTypeEXT.bool32_ext,
             .value_count = 1,
-            .p_values = &@as(u32, vk.TRUE),
+            .p_values = &@as(vk.Bool32, .true),
         },
         .{
             .p_layer_name = "VK_LAYER_KHRONOS_validation",
             .p_setting_name = "validate_best_practices",
             .type = vk.LayerSettingTypeEXT.bool32_ext,
             .value_count = 1,
-            .p_values = &@as(u32, vk.TRUE),
+            .p_values = &@as(vk.Bool32, .true),
         },
         .{
             .p_layer_name = "VK_LAYER_KHRONOS_validation",
             .p_setting_name = "validate_best_practices_nvidia",
             .type = vk.LayerSettingTypeEXT.bool32_ext,
             .value_count = 1,
-            .p_values = &@as(u32, vk.TRUE),
+            .p_values = &@as(vk.Bool32, .true),
         },
         .{
             .p_layer_name = "VK_LAYER_KHRONOS_validation",
             .p_setting_name = "check_image_layout",
             .type = vk.LayerSettingTypeEXT.bool32_ext,
             .value_count = 1,
-            .p_values = &@as(u32, vk.TRUE),
+            .p_values = &@as(vk.Bool32, .true),
         },
     };
 
@@ -515,12 +515,12 @@ pub fn init(
             null,
         .flags = .{},
         .p_application_info = &vk.ApplicationInfo{
-            .api_version = vk.makeApiVersion(
+            .api_version = @bitCast(vk.makeApiVersion(
                 0,
                 vulkan_version.major,
                 vulkan_version.minor,
                 vulkan_version.patch,
-            ),
+            )),
             .application_version = 0,
             .engine_version = 0,
             .p_application_name = null,
@@ -532,7 +532,7 @@ pub fn init(
         .pp_enabled_extension_names = instance_extentions.items.ptr,
     }, self.allocation_callbacks);
 
-    self.vki = try InstanceDispatch.load(self.instance, getInstanceProcAddress);
+    self.vki = InstanceDispatch.load(self.instance, getInstanceProcAddress);
 
     errdefer self.vki.destroyInstance(self.instance, self.allocation_callbacks);
 
@@ -562,50 +562,50 @@ pub fn init(
     const device_extentions = device_extensions_buffer[0..device_extension_count];
 
     var device_vulkan13_features = vk.PhysicalDeviceVulkan13Features{
-        .dynamic_rendering = vk.TRUE,
-        .synchronization_2 = vk.TRUE,
-        .maintenance_4 = vk.TRUE,
-        .subgroup_size_control = vk.TRUE,
-        .compute_full_subgroups = vk.TRUE,
+        .dynamic_rendering = .true,
+        .synchronization_2 = .true,
+        .maintenance_4 = .true,
+        .subgroup_size_control = .true,
+        .compute_full_subgroups = .true,
     };
 
     var device_vulkan12_features = vk.PhysicalDeviceVulkan12Features{
         .p_next = &device_vulkan13_features,
-        .draw_indirect_count = vk.TRUE,
-        .scalar_block_layout = vk.TRUE,
-        .buffer_device_address = vk.TRUE,
-        // .shader_input_attachment_array_dynamic_indexing = vk.TRUE,
-        .shader_uniform_texel_buffer_array_dynamic_indexing = vk.TRUE,
-        .shader_storage_texel_buffer_array_dynamic_indexing = vk.TRUE,
-        .shader_uniform_buffer_array_non_uniform_indexing = vk.TRUE,
-        .shader_sampled_image_array_non_uniform_indexing = vk.TRUE,
-        .shader_storage_buffer_array_non_uniform_indexing = vk.TRUE,
-        .shader_storage_image_array_non_uniform_indexing = vk.TRUE,
-        // .shader_input_attachment_array_non_uniform_indexing = vk.FALSE,
-        .shader_uniform_texel_buffer_array_non_uniform_indexing = vk.TRUE,
-        .shader_storage_texel_buffer_array_non_uniform_indexing = vk.TRUE,
-        .descriptor_binding_uniform_buffer_update_after_bind = vk.TRUE,
-        .descriptor_binding_sampled_image_update_after_bind = vk.TRUE,
-        .descriptor_binding_storage_image_update_after_bind = vk.TRUE,
-        .descriptor_binding_storage_buffer_update_after_bind = vk.TRUE,
-        .descriptor_binding_uniform_texel_buffer_update_after_bind = vk.TRUE,
-        .descriptor_binding_storage_texel_buffer_update_after_bind = vk.TRUE,
-        .descriptor_binding_update_unused_while_pending = vk.TRUE,
-        .descriptor_binding_partially_bound = vk.TRUE,
-        .descriptor_binding_variable_descriptor_count = vk.TRUE,
-        .runtime_descriptor_array = vk.TRUE,
+        .draw_indirect_count = .true,
+        .scalar_block_layout = .true,
+        .buffer_device_address = .true,
+        // .shader_input_attachment_array_dynamic_indexing = .true,
+        .shader_uniform_texel_buffer_array_dynamic_indexing = .true,
+        .shader_storage_texel_buffer_array_dynamic_indexing = .true,
+        .shader_uniform_buffer_array_non_uniform_indexing = .true,
+        .shader_sampled_image_array_non_uniform_indexing = .true,
+        .shader_storage_buffer_array_non_uniform_indexing = .true,
+        .shader_storage_image_array_non_uniform_indexing = .true,
+        // .shader_input_attachment_array_non_uniform_indexing = .false,
+        .shader_uniform_texel_buffer_array_non_uniform_indexing = .true,
+        .shader_storage_texel_buffer_array_non_uniform_indexing = .true,
+        .descriptor_binding_uniform_buffer_update_after_bind = .true,
+        .descriptor_binding_sampled_image_update_after_bind = .true,
+        .descriptor_binding_storage_image_update_after_bind = .true,
+        .descriptor_binding_storage_buffer_update_after_bind = .true,
+        .descriptor_binding_uniform_texel_buffer_update_after_bind = .true,
+        .descriptor_binding_storage_texel_buffer_update_after_bind = .true,
+        .descriptor_binding_update_unused_while_pending = .true,
+        .descriptor_binding_partially_bound = .true,
+        .descriptor_binding_variable_descriptor_count = .true,
+        .runtime_descriptor_array = .true,
     };
 
     var device_vulkan11_features = vk.PhysicalDeviceVulkan11Features{
         .p_next = &device_vulkan12_features,
-        .shader_draw_parameters = vk.TRUE,
+        .shader_draw_parameters = .true,
     };
 
-    log.info("Required device extensions: {s}", .{device_extentions});
+    log.info("Required device extensions: {any}", .{device_extentions});
     log.info("Required device features:", .{});
 
     inline for ((comptime std.meta.fieldNames(@TypeOf(device_vulkan13_features))[2..])) |feature_name| {
-        if (@field(device_vulkan13_features, feature_name) == vk.TRUE) {
+        if (@field(device_vulkan13_features, feature_name) == .true) {
             log.info("  {s}", .{feature_name});
         }
     }
@@ -631,13 +631,15 @@ pub fn init(
 
             self.vki.getPhysicalDeviceProperties2(physical_device, &properties);
 
+            const physical_device_api_version: vk.Version = @bitCast(properties.properties.api_version);
+
             log.info("Device [{}] {s}: api_version: {}.{}.{}.{}", .{
                 i,
                 properties.properties.device_name[0..std.mem.indexOfScalar(u8, &properties.properties.device_name, 0).?],
-                vk.apiVersionMajor(properties.properties.api_version),
-                vk.apiVersionMinor(properties.properties.api_version),
-                vk.apiVersionPatch(properties.properties.api_version),
-                vk.apiVersionVariant(properties.properties.api_version),
+                physical_device_api_version.major,
+                physical_device_api_version.minor,
+                physical_device_api_version.patch,
+                physical_device_api_version.variant,
             });
         }
 
@@ -646,7 +648,7 @@ pub fn init(
                 .subgroup_size = 0,
                 .supported_stages = .{},
                 .supported_operations = .{},
-                .quad_operations_in_all_stages = vk.FALSE,
+                .quad_operations_in_all_stages = .false,
             };
 
             var properties: vk.PhysicalDeviceProperties2 = .{
@@ -661,17 +663,19 @@ pub fn init(
 
             log.info("Device Subgroup size: {}", .{subgroup_properties.subgroup_size});
 
+            const api_version: vk.Version = @bitCast(self.physical_device_properties.api_version);
+
             log.info("Device [{}] {s}: api_version: {}.{}.{}.{}", .{
                 device_index,
                 self.physical_device_properties.device_name,
-                vk.apiVersionMajor(self.physical_device_properties.api_version),
-                vk.apiVersionMinor(self.physical_device_properties.api_version),
-                vk.apiVersionPatch(self.physical_device_properties.api_version),
-                vk.apiVersionVariant(self.physical_device_properties.api_version),
+                api_version.major,
+                api_version.minor,
+                api_version.patch,
+                api_version.variant,
             });
 
-            const is_version_suitable = vk.apiVersionMajor(self.physical_device_properties.api_version) >= vulkan_version.major and
-                vk.apiVersionMinor(self.physical_device_properties.api_version) >= vulkan_version.minor;
+            const is_version_suitable = api_version.major >= vulkan_version.major and
+                api_version.minor >= vulkan_version.minor;
 
             if (!is_version_suitable) {
                 continue;
@@ -708,7 +712,7 @@ pub fn init(
 
                 const surface_supported = try self.vki.getPhysicalDeviceSurfaceSupportKHR(physical_device, @as(u32, @intCast(queue_family_index)), self.surface.surface);
 
-                if (surface_supported == vk.TRUE) {
+                if (surface_supported == .true) {
                     self.present_family_index = @as(u32, @intCast(queue_family_index));
                 } else {
                     std.log.info("Suface properties: cap: {} fmt: {} are not supported by the device", .{ self.surface_capabilities, self.surface_format });
@@ -795,7 +799,7 @@ pub fn init(
             //If there's only one gpu, use it even if it's integrated
             const use_integrated = physical_devices.len == 1;
 
-            if (self.physical_device_features.geometry_shader == 1 and
+            if (self.physical_device_features.geometry_shader == .true and
                 self.graphics_family_index != null and
                 self.present_family_index != null and
                 self.compute_family_index != null and
@@ -935,7 +939,7 @@ pub fn init(
         self.device = try self.vki.createDevice(self.physical_device, &device_create_info, self.allocation_callbacks);
 
         //TODO: handle failures again
-        self.vkd = DeviceDispatch.loadNoFail(self.device, self.vki.dispatch.vkGetDeviceProcAddr);
+        self.vkd = DeviceDispatch.load(self.device, self.vki.dispatch.vkGetDeviceProcAddr.?);
 
         errdefer self.vkd.destroyDevice(self.device, self.allocation_callbacks);
 
@@ -1323,8 +1327,8 @@ pub const BufferMemory = struct {
 ///Allocates a page dedicated to the specified buffer resource
 pub fn deviceAllocateBuffer(buffer: vk.Buffer, properties: vk.MemoryPropertyFlags) !BufferMemory {
     var dedicated_requirements: vk.MemoryDedicatedRequirements = .{
-        .prefers_dedicated_allocation = vk.FALSE,
-        .requires_dedicated_allocation = vk.FALSE,
+        .prefers_dedicated_allocation = .false,
+        .requires_dedicated_allocation = .false,
     };
 
     var memory_requirements: vk.MemoryRequirements2 = .{
@@ -1361,8 +1365,8 @@ pub fn deviceMapBuffer(page: BufferMemory, comptime T: type, length: usize) ![]T
 ///Allocates a page dedicated to the specified image resource
 pub fn devicePageAllocateImage(image: vk.Image, properties: vk.MemoryPropertyFlags) !DevicePageHandle {
     var dedicated_requirements: vk.MemoryDedicatedRequirements = .{
-        .prefers_dedicated_allocation = vk.FALSE,
-        .requires_dedicated_allocation = vk.FALSE,
+        .prefers_dedicated_allocation = .false,
+        .requires_dedicated_allocation = .false,
     };
 
     var memory_requirements: vk.MemoryRequirements2 = .{
@@ -1374,8 +1378,8 @@ pub fn devicePageAllocateImage(image: vk.Image, properties: vk.MemoryPropertyFla
         .image = image,
     }, &memory_requirements);
 
-    const page = try Context.devicePageAllocate(memory_requirements.memory_requirements.size, memory_requirements.memory_requirements.alignment, memory_requirements.memory_requirements.memory_type_bits, properties, if (dedicated_requirements.prefers_dedicated_allocation == vk.TRUE or
-        dedicated_requirements.requires_dedicated_allocation == vk.TRUE)
+    const page = try Context.devicePageAllocate(memory_requirements.memory_requirements.size, memory_requirements.memory_requirements.alignment, memory_requirements.memory_requirements.memory_type_bits, properties, if (dedicated_requirements.prefers_dedicated_allocation == .true or
+        dedicated_requirements.requires_dedicated_allocation == .true)
         .{
             .image = image,
             .buffer = .null_handle,

@@ -168,7 +168,11 @@ pub fn decodeHeaderOnlyFromFile(
         .asset_content_hashes = &.{},
     };
 
-    const header = try file.reader().readStruct(Header);
+    var header_bytes: [@sizeOf(Header)]u8 = undefined;
+
+    _ = try file.readAll(&header_bytes);
+
+    const header: Header = @bitCast(header_bytes);
 
     log.info("Read header: {}", .{header});
 

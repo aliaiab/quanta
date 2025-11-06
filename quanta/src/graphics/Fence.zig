@@ -25,7 +25,7 @@ pub fn wait(self: Fence) void {
         Context.self.device,
         1,
         @as([*]const vk.Fence, @ptrCast(&self.handle)),
-        vk.TRUE,
+        .true,
         std.math.maxInt(u64),
     ) catch unreachable;
 }

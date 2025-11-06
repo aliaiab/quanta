@@ -403,7 +403,7 @@ pub const struct_ImVector_ImFontConfig = extern struct {
 };
 pub const ImVector_ImFontConfig = struct_ImVector_ImFontConfig;
 pub const struct_ImFontBuilderIO = extern struct {
-    FontBuilder_Build: ?*const fn ([*c]ImFontAtlas) callconv(.C) bool = @import("std").mem.zeroes(?*const fn ([*c]ImFontAtlas) callconv(.C) bool),
+    FontBuilder_Build: ?*const fn ([*c]ImFontAtlas) callconv(.c) bool = @import("std").mem.zeroes(?*const fn ([*c]ImFontAtlas) callconv(.c) bool),
 };
 pub const ImFontBuilderIO = struct_ImFontBuilderIO;
 pub const struct_ImFontAtlas = extern struct {
@@ -525,7 +525,7 @@ pub const struct_ImDrawList = extern struct {
     _FringeScale: f32 = @import("std").mem.zeroes(f32),
 };
 pub const ImDrawList = struct_ImDrawList;
-pub const ImDrawCallback = ?*const fn ([*c]const ImDrawList, [*c]const ImDrawCmd) callconv(.C) void;
+pub const ImDrawCallback = ?*const fn ([*c]const ImDrawList, [*c]const ImDrawCmd) callconv(.c) void;
 pub const struct_ImDrawCmd = extern struct {
     ClipRect: ImVec4 = @import("std").mem.zeroes(ImVec4),
     TextureId: ImTextureID = @import("std").mem.zeroes(ImTextureID),
@@ -665,10 +665,10 @@ pub const struct_ImGuiIO = extern struct {
     BackendPlatformUserData: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
     BackendRendererUserData: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
     BackendLanguageUserData: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
-    GetClipboardTextFn: ?*const fn (?*anyopaque) callconv(.C) [*c]const u8 = @import("std").mem.zeroes(?*const fn (?*anyopaque) callconv(.C) [*c]const u8),
-    SetClipboardTextFn: ?*const fn (?*anyopaque, [*c]const u8) callconv(.C) void = @import("std").mem.zeroes(?*const fn (?*anyopaque, [*c]const u8) callconv(.C) void),
+    GetClipboardTextFn: ?*const fn (?*anyopaque) callconv(.c) [*c]const u8 = @import("std").mem.zeroes(?*const fn (?*anyopaque) callconv(.c) [*c]const u8),
+    SetClipboardTextFn: ?*const fn (?*anyopaque, [*c]const u8) callconv(.c) void = @import("std").mem.zeroes(?*const fn (?*anyopaque, [*c]const u8) callconv(.c) void),
     ClipboardUserData: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
-    SetPlatformImeDataFn: ?*const fn ([*c]ImGuiViewport, [*c]ImGuiPlatformImeData) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, [*c]ImGuiPlatformImeData) callconv(.C) void),
+    SetPlatformImeDataFn: ?*const fn ([*c]ImGuiViewport, [*c]ImGuiPlatformImeData) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, [*c]ImGuiPlatformImeData) callconv(.c) void),
     PlatformLocaleDecimalPoint: ImWchar = @import("std").mem.zeroes(ImWchar),
     WantCaptureMouse: bool = @import("std").mem.zeroes(bool),
     WantCaptureKeyboard: bool = @import("std").mem.zeroes(bool),
@@ -745,29 +745,29 @@ pub const struct_ImVector_ImGuiViewportPtr = extern struct {
 };
 pub const ImVector_ImGuiViewportPtr = struct_ImVector_ImGuiViewportPtr;
 pub const struct_ImGuiPlatformIO = extern struct {
-    Platform_CreateWindow: ?*const fn ([*c]ImGuiViewport) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) void),
-    Platform_DestroyWindow: ?*const fn ([*c]ImGuiViewport) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) void),
-    Platform_ShowWindow: ?*const fn ([*c]ImGuiViewport) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) void),
-    Platform_SetWindowPos: ?*const fn ([*c]ImGuiViewport, ImVec2) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ImVec2) callconv(.C) void),
-    Platform_GetWindowPos: ?*const fn ([*c]ImGuiViewport) callconv(.C) ImVec2 = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) ImVec2),
-    Platform_SetWindowSize: ?*const fn ([*c]ImGuiViewport, ImVec2) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ImVec2) callconv(.C) void),
-    Platform_GetWindowSize: ?*const fn ([*c]ImGuiViewport) callconv(.C) ImVec2 = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) ImVec2),
-    Platform_SetWindowFocus: ?*const fn ([*c]ImGuiViewport) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) void),
-    Platform_GetWindowFocus: ?*const fn ([*c]ImGuiViewport) callconv(.C) bool = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) bool),
-    Platform_GetWindowMinimized: ?*const fn ([*c]ImGuiViewport) callconv(.C) bool = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) bool),
-    Platform_SetWindowTitle: ?*const fn ([*c]ImGuiViewport, [*c]const u8) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, [*c]const u8) callconv(.C) void),
-    Platform_SetWindowAlpha: ?*const fn ([*c]ImGuiViewport, f32) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, f32) callconv(.C) void),
-    Platform_UpdateWindow: ?*const fn ([*c]ImGuiViewport) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) void),
-    Platform_RenderWindow: ?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.C) void),
-    Platform_SwapBuffers: ?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.C) void),
-    Platform_GetWindowDpiScale: ?*const fn ([*c]ImGuiViewport) callconv(.C) f32 = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) f32),
-    Platform_OnChangedViewport: ?*const fn ([*c]ImGuiViewport) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) void),
-    Platform_CreateVkSurface: ?*const fn ([*c]ImGuiViewport, ImU64, ?*const anyopaque, [*c]ImU64) callconv(.C) c_int = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ImU64, ?*const anyopaque, [*c]ImU64) callconv(.C) c_int),
-    Renderer_CreateWindow: ?*const fn ([*c]ImGuiViewport) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) void),
-    Renderer_DestroyWindow: ?*const fn ([*c]ImGuiViewport) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.C) void),
-    Renderer_SetWindowSize: ?*const fn ([*c]ImGuiViewport, ImVec2) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ImVec2) callconv(.C) void),
-    Renderer_RenderWindow: ?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.C) void),
-    Renderer_SwapBuffers: ?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.C) void),
+    Platform_CreateWindow: ?*const fn ([*c]ImGuiViewport) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) void),
+    Platform_DestroyWindow: ?*const fn ([*c]ImGuiViewport) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) void),
+    Platform_ShowWindow: ?*const fn ([*c]ImGuiViewport) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) void),
+    Platform_SetWindowPos: ?*const fn ([*c]ImGuiViewport, ImVec2) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ImVec2) callconv(.c) void),
+    Platform_GetWindowPos: ?*const fn ([*c]ImGuiViewport) callconv(.c) ImVec2 = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) ImVec2),
+    Platform_SetWindowSize: ?*const fn ([*c]ImGuiViewport, ImVec2) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ImVec2) callconv(.c) void),
+    Platform_GetWindowSize: ?*const fn ([*c]ImGuiViewport) callconv(.c) ImVec2 = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) ImVec2),
+    Platform_SetWindowFocus: ?*const fn ([*c]ImGuiViewport) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) void),
+    Platform_GetWindowFocus: ?*const fn ([*c]ImGuiViewport) callconv(.c) bool = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) bool),
+    Platform_GetWindowMinimized: ?*const fn ([*c]ImGuiViewport) callconv(.c) bool = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) bool),
+    Platform_SetWindowTitle: ?*const fn ([*c]ImGuiViewport, [*c]const u8) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, [*c]const u8) callconv(.c) void),
+    Platform_SetWindowAlpha: ?*const fn ([*c]ImGuiViewport, f32) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, f32) callconv(.c) void),
+    Platform_UpdateWindow: ?*const fn ([*c]ImGuiViewport) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) void),
+    Platform_RenderWindow: ?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.c) void),
+    Platform_SwapBuffers: ?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.c) void),
+    Platform_GetWindowDpiScale: ?*const fn ([*c]ImGuiViewport) callconv(.c) f32 = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) f32),
+    Platform_OnChangedViewport: ?*const fn ([*c]ImGuiViewport) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) void),
+    Platform_CreateVkSurface: ?*const fn ([*c]ImGuiViewport, ImU64, ?*const anyopaque, [*c]ImU64) callconv(.c) c_int = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ImU64, ?*const anyopaque, [*c]ImU64) callconv(.c) c_int),
+    Renderer_CreateWindow: ?*const fn ([*c]ImGuiViewport) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) void),
+    Renderer_DestroyWindow: ?*const fn ([*c]ImGuiViewport) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport) callconv(.c) void),
+    Renderer_SetWindowSize: ?*const fn ([*c]ImGuiViewport, ImVec2) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ImVec2) callconv(.c) void),
+    Renderer_RenderWindow: ?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.c) void),
+    Renderer_SwapBuffers: ?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiViewport, ?*anyopaque) callconv(.c) void),
     Monitors: ImVector_ImGuiPlatformMonitor = @import("std").mem.zeroes(ImVector_ImGuiPlatformMonitor),
     Viewports: ImVector_ImGuiViewportPtr = @import("std").mem.zeroes(ImVector_ImGuiViewportPtr),
 };
@@ -1052,7 +1052,7 @@ pub const struct_ImGuiSizeCallbackData = extern struct {
     DesiredSize: ImVec2 = @import("std").mem.zeroes(ImVec2),
 };
 pub const ImGuiSizeCallbackData = struct_ImGuiSizeCallbackData;
-pub const ImGuiSizeCallback = ?*const fn ([*c]ImGuiSizeCallbackData) callconv(.C) void;
+pub const ImGuiSizeCallback = ?*const fn ([*c]ImGuiSizeCallbackData) callconv(.c) void;
 pub const struct_ImGuiNextWindowData = extern struct {
     Flags: ImGuiNextWindowDataFlags = @import("std").mem.zeroes(ImGuiNextWindowDataFlags),
     PosCond: ImGuiCond = @import("std").mem.zeroes(ImGuiCond),
@@ -1537,12 +1537,12 @@ pub const ImGuiDockNode = struct_ImGuiDockNode;
 pub const struct_ImGuiSettingsHandler = extern struct {
     TypeName: [*c]const u8 = @import("std").mem.zeroes([*c]const u8),
     TypeHash: ImGuiID = @import("std").mem.zeroes(ImGuiID),
-    ClearAllFn: ?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler) callconv(.C) void),
-    ReadInitFn: ?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler) callconv(.C) void),
-    ReadOpenFn: ?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler, [*c]const u8) callconv(.C) ?*anyopaque = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler, [*c]const u8) callconv(.C) ?*anyopaque),
-    ReadLineFn: ?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler, ?*anyopaque, [*c]const u8) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler, ?*anyopaque, [*c]const u8) callconv(.C) void),
-    ApplyAllFn: ?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler) callconv(.C) void),
-    WriteAllFn: ?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler, [*c]ImGuiTextBuffer) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler, [*c]ImGuiTextBuffer) callconv(.C) void),
+    ClearAllFn: ?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler) callconv(.c) void),
+    ReadInitFn: ?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler) callconv(.c) void),
+    ReadOpenFn: ?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler, [*c]const u8) callconv(.c) ?*anyopaque = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler, [*c]const u8) callconv(.c) ?*anyopaque),
+    ReadLineFn: ?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler, ?*anyopaque, [*c]const u8) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler, ?*anyopaque, [*c]const u8) callconv(.c) void),
+    ApplyAllFn: ?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler) callconv(.c) void),
+    WriteAllFn: ?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler, [*c]ImGuiTextBuffer) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, [*c]ImGuiSettingsHandler, [*c]ImGuiTextBuffer) callconv(.c) void),
     UserData: ?*anyopaque = @import("std").mem.zeroes(?*anyopaque),
 };
 pub const ImGuiSettingsHandler = struct_ImGuiSettingsHandler;
@@ -1560,7 +1560,7 @@ pub const struct_ImChunkStream_ImGuiTableSettings = extern struct {
     Buf: ImVector_char = @import("std").mem.zeroes(ImVector_char),
 };
 pub const ImChunkStream_ImGuiTableSettings = struct_ImChunkStream_ImGuiTableSettings;
-pub const ImGuiContextHookCallback = ?*const fn ([*c]ImGuiContext, [*c]ImGuiContextHook) callconv(.C) void;
+pub const ImGuiContextHookCallback = ?*const fn ([*c]ImGuiContext, [*c]ImGuiContextHook) callconv(.c) void;
 pub const struct_ImGuiContextHook = extern struct {
     HookId: ImGuiID = @import("std").mem.zeroes(ImGuiID),
     Type: ImGuiContextHookType = @import("std").mem.zeroes(ImGuiContextHookType),
@@ -1865,7 +1865,7 @@ pub const struct_ImGuiContext = extern struct {
     PlatformImeDataPrev: ImGuiPlatformImeData = @import("std").mem.zeroes(ImGuiPlatformImeData),
     PlatformImeViewport: ImGuiID = @import("std").mem.zeroes(ImGuiID),
     DockContext: ImGuiDockContext = @import("std").mem.zeroes(ImGuiDockContext),
-    DockNodeWindowMenuHandler: ?*const fn ([*c]ImGuiContext, ?*ImGuiDockNode, [*c]ImGuiTabBar) callconv(.C) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, ?*ImGuiDockNode, [*c]ImGuiTabBar) callconv(.C) void),
+    DockNodeWindowMenuHandler: ?*const fn ([*c]ImGuiContext, ?*ImGuiDockNode, [*c]ImGuiTabBar) callconv(.c) void = @import("std").mem.zeroes(?*const fn ([*c]ImGuiContext, ?*ImGuiDockNode, [*c]ImGuiTabBar) callconv(.c) void),
     SettingsLoaded: bool = @import("std").mem.zeroes(bool),
     SettingsDirtyTimer: f32 = @import("std").mem.zeroes(f32),
     SettingsIniData: ImGuiTextBuffer = @import("std").mem.zeroes(ImGuiTextBuffer),
@@ -2126,9 +2126,9 @@ pub const ImGuiSliderFlags = c_int;
 pub const ImGuiTableRowFlags = c_int;
 pub const ImGuiTreeNodeFlags = c_int;
 pub const ImWchar32 = c_uint;
-pub const ImGuiInputTextCallback = ?*const fn ([*c]ImGuiInputTextCallbackData) callconv(.C) c_int;
-pub const ImGuiMemAllocFunc = ?*const fn (usize, ?*anyopaque) callconv(.C) ?*anyopaque;
-pub const ImGuiMemFreeFunc = ?*const fn (?*anyopaque, ?*anyopaque) callconv(.C) void;
+pub const ImGuiInputTextCallback = ?*const fn ([*c]ImGuiInputTextCallbackData) callconv(.c) c_int;
+pub const ImGuiMemAllocFunc = ?*const fn (usize, ?*anyopaque) callconv(.c) ?*anyopaque;
+pub const ImGuiMemFreeFunc = ?*const fn (?*anyopaque, ?*anyopaque) callconv(.c) void;
 pub const ImGuiWindowFlags_None: c_int = 0;
 pub const ImGuiWindowFlags_NoTitleBar: c_int = 1;
 pub const ImGuiWindowFlags_NoResize: c_int = 2;
@@ -2816,7 +2816,7 @@ pub const ImGuiNavHighlightFlags = c_int;
 pub const ImGuiSeparatorFlags = c_int;
 pub const ImGuiTextFlags = c_int;
 pub const ImGuiTooltipFlags = c_int;
-pub const ImGuiErrorLogCallback = ?*const fn (?*anyopaque, [*c]const u8, ...) callconv(.C) void;
+pub const ImGuiErrorLogCallback = ?*const fn (?*anyopaque, [*c]const u8, ...) callconv(.c) void;
 pub extern var GImGui: [*c]ImGuiContext;
 pub const struct_StbTexteditRow = extern struct {
     x0: f32 = @import("std").mem.zeroes(f32),
@@ -3337,7 +3337,7 @@ pub extern fn igBeginCombo(label: [*c]const u8, preview_value: [*c]const u8, fla
 pub extern fn igEndCombo() void;
 pub extern fn igCombo_Str_arr(label: [*c]const u8, current_item: [*c]c_int, items: [*c]const [*c]const u8, items_count: c_int, popup_max_height_in_items: c_int) bool;
 pub extern fn igCombo_Str(label: [*c]const u8, current_item: [*c]c_int, items_separated_by_zeros: [*c]const u8, popup_max_height_in_items: c_int) bool;
-pub extern fn igCombo_FnStrPtr(label: [*c]const u8, current_item: [*c]c_int, getter: ?*const fn (?*anyopaque, c_int) callconv(.C) [*c]const u8, user_data: ?*anyopaque, items_count: c_int, popup_max_height_in_items: c_int) bool;
+pub extern fn igCombo_FnStrPtr(label: [*c]const u8, current_item: [*c]c_int, getter: ?*const fn (?*anyopaque, c_int) callconv(.c) [*c]const u8, user_data: ?*anyopaque, items_count: c_int, popup_max_height_in_items: c_int) bool;
 pub extern fn igDragFloat(label: [*c]const u8, v: [*c]f32, v_speed: f32, v_min: f32, v_max: f32, format: [*c]const u8, flags: ImGuiSliderFlags) bool;
 pub extern fn igDragFloat2(label: [*c]const u8, v: [*c]f32, v_speed: f32, v_min: f32, v_max: f32, format: [*c]const u8, flags: ImGuiSliderFlags) bool;
 pub extern fn igDragFloat3(label: [*c]const u8, v: [*c]f32, v_speed: f32, v_min: f32, v_max: f32, format: [*c]const u8, flags: ImGuiSliderFlags) bool;
@@ -3406,11 +3406,11 @@ pub extern fn igSelectable_BoolPtr(label: [*c]const u8, p_selected: [*c]bool, fl
 pub extern fn igBeginListBox(label: [*c]const u8, size: ImVec2) bool;
 pub extern fn igEndListBox() void;
 pub extern fn igListBox_Str_arr(label: [*c]const u8, current_item: [*c]c_int, items: [*c]const [*c]const u8, items_count: c_int, height_in_items: c_int) bool;
-pub extern fn igListBox_FnStrPtr(label: [*c]const u8, current_item: [*c]c_int, getter: ?*const fn (?*anyopaque, c_int) callconv(.C) [*c]const u8, user_data: ?*anyopaque, items_count: c_int, height_in_items: c_int) bool;
+pub extern fn igListBox_FnStrPtr(label: [*c]const u8, current_item: [*c]c_int, getter: ?*const fn (?*anyopaque, c_int) callconv(.c) [*c]const u8, user_data: ?*anyopaque, items_count: c_int, height_in_items: c_int) bool;
 pub extern fn igPlotLines_FloatPtr(label: [*c]const u8, values: [*c]const f32, values_count: c_int, values_offset: c_int, overlay_text: [*c]const u8, scale_min: f32, scale_max: f32, graph_size: ImVec2, stride: c_int) void;
-pub extern fn igPlotLines_FnFloatPtr(label: [*c]const u8, values_getter: ?*const fn (?*anyopaque, c_int) callconv(.C) f32, data: ?*anyopaque, values_count: c_int, values_offset: c_int, overlay_text: [*c]const u8, scale_min: f32, scale_max: f32, graph_size: ImVec2) void;
+pub extern fn igPlotLines_FnFloatPtr(label: [*c]const u8, values_getter: ?*const fn (?*anyopaque, c_int) callconv(.c) f32, data: ?*anyopaque, values_count: c_int, values_offset: c_int, overlay_text: [*c]const u8, scale_min: f32, scale_max: f32, graph_size: ImVec2) void;
 pub extern fn igPlotHistogram_FloatPtr(label: [*c]const u8, values: [*c]const f32, values_count: c_int, values_offset: c_int, overlay_text: [*c]const u8, scale_min: f32, scale_max: f32, graph_size: ImVec2, stride: c_int) void;
-pub extern fn igPlotHistogram_FnFloatPtr(label: [*c]const u8, values_getter: ?*const fn (?*anyopaque, c_int) callconv(.C) f32, data: ?*anyopaque, values_count: c_int, values_offset: c_int, overlay_text: [*c]const u8, scale_min: f32, scale_max: f32, graph_size: ImVec2) void;
+pub extern fn igPlotHistogram_FnFloatPtr(label: [*c]const u8, values_getter: ?*const fn (?*anyopaque, c_int) callconv(.c) f32, data: ?*anyopaque, values_count: c_int, values_offset: c_int, overlay_text: [*c]const u8, scale_min: f32, scale_max: f32, graph_size: ImVec2) void;
 pub extern fn igValue_Bool(prefix: [*c]const u8, b: bool) void;
 pub extern fn igValue_Int(prefix: [*c]const u8, v: c_int) void;
 pub extern fn igValue_Uint(prefix: [*c]const u8, v: c_uint) void;
@@ -3833,7 +3833,7 @@ pub extern fn ImGuiPlatformImeData_destroy(self: [*c]ImGuiPlatformImeData) void;
 pub extern fn igGetKeyIndex(key: ImGuiKey) ImGuiKey;
 pub extern fn igImHashData(data: ?*const anyopaque, data_size: usize, seed: ImGuiID) ImGuiID;
 pub extern fn igImHashStr(data: [*c]const u8, data_size: usize, seed: ImGuiID) ImGuiID;
-pub extern fn igImQsort(base: ?*anyopaque, count: usize, size_of_element: usize, compare_func: ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.C) c_int) void;
+pub extern fn igImQsort(base: ?*anyopaque, count: usize, size_of_element: usize, compare_func: ?*const fn (?*const anyopaque, ?*const anyopaque) callconv(.c) c_int) void;
 pub extern fn igImAlphaBlendColors(col_a: ImU32, col_b: ImU32) ImU32;
 pub extern fn igImIsPowerOfTwo_Int(v: c_int) bool;
 pub extern fn igImIsPowerOfTwo_U64(v: ImU64) bool;
@@ -4346,9 +4346,9 @@ pub extern fn igClearDragDrop() void;
 pub extern fn igIsDragDropPayloadBeingAccepted() bool;
 pub extern fn igRenderDragDropTargetRect(bb: ImRect, item_clip_rect: ImRect) void;
 pub extern fn igGetTypingSelectRequest(flags: ImGuiTypingSelectFlags) [*c]ImGuiTypingSelectRequest;
-pub extern fn igTypingSelectFindMatch(req: [*c]ImGuiTypingSelectRequest, items_count: c_int, get_item_name_func: ?*const fn (?*anyopaque, c_int) callconv(.C) [*c]const u8, user_data: ?*anyopaque, nav_item_idx: c_int) c_int;
-pub extern fn igTypingSelectFindNextSingleCharMatch(req: [*c]ImGuiTypingSelectRequest, items_count: c_int, get_item_name_func: ?*const fn (?*anyopaque, c_int) callconv(.C) [*c]const u8, user_data: ?*anyopaque, nav_item_idx: c_int) c_int;
-pub extern fn igTypingSelectFindBestLeadingMatch(req: [*c]ImGuiTypingSelectRequest, items_count: c_int, get_item_name_func: ?*const fn (?*anyopaque, c_int) callconv(.C) [*c]const u8, user_data: ?*anyopaque) c_int;
+pub extern fn igTypingSelectFindMatch(req: [*c]ImGuiTypingSelectRequest, items_count: c_int, get_item_name_func: ?*const fn (?*anyopaque, c_int) callconv(.c) [*c]const u8, user_data: ?*anyopaque, nav_item_idx: c_int) c_int;
+pub extern fn igTypingSelectFindNextSingleCharMatch(req: [*c]ImGuiTypingSelectRequest, items_count: c_int, get_item_name_func: ?*const fn (?*anyopaque, c_int) callconv(.c) [*c]const u8, user_data: ?*anyopaque, nav_item_idx: c_int) c_int;
+pub extern fn igTypingSelectFindBestLeadingMatch(req: [*c]ImGuiTypingSelectRequest, items_count: c_int, get_item_name_func: ?*const fn (?*anyopaque, c_int) callconv(.c) [*c]const u8, user_data: ?*anyopaque) c_int;
 pub extern fn igSetWindowClipRectBeforeSetChannel(window: ?*ImGuiWindow, clip_rect: ImRect) void;
 pub extern fn igBeginColumns(str_id: [*c]const u8, count: c_int, flags: ImGuiOldColumnFlags) void;
 pub extern fn igEndColumns() void;
@@ -4489,7 +4489,7 @@ pub extern fn igGetInputTextState(id: ImGuiID) [*c]ImGuiInputTextState;
 pub extern fn igColorTooltip(text: [*c]const u8, col: [*c]const f32, flags: ImGuiColorEditFlags) void;
 pub extern fn igColorEditOptionsPopup(col: [*c]const f32, flags: ImGuiColorEditFlags) void;
 pub extern fn igColorPickerOptionsPopup(ref_col: [*c]const f32, flags: ImGuiColorEditFlags) void;
-pub extern fn igPlotEx(plot_type: ImGuiPlotType, label: [*c]const u8, values_getter: ?*const fn (?*anyopaque, c_int) callconv(.C) f32, data: ?*anyopaque, values_count: c_int, values_offset: c_int, overlay_text: [*c]const u8, scale_min: f32, scale_max: f32, size_arg: ImVec2) c_int;
+pub extern fn igPlotEx(plot_type: ImGuiPlotType, label: [*c]const u8, values_getter: ?*const fn (?*anyopaque, c_int) callconv(.c) f32, data: ?*anyopaque, values_count: c_int, values_offset: c_int, overlay_text: [*c]const u8, scale_min: f32, scale_max: f32, size_arg: ImVec2) c_int;
 pub extern fn igShadeVertsLinearColorGradientKeepAlpha(draw_list: [*c]ImDrawList, vert_start_idx: c_int, vert_end_idx: c_int, gradient_p0: ImVec2, gradient_p1: ImVec2, col0: ImU32, col1: ImU32) void;
 pub extern fn igShadeVertsLinearUV(draw_list: [*c]ImDrawList, vert_start_idx: c_int, vert_end_idx: c_int, a: ImVec2, b: ImVec2, uv_a: ImVec2, uv_b: ImVec2, clamp: bool) void;
 pub extern fn igShadeVertsTransformPos(draw_list: [*c]ImDrawList, vert_start_idx: c_int, vert_end_idx: c_int, pivot_in: ImVec2, cos_a: f32, sin_a: f32, pivot_out: ImVec2) void;

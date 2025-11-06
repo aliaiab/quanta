@@ -17,11 +17,11 @@ pub const Import = extern struct {
         _ = file_path; // autofix
         _ = meta_data; // autofix
 
-        var stream = std.io.FixedBufferStream([]const u8){ .pos = 0, .buffer = data };
+        var reader = std.Io.Reader.fixed(data);
 
-        var reader = stream.reader();
+        var header: Header = undefined;
 
-        const header = try reader.readStructEndian(Header, .little);
+        try reader.readSliceAll(std.mem.asBytes(&header));
 
         std.debug.assert(header.magic_number == Header.valid_magic_number);
         std.debug.assert(header.file_size == data.len);
@@ -33,7 +33,9 @@ pub const Import = extern struct {
         var height: u32 = 0;
 
         for (0..header.frames) |frame_index| {
-            const frame = try reader.readStructEndian(Frame, .little);
+            var frame: Frame = undefined;
+
+            try reader.readSliceAll(std.mem.asBytes(&frame));
 
             std.debug.assert(frame.magic_number == Frame.valid_magic_number);
 
@@ -41,9 +43,13 @@ pub const Import = extern struct {
 
             for (0..frame.chunk_count) |chunk_index| {
                 _ = chunk_index; // autofix
-                const chunk_size = try reader.readInt(u32, .little);
+                var chunk_size: u32 = undefined;
 
-                const chunk_type = try reader.readEnum(Chunk.Type, .little);
+                try reader.readSliceAll(std.mem.asBytes(&chunk_size));
+
+                var chunk_type: Chunk.Type = undefined;
+
+                try reader.readSliceAll(std.mem.asBytes(&chunk_type));
 
                 //chunk.chunk_size includes the size of the header itself
                 const chunk_data_size = chunk_size - @sizeOf(u32) - @sizeOf(Chunk.Type);
@@ -52,11 +58,15 @@ pub const Import = extern struct {
 
                 switch (chunk_type) {
                     .cel_chunk => {
-                        const cel_chunk = try reader.readStructEndian(CelChunk, .little);
+                        var cel_chunk: CelChunk = undefined;
+
+                        try reader.readSliceAll(std.mem.asBytes(&cel_chunk));
 
                         switch (cel_chunk.cel_type) {
                             .raw_image => {
-                                const raw_image_extra = try reader.readStructEndian(CelChunk.RawImageDataExtra, .little);
+                                var raw_image_extra: CelChunk.RawImageDataExtra = undefined;
+
+                                try reader.readSliceAll(std.mem.asBytes(&raw_image_extra));
 
                                 log.info("raw_image_extra = {}", .{raw_image_extra});
 
@@ -70,12 +80,14 @@ pub const Import = extern struct {
 
                                 log.info("raw_image_data.len = {}", .{raw_image_data.len});
 
-                                _ = try reader.read(raw_image_data);
+                                try reader.readSliceAll(raw_image_data);
 
                                 pixel_data = raw_image_data;
                             },
                             else => {
-                                const compressed_image_extra = try reader.readStructEndian(CelChunk.CompressedImage, .little);
+                                var compressed_image_extra: CelChunk.CompressedImage = undefined;
+
+                                try reader.readSliceAll(std.mem.asBytes(&compressed_image_extra));
 
                                 width = compressed_image_extra.width;
                                 height = compressed_image_extra.height;
@@ -84,16 +96,23 @@ pub const Import = extern struct {
 
                                 const uncompressed_data = try context.allocator.alloc(u8, uncompressed_size);
 
-                                var decompression_stream = std.io.FixedBufferStream([]u8){ .buffer = uncompressed_data, .pos = 0 };
+                                var decompression_writer = std.Io.Writer.fixed(uncompressed_data);
 
-                                try std.compress.zlib.decompress(reader, decompression_stream.writer());
+                                var decompress = std.compress.flate.Decompress.init(
+                                    &reader,
+                                    .zlib,
+                                    &.{},
+                                );
+
+                                const decompressed_len = try decompress.reader.streamRemaining(&decompression_writer);
+                                _ = decompressed_len; // autofix
 
                                 pixel_data = uncompressed_data;
                             },
                         }
                     },
                     else => {
-                        _ = try reader.read(chunk_data);
+                        try reader.readSliceAll(chunk_data);
                     },
                 }
             }

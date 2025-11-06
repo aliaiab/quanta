@@ -108,7 +108,7 @@ pub fn initRecycle(
             .opaque_bit_khr = true,
         },
         .present_mode = present_mode,
-        .clipped = vk.TRUE,
+        .clipped = .true,
         .old_swapchain = old_handle,
     }, null);
     errdefer Context.self.vkd.destroySwapchainKHR(Context.self.device, handle, null);
@@ -356,7 +356,7 @@ pub const SwapImage = struct {
             Context.self.device,
             1,
             @as([*]const vk.Fence, @ptrCast(&self.frame_fence)),
-            vk.TRUE,
+            .true,
             std.math.maxInt(u64),
         );
     }

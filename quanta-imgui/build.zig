@@ -75,8 +75,6 @@ pub fn build(builder: *Build) !void {
     const quanta_test = builder.addTest(.{
         .name = "test",
         .root_module = quanta_imgui_module,
-        .optimize = .Debug,
-        .link_libc = true,
         .use_llvm = false,
     });
 
